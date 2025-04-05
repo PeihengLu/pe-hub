@@ -1,3 +1,0 @@
-# .dvc/config
-['remote "myremote"']
-    url = /mnt/DVC
