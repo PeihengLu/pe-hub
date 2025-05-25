@@ -1,3 +1,5 @@
+# src/features.py
+# -*- coding: utf-8 -*-
 '''
 This module contains code for calculating biological features using 
 the raw sequence of a given prime editor guide RNA (pegRNA) sequence.
