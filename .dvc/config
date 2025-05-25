@@ -1,5 +1,7 @@
 [core]
     autostage = true
-    remote = myremote
-['remote "myremote"']
+    remote = macremote
+[remote "myremote"]
     url = /media/peiheng/DVC
+[remote "macremote"]
+    url = /Volumes/DVC
