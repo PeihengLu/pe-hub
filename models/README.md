@@ -1,11 +1,11 @@
 # State of the art models
 
-
 ## Inferencing using the barebone models
 
 
 
 ### DeepPrime
+
 
 
 ### PRIDICT and PRIDICT 2.0
