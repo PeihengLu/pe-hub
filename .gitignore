@@ -1,3 +1,6 @@
 *wordcount*
 /data
 /src/*ipynb*
+# pycache
+__pycache__/
+*.pyc
