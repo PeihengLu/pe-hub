@@ -8,9 +8,11 @@ import os
 import pandas as pd
 import numpy as np
 
+from src.constants import DATA_ROOT
+
 def read_from_deepprime_main(original_data_path: str) -> None:
     """
-    Read the original deep prime data to a more usable format.
+    Read the original deep prime hek293t data to a more usable format.
     Args:
         original_data_path (str): Path to the original deep prime data.
         output_path (str): Path to save the converted data.
@@ -71,4 +73,64 @@ def split_pridict2_orginal_data(original_data_path: str) -> None:
         'AdV'
     ]
     
+    
+
+def std_to_crispai(filename: str) -> str:
+    """
+    Convert a standardized format data into crispai format.
+    """
+    full_path = DATA_ROOT / 'std'
+    full_path = full_path / filename
+    df = pd.read_csv(full_path)
+    
+    # total read count, unedited percentage and indel percentage are all NaNs,
+    df['total_read_count'] = None
+    df['edited_percentage'] = df['editing-efficiency']
+    df['unedited_percentage'] = None
+    df['indel_percentage'] = None
+    
+    # initial and mutated sequences
+    df['initial_sequence'] = df['wt-sequence']
+    df['mutated_sequence'] = df['mut-sequence']
+    
+    # merge the l and r columns into a single column
+    # apply to protospacer, pbs and rtt
+    df['protospacer_location'] = df.apply(
+        lambda row: f"[{row['protospacer-location-l']}, {row['protospacer-location-r']-1}]",
+        axis=1
+    )
+    df['pbs_location'] = df.apply(
+        lambda row: f"[{row['pbs-location-l']}, {row['pbs-location-r']-1}]",
+        axis=1
+    )
+    df['rt_initial_location'] = df.apply(
+        lambda row: f"[{row['rtt-location-l']}, {row['rtt-location-r']-1}]",
+        axis=1
+    )
+    # rt_mutated_location is the same as the initial locations
+    df['rt_mutated_location'] = df['rt_initial_location']
+    
+    # save the formatted data into the crispai directory
+    crispai_path = DATA_ROOT / 'crispai'
+    crispai_path.mkdir(parents=True, exist_ok=True)
+    crispai_full_path = crispai_path / filename
+    
+    # split to train and test based on the value of 'fold'
+    df['fold'] = df['fold'].astype(str)
+    train_df = df[df['fold'] != 'Test']
+    test_df = df[df['fold'] == 'Test']
+    crispai_full_path_train = crispai_full_path.with_name(crispai_full_path.stem + '_train.csv')
+    crispai_full_path_test = crispai_full_path.with_name(crispai_full_path.stem + '_test.csv')
+    
+    train_df = train_df[['total_read_count', 'edited_percentage', 'unedited_percentage', 'indel_percentage',
+                        'initial_sequence', 'mutated_sequence', 'protospacer_location', 'pbs_location',
+                        'rt_initial_location', 'rt_mutated_location']]
+    test_df = test_df[['total_read_count', 'edited_percentage', 'unedited_percentage', 'indel_percentage',
+                        'initial_sequence', 'mutated_sequence', 'protospacer_location', 'pbs_location',
+                        'rt_initial_location', 'rt_mutated_location']]
+    
+    train_df.to_csv(crispai_full_path_train, index=False)
+    test_df.to_csv(crispai_full_path_test, index=False)
+    
+    return str(crispai_full_path)
     
