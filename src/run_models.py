@@ -4,7 +4,7 @@ import sys
 from models.DeepPrime.models.load_model import load_deepprime, load_deepspcas9
 import pandas as pd
 
-from src.utils import get_model_path, get_data_path
+from src.constants import DATA_ROOT, MODEL_ROOT
 
 def run_pridict(data_path: str) -> List[float]:
     """
@@ -58,6 +58,7 @@ def run_deepprime(data_path: str) -> List[float]:
     from models.DeepPrime.src.dprime import calculate_deepprime_score
     
     df = pd.read_csv(data_path)
+    # TODO: make sure the data is in the correct format
     calculate_deepprime_score(df, pe_system='PE2max', cell_type='HEK293T')
     
     # Placeholder for actual prediction logic
