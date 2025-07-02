@@ -3,22 +3,30 @@
 """Data conversion script for the project.
 This script contains functions to convert data from one format to another.
 """
-# extract the deep prime original data
 import os
+import ast
+
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 from src.constants import DATA_ROOT
+from src.sequence_utils import align_wt_mut_sequences
 
-def read_from_deepprime_main(original_data_path: str) -> None:
+# ==============================================================================
+# Source data manipulation functions
+# fast recovery of the original data
+# ==============================================================================
+
+def read_from_deepprime_org(original_data_path: str, sheet_name: str = '1') -> None:
     """
-    Read the original deep prime hek293t data to a more usable format.
-    Args:
+    Read from the deepprime original excel file
+    Args:   
         original_data_path (str): Path to the original deep prime data.
         output_path (str): Path to save the converted data.
     """
     # Load the original data, skipping the first 3 rows and use the forth row as header
-    original_data = pd.read_excel(original_data_path, sheet_name='1', skiprows=3, header=0)
+    original_data = pd.read_excel(original_data_path, sheet_name=sheet_name, skiprows=3, header=0)
     
     # Rename columns to remove spaces and special characters(newlines, tabs, etc.)
     original_data.columns = original_data.columns.str.replace(' ', '_').str.replace('\n', '').str.replace('\t', '')
@@ -34,31 +42,50 @@ def read_from_deepprime_main(original_data_path: str) -> None:
     
     return original_data
 
-def read_from_deepprime_all(original_data_path: str) -> None:
+def export_deepprime_all() -> None:
     """
-    Read the original deep prime data to a more usable format.
+    Read the original deep prime data to a more usable csv format.
     Args:
         original_data_path (str): Path to the original deep prime data.
         output_path (str): Path to save the converted data.
     """
-    # Load the original data, skipping the first 3 rows and use the forth row as header
-    original_data = pd.read_excel(original_data_path, sheet_name='1', skiprows=3, header=0)
+    # Read the first sheet and use it as catalog
+    DP_ORG_DATA_PATH = DATA_ROOT / 'deepprime-org' / 'deepprime-org.xlsx'
+    original_data_catalog = pd.read_excel(
+        DP_ORG_DATA_PATH, sheet_name='Summary', header=0,
+    )
+    # Rename the Index Column to 'SheetName'
+    original_data_catalog.rename(columns={'Index': 'Sheet name'}, inplace=True)
     
-    # Rename columns to remove spaces and special characters(newlines, tabs, etc.)
-    original_data.columns = original_data.columns.str.replace(' ', '_').str.replace('\n', '').str.replace('\t', '')
+    print(original_data_catalog.head())
     
-    # change the rest of the columns to lower case
-    original_data.columns = original_data.columns.str.lower()
+    dp_model_to_datasource = {
+        'DeepPrime': 'dp',
+        'DeepPrime-FT': 'dp_ft',
+    }
+        
+    for index, row in original_data_catalog.iterrows():
+        # Get the sheet name, cell line, pe system and model
+        sheet_name = row['Sheet name']
+        cell_line = row['Cell line']
+        pe_system = row['PE system']
+        model = row['Model']
+        
+        if model not in dp_model_to_datasource:
+            print(f"Model {model} is not supported. Skipping.")
+            continue
     
-    # Rename some more opaque columns
-    original_data.rename(columns={
-        "wide_target_sequence(target_74bps_=_4bp_neighboring_sequence_+_20_bp_protospacer_+_3_bp_ngg_+_47_bp_neighboring_sequence)": "wt-sequence",
-        "edited_target_sequence(target_74bps_=_rt-pbs_corresponding_region_and_masked_by_'x')": "mut-sequence",
-    }, inplace=True)
-    
-    return original_data
-
-def split_pridict2_orginal_data(original_data_path: str) -> None:
+        # Load the original data, skipping the first 3 rows and use the forth row as header
+        original_data = read_from_deepprime_main(
+            DP_ORG_DATA_PATH, sheet_name=sheet_name
+        )
+        
+        # save the data to a csv file
+        output_path = DATA_ROOT / 'deepprime' / f"dp-{dp_model_to_datasource[model]}-{cell_line.lower()}-{pe_system.lower()}.csv"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        original_data.to_csv(output_path, index=False)
+        
+def export_pridict2_all(original_data_path: str) -> None:
     """
     Split pridict 2 data into four parts, one for each cell line
     """
@@ -72,17 +99,292 @@ def split_pridict2_orginal_data(original_data_path: str) -> None:
         'K562MLH1dn',
         'AdV'
     ]
+
+
+# =============================================================================
+# Data format conversion
+# =============================================================================
+
+def deepprime_org_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: str = None) -> None:
+    '''
+    Convert the data from DeepPrime format to the standard format
+    '''
+    if not model:
+        target = f"std-dp-{cell_line}-{pe_system}.csv"
+    else:
+        target = f"std-{model}-{cell_line}-{pe_system}.csv"
+        
+    # if isfile(pjoin('../', 'std', target)):
+    #     return
+
+    # replace the '-' in editor and cell line with '_'
+    cell_line = cell_line.lower()
+    pe_system = pe_system.lower()
+    cell_line = cell_line.replace('-', '_')
+    pe_system = pe_system.replace('-', '_')
+
+    output = []
+
+    # result columns
+    result_columns = [
+        'cell-line', 'group-id', 'mut-type', 'edit-len', 'wt-sequence', 'mut-sequence', 
+        'protospacer-location-l', 'protospacer-location-r', 
+        'pbs-location-l', 'pbs-location-r', 'rtt-location-l', 'rtt-location-r', 
+        'lha-location-l', 'lha-location-r', 'rha-location-l', 'rha-location-r', 
+        'spcas9-score', 'editing-efficiency', 'fold']
+
+    g_id = 0
+    prev = ""
+
+    # iterate over the data
+    for ind, item in tqdm.tqdm(data.iterrows(), total=len(data)):
+        wt_sequence = item['wt-sequence']
+        mut_sequence = item['mut-sequence']
+
+        group_id = ind
+        edit_len = item['Edit_len']
+        rha_len = item['RHA_len']
+        pbs_rtt_len = item['RT-PBSlen']
+
+        # edit type
+        if item['type_sub']:
+            mut_type = 0
+        elif item['type_ins']:
+            mut_type = 1
+        elif item['type_del']:
+            mut_type = 2
+        
+        protospacer_location_l = 5
+        protospacer_location_r = 24
+
+        protospacer = wt_sequence[protospacer_location_l:protospacer_location_r]
+        
+        # assign group based on target loci
+        if prev:
+            if protospacer == prev:
+                group_id = g_id
+            else:
+                g_id += 1
+                group_id = g_id
+        else:
+            group_id = g_id
+        prev = protospacer
+
+        pbs_len = item['PBSlen']
+        rtt_len = item['RTlen']
+
+        pbs_location_l = -1
+        for ind, c in enumerate(mut_sequence):
+            if c != 'x':
+                pbs_location_l = ind
+                break
+        pbs_location_r = pbs_location_l + pbs_len
+        lha_location_l = pbs_location_r
+        if mut_type == 2: # deletion
+            lha_location_r = pbs_location_r + (pbs_rtt_len - pbs_len - rha_len)
+        else:
+            lha_location_r = pbs_location_r + (pbs_rtt_len - pbs_len - rha_len - edit_len)
+
+        if mut_type == 2: # deletion
+            rha_location_wt_l = pbs_location_l + pbs_rtt_len - rha_len + edit_len
+            rha_location_wt_r = pbs_location_l + pbs_rtt_len + edit_len
+            rha_location_mut_l = pbs_location_l + pbs_rtt_len - rha_len
+            rha_location_mut_r = pbs_location_l + pbs_rtt_len
+        elif mut_type == 1: # insertion
+            rha_location_wt_l = pbs_location_l + pbs_rtt_len - rha_len - edit_len
+            rha_location_wt_r = pbs_location_l + pbs_rtt_len - edit_len
+            rha_location_mut_l = pbs_location_l + pbs_rtt_len - rha_len
+            rha_location_mut_r = pbs_location_l + pbs_rtt_len
+        else: # length does not change
+            rha_location_wt_l = pbs_location_l + pbs_rtt_len - rha_len
+            rha_location_wt_r = pbs_location_l + pbs_rtt_len
+            rha_location_mut_l = pbs_location_l + pbs_rtt_len - rha_len
+            rha_location_mut_r = pbs_location_l + pbs_rtt_len 
+
+        rtt_location_wt_l = pbs_location_r
+        rtt_location_wt_r = rha_location_wt_r
+        rtt_location_mut_l = pbs_location_r
+        rtt_location_mut_r = rha_location_mut_r
+        
+        rtt_location_l = rtt_location_wt_l
+        if mut_type == 2: # deletion, mut sequence is padded with N
+            rtt_location_r = rtt_location_wt_r
+        else:
+            rtt_location_r = rtt_location_mut_r
+            
+        rha_location_l = rha_location_wt_l
+        if mut_type == 2: # deletion, mut sequence is padded with N
+            rha_location_r = rha_location_wt_r
+        else:
+            rha_location_r = rha_location_mut_r
+
+        # remove the mask of the mutated sequence
+        mut_sequence = ''
+        mut_sequence += wt_sequence[:lha_location_r]
+        mut_sequence += mut_sequence[lha_location_r:rha_location_mut_r]
+        if mut_type == 1: # insertion
+            mut_sequence += wt_sequence[rha_location_wt_r:len(wt_sequence)-edit_len]
+        else:
+            mut_sequence += wt_sequence[rha_location_wt_r:]
+            
+        wt_sequence, mut_sequence = align_wt_mut_sequences(
+            wt_sequence, mut_sequence, lha_location_r, 
+            edit_length=edit_len, edit_type=mut_type)
+        
+        spcas9_score = item['DeepSpCas9_score']
+        editing_efficiency = item['Measured_PE_efficiency']
+        fold = item['fold']
+        
+        # # pad the mutated sequence to the same length as the wildtype sequence
+        # if len(mut_sequence) < len(wt_sequence):
+        #     mut_sequence += 'N' * (len(wt_sequence) - len(mut_sequence))
+        
+        output.append([
+            cell_line, group_id, mut_type, edit_len, wt_sequence, mut_sequence, 
+            protospacer_location_l, protospacer_location_r, 
+            pbs_location_l, pbs_location_r, 
+            rtt_location_l, rtt_location_r, 
+            lha_location_l, lha_location_r, 
+            rha_location_l, rha_location_r, 
+            spcas9_score, editing_efficiency, fold])
+
+    # save the extracted information
+    output_df = pd.DataFrame(output, columns=result_columns, index=None)
+    # convert the columns to the correct types
+    output_df['wt-sequence'] = output_df['wt-sequence'].str.upper()
+    output_df['mut-sequence'] = output_df['mut-sequence'].str.upper()
+    output_df['cell-line'] = output_df['cell-line'].str.lower()
+    output_df['group-id'] = output_df['group-id'].astype(int)
+    output_df['mut-type'] = output_df['mut-type'].astype(int)
+    output_df['edit-len'] = output_df['edit-len'].astype(int)
+    output_df['protospacer-location-l'] = output_df['protospacer-location-l'].astype(int)
+    output_df['protospacer-location-r'] = output_df['protospacer-location-r'].astype(int) 
+    output_df['pbs-location-l'] = output_df['pbs-location-l'].astype(int)
+    output_df['pbs-location-r'] = output_df['pbs-location-r'].astype(int)
+    output_df['rtt-location-l'] = output_df['rtt-location-l'].astype(int)
+    output_df['rtt-location-r'] = output_df['rtt-location-r'].astype(int)
+    output_df['lha-location-l'] = output_df['lha-location-l'].astype(int)
+    output_df['lha-location-r'] = output_df['lha-location-r'].astype(int)
+    output_df['rha-location-l'] = output_df['rha-location-l'].astype(int)
+    output_df['rha-location-r'] = output_df['rha-location-r'].astype(int)
+    output_df['spcas9-score'] = output_df['spcas9-score'].astype(float)
+    output_df['editing-efficiency'] = output_df['editing-efficiency'].astype(float)
+    output_df['fold'] = output_df['fold'].astype(str)
+    # export the data to a csv file
+    output_path = DATA_ROOT / 'std' / target
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_df.to_csv(output_path, index=False) 
     
+    
+    
+def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: str = 'pd2') -> pd.DataFrame:
+    '''
+    Convert the data from PRIDICT2 format to the standard format
+    '''
+    output = []
+    
+    # drop the rows where wt-sequence or mut-sequence is empty
+    data = data.dropna(subset=['wide_initial_target', 'wide_mutated_target'])
+
+    # cell lines
+    cell_lines = {'HEKaverageedited': 'hek293t','K562averageedited': 'k562','K562MLH1dnaverageedited': 'k562mlh1dn','AdVaverageedited': 'adv'}
+
+    # result columns
+    result_columns = ['cell-line', 'group-id', 'mut-type', 'edit-len', 'wt-sequence', 'mut-sequence', 'protospacer-location-l', 'protospacer-location-r', 'pbs-location-l', 'pbs-location-r', 'rtt-location-l', 'rtt-location-r', 'lha-location-l', 'lha-location-r', 'rha-location-l', 'rha-location-r', 'spcas9-score', 'editing-efficiency']
+
+    # enum of mutation types
+    mutation_types = ['1bpReplacement', 'MultibpReplacement', 'Insertion', 'Deletion']
+    
+    group_prev = -1
+    group_id = -1
+
+    # extract the important information
+    for ind, item in tqdm.tqdm(data.iterrows(), total=len(data)):
+        if item['group'] != group_prev:
+            group_id += 1
+            group_prev = item['group']
+        wt_sequence = item['wide_initial_target']
+        mut_sequence = item['wide_mutated_target']
+        
+        protospacer_location = ast.literal_eval(item['protospacerlocation_only_initial'])
+        pbs_location = ast.literal_eval(item['PBSlocation'])
+        rtt_location_wt = ast.literal_eval(item['RT_initial_location'])
+        rtt_location_mut = ast.literal_eval(item['RT_mutated_location'])
+
+        protospacer_location_l = protospacer_location[0]
+        protospacer_location_r = protospacer_location[1]
+        pbs_location_l = pbs_location[0]
+        pbs_location_r = pbs_location[1]
+        rtt_location_wt_l = rtt_location_wt[0]
+        rtt_location_wt_r = rtt_location_wt[1]
+        rtt_location_mut_l = rtt_location_mut[0]
+        rtt_location_mut_r = rtt_location_mut[1]
+
+        mut_type = mutation_types.index(item['Mutation_Type'])
+        if mut_type == 3: # deletion
+            mut_type = 2
+        elif mut_type == 2: # insertion
+            mut_type = 1
+        else: # replacement
+            mut_type = 0
+
+        rha_length = len(item['RTToverhang'])
+        edit_length = int(item['Correction_Length'])
+
+        if mut_type != 2: # not deletion
+            lha_length = rtt_location_mut_r - rtt_location_mut_l - rha_length - edit_length
+            lha_location_l = rtt_location_wt_l
+            lha_location_r = rtt_location_wt_l + lha_length
+            rha_location_wt_l = rtt_location_wt_r - rha_length
+            rha_location_wt_r = rtt_location_wt_r
+            rha_location_mut_l = rtt_location_mut_r - rha_length
+            rha_location_mut_r = rtt_location_mut_r
+        else:
+            lha_length = rtt_location_mut_r - rtt_location_mut_l - rha_length
+            lha_location_l = rtt_location_wt_l
+            lha_location_r = rtt_location_wt_l + lha_length
+            rha_location_wt_l = rtt_location_wt_r - rha_length
+            rha_location_wt_r = rtt_location_wt_r
+            rha_location_mut_l = rtt_location_mut_r - rha_length
+            rha_location_mut_r = rtt_location_mut_r
+        spcas9_score = float(item['deepcas9'])
+        
+        wt_sequence, mut_sequence = align_wt_mut_sequences(wt_sequence, mut_sequence, lha_location_r, edit_length=edit_length, edit_type=mut_type)
+        
+        rtt_location_l = rtt_location_wt_l
+        if mut_type == 2: # deletion, mut sequence is padded with N
+            rtt_location_r = rtt_location_wt_r
+        else:
+            rtt_location_r = rtt_location_mut_r
+            
+        rha_location_l = rha_location_wt_l
+        if mut_type == 2: # deletion, mut sequence is padded with N
+            rha_location_r = rha_location_wt_r
+        else:
+            rha_location_r = rha_location_mut_r
+
+        item_nan = item.isna()
+
+        for cell_line in cell_lines:
+            if not item_nan[cell_line]:
+                output.append([cell_lines[cell_line], group_id, mut_type, edit_length, wt_sequence, mut_sequence, protospacer_location_l, protospacer_location_r, pbs_location_l, pbs_location_r, rtt_location_l, rtt_location_r, lha_location_l, lha_location_r, rha_location_l, rha_location_r, spcas9_score, item[cell_line]])
+
+
+    # save the extracted information
+    output_df = pd.DataFrame(output, columns=result_columns)
+    # each cell line needs to be saved separately
+    for cell_line in cell_lines.values():
+        target = f"std-pd-{cell_line}-pe2.csv"
+        cell_line_data = output_df[output_df['cell-line'] == cell_line]
+        # add fold column
+        cell_line_data = k_fold_cross_validation_split(cell_line_data, 5)
+        cell_line_data.to_csv(DATA_ROOT / 'std' / target, index=False)
     
 
-def std_to_crispai(filename: str) -> str:
+def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, filename: str = 'crispai_data.csv') -> str:
     """
     Convert a standardized format data into crispai format.
-    """
-    full_path = DATA_ROOT / 'std'
-    full_path = full_path / filename
-    df = pd.read_csv(full_path)
-    
+    """    
     # total read count, unedited percentage and indel percentage are all NaNs,
     df['total_read_count'] = None
     df['edited_percentage'] = df['editing-efficiency']
@@ -113,6 +415,7 @@ def std_to_crispai(filename: str) -> str:
     # save the formatted data into the crispai directory
     crispai_path = DATA_ROOT / 'crispai'
     crispai_path.mkdir(parents=True, exist_ok=True)
+    file_name = f'crispai-{cell_line.lower()}-{pe_system.lower()}-{filename}'
     crispai_full_path = crispai_path / filename
     
     # split to train and test based on the value of 'fold'
@@ -132,8 +435,50 @@ def std_to_crispai(filename: str) -> str:
     train_df.to_csv(crispai_full_path_train, index=False)
     test_df.to_csv(crispai_full_path_test, index=False)
     
-    return str(crispai_full_path)
     
-    
-    
+# ==============================================================================
+# Data loading functions 
+# load data for each model's evaluator or trainer
+# ==============================================================================
+
 # TODO: implement load data functions for each model's evaluator
+def fetch_deepprime_data(pe_version: str = 'pe2', 
+                         cell_line: str = 'hek293t',
+                         data_source: str = 'dp') -> pd.DataFrame:
+    DP_DATA_DIR = DATA_ROOT / 'deepprime'
+    data_fname = f"dp-{data_source}-{cell_line}-{pe_version}.csv"
+    data_path = DP_DATA_DIR / data_fname
+    if not data_path.exists():
+        raise FileNotFoundError(f"Data file {data_fname} does not exist in {DP_DATA_DIR}.")
+    df = pd.read_csv(data_path)
+    # Ensure the data is in the correct format
+    if 'wt-sequence' not in df.columns or 'mut-sequence' not in df.columns:
+        raise ValueError("Data must contain 'wt-sequence' and 'mut-sequence' columns.")
+    return df
+
+
+# =============================================================================
+# Utility functions 
+# other data processing functions for training, testing and evaluation
+# =============================================================================
+
+def k_fold_cross_validation_split(df: pd.DataFrame, k: int = 5) -> pd.DataFrame:
+    """split data into k+1 folds for cross validation.
+    
+
+    Args:
+        df (pd.DataFrame): DataFrame to be split into folds. Must contain a 'group-id' column.
+                            The group-id groups together targets at the same loci to prevent
+                            data leakage across folds.
+        k (int, optional): Number of folds. Defaults to 5. An additional fold is created for 
+                            testing, making it k+1 folds in total.
+
+    Returns:
+        pd.DataFrame: DataFrame with an additional 'fold' column.
+    """
+    df['fold'] = 0
+    for f in range(k+1):
+        fold_data = df[df['group-id'] % df == f]
+        df.loc[fold_data.index, 'fold'] = f if f < k else 'Test'
+    
+    return df
