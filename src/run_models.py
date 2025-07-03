@@ -1,3 +1,9 @@
+# src/run_models.py
+# -*- coding: utf-8 -*-
+"""
+This module provides functions to evaluate various models 
+using their pretrained weights
+"""
 from typing import List
 import sys
 
@@ -33,14 +39,9 @@ def run_pridict(data_path: str) -> List[float]:
         pred_lst=[]
         for run in range(5):
             # predict
-            mdir = os.path.join(model_dir, f'run_{run}')
+            mdir = model_dir / f'run_{run}'
             pred_df = prieml_model.predict_from_dloader(dloader, mdir, y_ref=[tcol])
             pred_lst.append(pred_df)
-            pear_score = compute_pearson_corr(pred_df[f'true_{tcol}'],pred_df[f'pred_{tcol}'])[0]
-            spear_score = compute_spearman_corr(pred_df[f'true_{tcol}'], pred_df[f'pred_{tcol}'])[0]
-            print('pearson corr:', pear_score)
-            print('spearman corr:',spear_score)
-            res_lst.append((wsize, run, pear_score, spear_score))
             print('-'*15)
     # Placeholder for actual prediction logic
     return [0.0, 1.0, 2.0]  # Example output
