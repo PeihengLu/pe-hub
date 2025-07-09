@@ -103,7 +103,9 @@ def run_oped(
         model_name='pegRNA_Model_Merged_saved.order3_decoder.pt'
     )  # load model
 
-    efficiency = transformer_predictor_order3(transformer, data, 1024, DEVICE)[0]
+    efficiency, attention_weights = transformer_predictor_order3(transformer, data, 1024, DEVICE)
+    print(efficiency)
+    print(attention_weights)
     
     return efficiency # Example output
 

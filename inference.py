@@ -20,7 +20,7 @@ if __name__ == "__main__":
     )
     
     # Run OPED model inference
-    predictions = run_oped(
+    predictions, weights = run_oped(
         data=oped_data
     )
     
