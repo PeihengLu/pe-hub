@@ -381,10 +381,16 @@ def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: s
         cell_line_data.to_csv(DATA_ROOT / 'std' / target, index=False)
     
 
-def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, model: str) -> str:
+def std_to_crispai(cell_line: str, pe_system: str, model: str) -> str:
     """
     Convert a standardized format data into crispai format.
     """    
+    std_file_name = f'std-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    std_file_path = DATA_ROOT / 'std' / std_file_name
+    if not std_file_path.exists():
+        raise FileNotFoundError(f"Standardized data file {std_file_name} does not exist in {DATA_ROOT / 'std'}.")
+    df = pd.read_csv(std_file_path)
+    
     # total read count, unedited percentage and indel percentage are all NaNs,
     df['total_read_count'] = None
     df['edited_percentage'] = df['editing-efficiency']
@@ -436,15 +442,23 @@ def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, model: str)
     test_df.to_csv(crispai_full_path_test, index=False)     
     
     
-def std_to_oped(df: pd.DataFrame, cell_line: str, pe_system: str, model: str) -> str:
+def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
     """
     Convert a standardized format data into OPED format.
     
     OPED only takes the sequences data with three columns in a csv file:
     'Target(47bp)', 'PBS', 'RT'
     """
+    std_file_name = f'std-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    std_file_path = DATA_ROOT / 'std' / std_file_name
+    if not std_file_path.exists():
+        raise FileNotFoundError(f"Standardized data file {std_file_name} does not exist in {DATA_ROOT / 'std'}.") 
+    df = pd.read_csv(std_file_path)
+    
     # TODO: implement the conversion to OPED format
     file_name = f'oped-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    
+    
     
     return file_name
     

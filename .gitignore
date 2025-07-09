@@ -1,7 +1,7 @@
 *wordcount*
 # do not ignore README.md in data
-!/data/README.md
-/data
+data/
+!data/*.md
 /src/*ipynb*
 # pycache
 __pycache__/
