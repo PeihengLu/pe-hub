@@ -4,5 +4,4 @@ data/
 !data/*.md
 /src/*ipynb*
 # pycache
-__pycache__/
-*.pyc
+**/__pycache__/

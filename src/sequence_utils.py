@@ -17,3 +17,17 @@ def align_wt_mut_sequences(wt_sequence: str, mut_sequence: str, edit_position: i
     mut_sequence = mut_sequence[:l]
     
     return wt_sequence, mut_sequence
+
+
+def remove_padding(sequence: str) -> str:
+    '''
+    Remove different types of padding characters from the sequence
+    '''
+    sequence = sequence.strip()
+    if 'N' in sequence:
+        sequence = sequence.replace('N', '')
+    if 'X' in sequence:
+        sequence = sequence.replace('X', '')
+    if '-' in sequence:
+        sequence = sequence.replace('-', '')
+    return sequence

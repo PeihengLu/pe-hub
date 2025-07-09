@@ -11,7 +11,7 @@ import numpy as np
 from tqdm import tqdm
 
 from src.constants import DATA_ROOT
-from src.sequence_utils import align_wt_mut_sequences
+from src.sequence_utils import align_wt_mut_sequences, remove_padding
 
 # ==============================================================================
 # Source data manipulation functions
@@ -449,18 +449,58 @@ def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
     OPED only takes the sequences data with three columns in a csv file:
     'Target(47bp)', 'PBS', 'RT'
     """
+    file_name = f'oped-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    file_path = DATA_ROOT / 'oped' / file_name
+    if file_path.exists():
+        print(f"File {file_name} already exists in {DATA_ROOT / 'oped'}.")
+        return pd.read_csv(file_path)
+    
     std_file_name = f'std-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
     std_file_path = DATA_ROOT / 'std' / std_file_name
     if not std_file_path.exists():
         raise FileNotFoundError(f"Standardized data file {std_file_name} does not exist in {DATA_ROOT / 'std'}.") 
-    df = pd.read_csv(std_file_path)
+    df = pd.read_csv(std_file_path, nrows=100, dtype={
+        'wt-sequence': str, 'mut-sequence': str,
+        'protospacer-location-l': int, 'protospacer-location-r': int,
+        'pbs-location-l': int, 'pbs-location-r': int,
+        'rtt-location-l': int, 'rtt-location-r': int,
+        'lha-location-l': int, 'lha-location-r': int,
+        'rha-location-l': int, 'rha-location-r': int
+    })
     
-    # TODO: implement the conversion to OPED format
-    file_name = f'oped-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    # local the wt-sequence, PBS and RT columns
+    wt_sequences = df['wt-sequence']
+    pbs_sequences = df.apply(
+        lambda row: row['mut-sequence'][row['pbs-location-l']:row['pbs-location-r']],
+        axis=1
+    )
+    rtt_sequences = df.apply(
+        lambda row: row['mut-sequence'][row['rtt-location-l']:row['rtt-location-r']],
+        axis=1
+    )
+    # remove padding from the sequences
+    wt_sequences = [remove_padding(seq) for seq in wt_sequences]
+    pbs_sequences = [remove_padding(seq) for seq in pbs_sequences]
+    rtt_sequences = [remove_padding(seq) for seq in rtt_sequences]
     
+    # invert the rtt and pbs sequences
+    pbs_sequence = [pbs[::-1] for pbs in pbs_sequences]
+    rtt_sequence = [rtt[::-1] for rtt in rtt_sequences]
+
+    # target sequence is the first 47 bases of the wt-sequence
+    target_sequences = [wt[:47] for wt in wt_sequences]
     
+    # create a new DataFrame with the required columns
+    oped_df = pd.DataFrame({
+        'Target(47bp)': target_sequences,
+        'PBS': pbs_sequence,
+        'RT': rtt_sequence
+    })
+    if not os.path.exists(DATA_ROOT / 'oped'):
+        os.makedirs(DATA_ROOT / 'oped')
+    oped_df.to_csv(DATA_ROOT / 'oped' / file_name, index=False)
     
-    return file_name
+    return oped_df
     
     
     
