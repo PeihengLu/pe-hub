@@ -381,7 +381,7 @@ def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: s
         cell_line_data.to_csv(DATA_ROOT / 'std' / target, index=False)
     
 
-def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, filename: str = 'crispai_data.csv') -> str:
+def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, model: str) -> str:
     """
     Convert a standardized format data into crispai format.
     """    
@@ -415,8 +415,8 @@ def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, filename: s
     # save the formatted data into the crispai directory
     crispai_path = DATA_ROOT / 'crispai'
     crispai_path.mkdir(parents=True, exist_ok=True)
-    file_name = f'crispai-{cell_line.lower()}-{pe_system.lower()}-{filename}'
-    crispai_full_path = crispai_path / filename
+    file_name = f'crispai-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    crispai_full_path = crispai_path / file_name
     
     # split to train and test based on the value of 'fold'
     df['fold'] = df['fold'].astype(str)
@@ -433,12 +433,26 @@ def std_to_crispai(df: pd.DataFrame, cell_line: str, pe_system: str, filename: s
                         'rt_initial_location', 'rt_mutated_location']]
     
     train_df.to_csv(crispai_full_path_train, index=False)
-    test_df.to_csv(crispai_full_path_test, index=False)
+    test_df.to_csv(crispai_full_path_test, index=False)     
+    
+    
+def std_to_oped(df: pd.DataFrame, cell_line: str, pe_system: str, model: str) -> str:
+    """
+    Convert a standardized format data into OPED format.
+    
+    OPED only takes the sequences data with three columns in a csv file:
+    'Target(47bp)', 'PBS', 'RT'
+    """
+    # TODO: implement the conversion to OPED format
+    file_name = f'oped-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    
+    return file_name
+    
     
     
 # ==============================================================================
 # Data loading functions 
-# load data for each model's evaluator or trainer
+# load data for each model's evaluator
 # ==============================================================================
 
 # TODO: implement load data functions for each model's evaluator

@@ -6,9 +6,17 @@ using their pretrained weights
 """
 from typing import List
 import sys
+import pathlib
+import torch
 
 from models.DeepPrime.models.load_model import load_deepprime, load_deepspcas9
+
 from models.PRIDICT.prieml.predict_outcomedistrib import PRIEML_Model
+
+from models.OPED.pegRNA_PredictingCodes.predict_efficiency_of_ClinVar import read_data_of_Single
+from models.OPED.pegRNA_PredictingCodes.evaluate_model import transformer_predictor_order3
+from models.OPED.pegRNA_PredictingCodes.train_model import load_model as load_oped_model
+
 import pandas as pd
 
 from src.constants import DATA_ROOT, MODEL_ROOT, DEVICE
@@ -59,7 +67,11 @@ def run_pridict2(data_path: str) -> List[float]:
     # Placeholder for actual prediction logic
     return [3.0, 4.0, 5.0]  # Example output
 
-def run_oped(data_path: str) -> List[float]:
+def run_oped(
+        pe_system: str,
+        cell_line: str,
+        model: str,
+    ) -> List[float]:
     """
     Run the OPED model on the given data path.
     
@@ -70,7 +82,25 @@ def run_oped(data_path: str) -> List[float]:
         List[float]: A list of predictions.
     """
     # Placeholder for actual prediction logic
-    return [6.0, 7.0, 8.0]  # Example output
+    
+    # TODO: load using data utils
+    data = pd.DataFrame()
+    
+    # TODO: make sure the data has the required three columns:
+    # 'Target(47bp)', 'PBS', 'RT'
+    
+    # prepare the data for the model
+    data = read_data_of_Single(data)
+    
+    transformer = load_oped_model(
+        DEVICE, model_dir=(
+            MODEL_ROOT / 'OPED' / 'pegRNA_PredictingCodes' / 'Model_Trained'),
+        model_name='pegRNA_Model_Merged_saved.order3_decoder_ori.pt'
+    )  # load model
+
+    efficiency = transformer_predictor_order3(transformer, data, 1024, DEVICE)[0]
+    
+    return efficiency # Example output
 
 def run_deepprime(data_path: str) -> List[float]:
     """
