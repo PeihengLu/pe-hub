@@ -10,7 +10,7 @@ import pathlib
 import torch
 import pandas as pd
 
-from src.data import std_to_oped
+from src.data import load_data
 from src.constants import DATA_ROOT, MODEL_ROOT, DEVICE
 
 def run_pridict(data_path: str) -> List[float]:
@@ -79,15 +79,14 @@ def run_oped(
     from models.OPED.pegRNA_PredictingCodes.evaluate_model import transformer_predictor_order3
     from models.OPED.pegRNA_PredictingCodes.train_model import load_model as load_oped_model
     
-    # TODO: load using data utils
     if data is None:
-        data = std_to_oped(
-            model=model,
+        data = load_data(
             cell_line=cell_line,
-            pe_system=pe_system
+            pe_system=pe_system,
+            src_model=model,
+            target_model='oped',
         )
     
-    # TODO: make sure the data has the required three columns:
     # 'Target(47bp)', 'PBS', 'RT'
     if 'Target(47bp)' not in data.columns or \
        'PBS' not in data.columns or \

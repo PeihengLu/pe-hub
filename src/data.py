@@ -5,13 +5,17 @@ This script contains functions to convert data from one format to another.
 """
 import os
 import ast
+import sys
+from pathlib import Path
+import functools
+sys.path.insert(0, str(Path(__file__).parent)) 
 
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
-from src.constants import DATA_ROOT
-from src.sequence_utils import align_wt_mut_sequences, remove_padding
+from constants import DATA_ROOT
+from sequence_utils import align_wt_mut_sequences, remove_padding
 
 # ==============================================================================
 # Source data manipulation functions
@@ -516,6 +520,25 @@ src_model_to_directory = {
     'std': 'std',
 }
 
+def load_data(
+        cell_line: str, pe_system: str, src_model: str, target_model: str
+    ) -> pd.DataFrame:
+    filename = f'{target_model}-{src_model}-{cell_line.lower()}-{pe_system.lower()}.csv'
+    filepath = DATA_ROOT / src_model_to_directory[target_model] / filename
+    if not filepath.exists():
+        # convert from std format to the target model format
+        conversion_func_name = f'std_to_{src_model_to_directory[target_model]}'
+        conversion_func = globals().get(conversion_func_name)
+        if conversion_func:
+            conversion_func(cell_line, pe_system, src_model)
+        else:
+            print(f"Conversion function {conversion_func_name} not found.")
+            return None
+    # load the data after conversion
+    df = pd.read_csv(filepath, dtype=str)
+    # TODO: convert the columns to the correct types
+
+    return df
 
 # =============================================================================
 # Utility functions 
