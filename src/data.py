@@ -76,7 +76,7 @@ def export_deepprime_all() -> None:
             continue
     
         # Load the original data, skipping the first 3 rows and use the forth row as header
-        original_data = read_from_deepprime_main(
+        original_data = read_from_deepprime_org(
             DP_ORG_DATA_PATH, sheet_name=sheet_name
         )
         
@@ -381,6 +381,7 @@ def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: s
         cell_line_data.to_csv(DATA_ROOT / 'std' / target, index=False)
     
 
+
 def std_to_crispai(cell_line: str, pe_system: str, model: str) -> str:
     """
     Convert a standardized format data into crispai format.
@@ -499,30 +500,21 @@ def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
     if not os.path.exists(DATA_ROOT / 'oped'):
         os.makedirs(DATA_ROOT / 'oped')
     oped_df.to_csv(DATA_ROOT / 'oped' / file_name, index=False)
-    
-    return oped_df
-    
-    
+    print(f"OPED data saved to {DATA_ROOT / 'oped' / file_name}.")
     
 # ==============================================================================
 # Data loading functions 
 # load data for each model's evaluator
 # ==============================================================================
-
-# TODO: implement load data functions for each model's evaluator
-def fetch_deepprime_data(pe_version: str = 'pe2', 
-                         cell_line: str = 'hek293t',
-                         data_source: str = 'dp') -> pd.DataFrame:
-    DP_DATA_DIR = DATA_ROOT / 'deepprime'
-    data_fname = f"dp-{data_source}-{cell_line}-{pe_version}.csv"
-    data_path = DP_DATA_DIR / data_fname
-    if not data_path.exists():
-        raise FileNotFoundError(f"Data file {data_fname} does not exist in {DP_DATA_DIR}.")
-    df = pd.read_csv(data_path)
-    # Ensure the data is in the correct format
-    if 'wt-sequence' not in df.columns or 'mut-sequence' not in df.columns:
-        raise ValueError("Data must contain 'wt-sequence' and 'mut-sequence' columns.")
-    return df
+src_model_to_directory = {
+    'dp': 'deepprime',
+    'dp-ft': 'deepprime',
+    'pd2': 'pridict2',
+    'oped': 'oped',
+    'pd1': 'pridict1',
+    'crispai': 'crispai',
+    'std': 'std',
+}
 
 
 # =============================================================================
