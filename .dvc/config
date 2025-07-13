@@ -1,7 +1,0 @@
-[core]
-    autostage = true
-    remote = macremote
-[remote "myremote"]
-    url = /media/peiheng/DVC
-[remote "macremote"]
-    url = /Volumes/DVC

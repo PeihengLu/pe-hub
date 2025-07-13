@@ -8,8 +8,15 @@ MODEL_ROOT = PROJECT_ROOT.joinpath("models").resolve()
 DATABASE_ROOT = PROJECT_ROOT.joinpath("database").resolve()
 
 # Constants for device configuration
-DEVICE = (
-    # "mps" if torch.backends.mps.is_available() # Apple Silicon
-    # else "xla" if torch.xla.is_available() # TPU
-    "cuda" if torch.cuda.is_available() # NVIDIA GPU
-    else "cpu") # Fallback to CPU if no other device is available
+# if torch version >= 2.0, use the new device selection logic
+if torch.__version__ >= "2.0":
+    DEVICE = (
+        "mps" if torch.backends.mps.is_available()  # Apple Silicon
+        else "xla" if torch.xla.is_available()  # TPU
+        else "cuda" if torch.cuda.is_available()  # NVIDIA GPU
+        else "cpu")  # Fallback to CPU if no other device is available
+else:
+    # For older versions of PyTorch, use the traditional device selection logic
+    DEVICE = (
+        "cuda" if torch.cuda.is_available()  # NVIDIA GPU
+        else "cpu")
