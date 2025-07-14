@@ -1,0 +1,12 @@
+[submodule "models/DeepPrime"]
+	path = models/deepprime
+	url = git@github.com:PeihengLu/DeepPrime.git
+[submodule "models/OPED"]
+	path = models/oped
+	url = git@github.com:PeihengLu/OPED.git
+[submodule "models/PRIDICT"]
+	path = models/pridict
+	url = git@github.com:PeihengLu/PRIDICT.git
+[submodule "models/pridict2"]
+	path = models/pridict2
+	url = git@github.com:PeihengLu/PRIDICT2.git
