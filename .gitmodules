@@ -7,6 +7,6 @@
 [submodule "models/PRIDICT"]
 	path = models/pridict
 	url = git@github.com:PeihengLu/PRIDICT.git
-[submodule "models/pridict2"]
+[submodule "models/PRIDICT2"]
 	path = models/pridict2
 	url = git@github.com:PeihengLu/PRIDICT2.git

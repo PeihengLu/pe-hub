@@ -12,7 +12,6 @@ DATABASE_ROOT = PROJECT_ROOT.joinpath("database").resolve()
 if torch.__version__ >= "2.0":
     DEVICE = (
         "mps" if torch.backends.mps.is_available()  # Apple Silicon
-        else "xla" if torch.xla.is_available()  # TPU
         else "cuda" if torch.cuda.is_available()  # NVIDIA GPU
         else "cpu")  # Fallback to CPU if no other device is available
 else:

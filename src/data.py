@@ -8,14 +8,14 @@ import ast
 import sys
 from pathlib import Path
 import functools
-sys.path.insert(0, str(Path(__file__).parent)) 
+sys.path.insert(0, str(Path(__file__).parent.parent)) 
 
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 
-from constants import DATA_ROOT
-from sequence_utils import align_wt_mut_sequences, remove_padding
+from src.constants import DATA_ROOT
+from src.sequence_utils import align_wt_mut_sequences, remove_padding
 
 # ==============================================================================
 # Source data manipulation functions
