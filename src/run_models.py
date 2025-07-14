@@ -9,6 +9,7 @@ import sys
 import pathlib
 import torch
 import pandas as pd
+sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 from src.data import load_data
 from src.constants import DATA_ROOT, MODEL_ROOT, DEVICE
@@ -23,7 +24,7 @@ def run_pridict(data_path: str) -> List[float]:
     Returns:
         List[float]: A list of predictions.
     """
-    from models.PRIDICT.prieml.predict_outcomedistrib import PRIEML_Model
+    from models.pridict.prieml.predict_outcomedistrib import PRIEML_Model
     # trained model directory
     model_dir = (
         MODEL_ROOT / 'PRIDICT' / 'trained_models' /
@@ -75,9 +76,9 @@ def run_oped(
     Returns:
         List[float]: A list of predictions.
     """
-    from models.OPED.pegRNA_PredictingCodes.predict_efficiency_of_ClinVar import read_data_of_Single
-    from models.OPED.pegRNA_PredictingCodes.evaluate_model import transformer_predictor_order3
-    from models.OPED.pegRNA_PredictingCodes.train_model import load_model as load_oped_model
+    from models.oped.pegRNA_PredictingCodes.predict_efficiency_of_ClinVar import read_data_of_Single
+    from models.oped.pegRNA_PredictingCodes.evaluate_model import transformer_predictor_order3
+    from models.oped.pegRNA_PredictingCodes.train_model import load_model as load_oped_model
     
     if data is None:
         data = load_data(
@@ -96,9 +97,10 @@ def run_oped(
     # prepare the data for the model
     data = read_data_of_Single(data)
     
+    print(MODEL_ROOT / 'oped' / 'pegRNA_PredictingCodes' / 'Model_Trained')
     transformer = load_oped_model(
         DEVICE, model_dir=(
-            MODEL_ROOT / 'OPED' / 'pegRNA_PredictingCodes' / 'Model_Trained'),
+            MODEL_ROOT / 'oped' / 'pegRNA_PredictingCodes' / 'Model_Trained'),
         model_name='pegRNA_Model_Merged_saved.order3_decoder.pt'
     )  # load model
 
@@ -118,8 +120,8 @@ def run_deepprime(data_path: str) -> List[float]:
     Returns:
         List[float]: A list of predictions.
     """
-    from models.DeepPrime.models.load_model import load_deepprime, load_deepspcas9
-    from models.DeepPrime.src.dprime import calculate_deepprime_score
+    from models.deepprime.models.load_model import load_deepprime, load_deepspcas9
+    from models.deepprime.src.dprime import calculate_deepprime_score
     
     df = pd.read_csv(data_path)
     # TODO: make sure the data is in the correct format
