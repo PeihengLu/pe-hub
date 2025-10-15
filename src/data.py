@@ -7,11 +7,9 @@ import os
 import ast
 import sys
 from pathlib import Path
-import functools
-sys.path.insert(0, str(Path(__file__).parent.parent)) 
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 
 from src.constants import DATA_ROOT
@@ -141,10 +139,8 @@ def deepprime_org_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, mod
     prev = ""
 
     # iterate over the data
-    for ind, item in tqdm.tqdm(data.iterrows(), total=len(data)):
-        wt_sequence = item['wt-sequence']
-        mut_sequence = item['mut-sequence']
-
+    for ind, item in tqdm(data.iterrows(), total=len(data)):
+        wt_sequence, mut_sequence = item['wt-sequence'], item['mut-sequence']
         group_id = ind
         edit_len = item['Edit_len']
         rha_len = item['RHA_len']
@@ -157,7 +153,8 @@ def deepprime_org_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, mod
             mut_type = 1
         elif item['type_del']:
             mut_type = 2
-        
+        else:
+            continue
         protospacer_location_l = 5
         protospacer_location_r = 24
 
@@ -291,7 +288,11 @@ def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: s
     data = data.dropna(subset=['wide_initial_target', 'wide_mutated_target'])
 
     # cell lines
-    cell_lines = {'HEKaverageedited': 'hek293t','K562averageedited': 'k562','K562MLH1dnaverageedited': 'k562mlh1dn','AdVaverageedited': 'adv'}
+    cell_lines = {
+        'HEKaverageedited': 'hek293t',
+        'K562averageedited': 'k562',
+        'K562MLH1dnaverageedited': 'k562mlh1dn','AdVaverageedited': 'adv'
+    }
 
     # result columns
     result_columns = ['cell-line', 'group-id', 'mut-type', 'edit-len', 'wt-sequence', 'mut-sequence', 'protospacer-location-l', 'protospacer-location-r', 'pbs-location-l', 'pbs-location-r', 'rtt-location-l', 'rtt-location-r', 'lha-location-l', 'lha-location-r', 'rha-location-l', 'rha-location-r', 'spcas9-score', 'editing-efficiency']
@@ -315,10 +316,8 @@ def pridict2_to_std(data: pd.DataFrame, cell_line: str, pe_system: str, model: s
         rtt_location_wt = ast.literal_eval(item['RT_initial_location'])
         rtt_location_mut = ast.literal_eval(item['RT_mutated_location'])
 
-        protospacer_location_l = protospacer_location[0]
-        protospacer_location_r = protospacer_location[1]
-        pbs_location_l = pbs_location[0]
-        pbs_location_r = pbs_location[1]
+        protospacer_location_l, protospacer_location_r = protospacer_location[0], protospacer_location[1]
+        pbs_location_l, pbs_location_r = pbs_location[0], pbs_location[1]
         rtt_location_wt_l = rtt_location_wt[0]
         rtt_location_wt_r = rtt_location_wt[1]
         rtt_location_mut_l = rtt_location_mut[0]
@@ -492,8 +491,14 @@ def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
     pbs_sequence = [pbs[::-1] for pbs in pbs_sequences]
     rtt_sequence = [rtt[::-1] for rtt in rtt_sequences]
 
-    # target sequence is the first 47 bases of the wt-sequence
-    target_sequences = [wt[:47] for wt in wt_sequences]
+    # target sequence start from 3bp before the protospacer location and ends 47bp after
+    target_sequences = [
+        wt[protospacer_l-3:47]
+        for wt, protospacer_l in zip(
+            wt_sequences,
+            df['protospacer-location-l']
+        )
+    ]
     
     # create a new DataFrame with the required columns
     oped_df = pd.DataFrame({
@@ -521,7 +526,8 @@ src_model_to_directory = {
 }
 
 def load_data(
-        cell_line: str, pe_system: str, src_model: str, target_model: str
+        cell_line: str, pe_system: str, src_model: str, target_model: str,
+        split: str = 'test'
     ) -> pd.DataFrame:
     filename = f'{target_model}-{src_model}-{cell_line.lower()}-{pe_system.lower()}.csv'
     filepath = DATA_ROOT / src_model_to_directory[target_model] / filename
@@ -536,6 +542,9 @@ def load_data(
             return None
     # load the data after conversion
     df = pd.read_csv(filepath, dtype=str)
+
+    
+
     # TODO: convert the columns to the correct types
 
     return df
