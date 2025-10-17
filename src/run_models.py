@@ -9,12 +9,14 @@ import sys
 import pathlib
 import torch
 import pandas as pd
+import os
+from os.path import join  as pjoin
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 from src.data import load_data
 from src.constants import DATA_ROOT, MODEL_ROOT, DEVICE
 
-def run_pridict(data_path: str) -> List[float]:
+def run_pridict(data_path: str, distribution: bool = False) -> List[float]:
     """
     Run the prediction model on the given data path.
     
@@ -25,28 +27,47 @@ def run_pridict(data_path: str) -> List[float]:
         List[float]: A list of predictions.
     """
     from models.pridict.prieml.predict_outcomedistrib import PRIEML_Model
-    # trained model directory
-    model_dir = (
-        MODEL_ROOT / 'PRIDICT' / 'trained_models' /
-        'schwank_rnnattn' / 'v3' / 'train_val')
-
     device = DEVICE
-    prieml_model = PRIEML_Model(device,wsize=20, normalize='max', fdtype=torch.float32)
+    # trained model directory
+    model_dir = pjoin(MODEL_ROOT, 'pridict',
+                             'trained_models',
+                             'schwank_rnnattn',
+                             'v3',
+                             'train_val')
+    prieml_model = PRIEML_Model(device, wsize=20, normalize='max', fdtype=torch.float32)
 
-    tcol = 'averageedited'
+    tcol = ['averageedited'] if not distribution else ['averageedited', 'averageunedited', 'averagebystander']
+    # TODO: refactor to using tcol as a list
     res_lst = []
     for wsize in [20]:
         prieml_model.wsize = wsize
-        dloader = prieml_model.prepare_data(df_test, y_ref=[tcol], batch_size=1500)
-        pred_lst=[]
+        dloader = prieml_model.prepare_data(df_test, y_ref=tcol, batch_size=1500)
+        pred_lst = []
         for run in range(5):
             # predict
-            mdir = model_dir / f'run_{run}'
-            pred_df = prieml_model.predict_from_dloader(dloader, mdir, y_ref=[tcol])
+            mdir = os.path.join(model_dir, f'run_{run}')
+            pred_df = prieml_model.predict_from_dloader(dloader, mdir, y_ref=tcol)
             pred_lst.append(pred_df)
-            print('-'*15)
-    # Placeholder for actual prediction logic
-    return [0.0, 1.0, 2.0]  # Example output
+            pear_score = compute_pearson_corr(pred_df[f'true_{tcol}'], pred_df[f'pred_{tcol}'])[0]
+            spear_score = compute_spearman_corr(pred_df[f'true_{tcol}'], pred_df[f'pred_{tcol}'])[0]
+            print('pearson corr:', pear_score)
+            print('spearman corr:', spear_score)
+            res_lst.append((wsize, run, pear_score, spear_score))
+            print('-' * 15)
+
+        pred_df = pd.concat(pred_lst, axis=0, ignore_index=True)
+        pred_df = prieml_model.compute_avg_predictions(pred_df)
+        print('wsize:', wsize)
+
+        pear_score = compute_pearson_corr(pred_df[f'true_{tcol}'], pred_df[f'pred_{tcol}'])[0]
+        spear_score = compute_spearman_corr(pred_df[f'true_{tcol}'], pred_df[f'pred_{tcol}'])[0]
+        print('pearson corr:', pear_score)
+        print('spearman corr:', spear_score)
+        res_lst.append((wsize, 'avg_runs', pear_score, spear_score))
+        print('-' * 15)
+
+    res_df = pd.DataFrame(res_lst)
+    res_df.columns = ['wsize', 'run', 'pear_score', 'spearman_score']
 
 def run_pridict2(data_path: str) -> List[float]:
     """
@@ -87,6 +108,9 @@ def run_oped(
             src_model=model,
             target_model='oped',
         )
+
+        if not data:
+            raise ValueError(f"No data found for pe_system={pe_system}, cell_line={cell_line}, model={model}")
     
     # 'Target(47bp)', 'PBS', 'RT'
     if 'Target(47bp)' not in data.columns or \

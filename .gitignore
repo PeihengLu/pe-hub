@@ -3,4 +3,5 @@
 /src/*ipynb*
 # pycache
 **/__pycache__/
-data/.DS_Store
+.DS_Store
+.idea/
