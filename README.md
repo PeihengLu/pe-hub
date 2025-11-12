@@ -21,10 +21,13 @@ Although I am trying my best to scour the internet for all the relevant data, I 
 To start with, the metadata of the study should be included in the pull request, containing the following information for advanced search and filtering:
 
 - `Study`: The name of the study that the data originated from
-- `Published Time`: The time that the study was published
-- `PE Version`: The version of the prime editor used in the study
+- `Published Time`: The time that the study was published, in YYYYMM format
+
+For each dataset, you should indicate:
+
+- `PE System`: The version of the prime editor used in the study
 - `Cell Line`: The cell line used in the study
-- `Type`: The type of study, which can be either .......
+- `Dataset Type`: The type of study, which can be either `Library`(0), `Off-target`(1), `Endogenous`(2)
 
 The data should be in the form of a csv file, containing the following columns:
 
@@ -49,28 +52,29 @@ The database is organized as follows:
 
 Storing high level information about the study that the dataset originated from
 
-- Study Name (P): the name of the model if the data originated from a study developing a machine learning model for efficiency prediction. Otherwise, the bibtext citation key of the study.
-- Published Time: the time that the originating study was published
-- Authors: the contributing authors of the study
-
+- `Study ID` (P): A unique identifier for the study originating a set of datasets 
+- `Published Time`: the time that the originating study was published, in YYYYMM format
+- `Authors`: the contributing authors of the study
 
 ### Datasets
 
 High level information about each dataset
 
-- Dataset ID (P): the unique identifier of the dataset
-- Study Name (F): the name of the study that the dataset originated from
-- PE Version: the version of the prime editor used in the study
-- Cell Line: the cell line used in the study
-- Type: the type of study, which can be `In Vitro`, `In Vivo`, `Library Screening` ....
+- `Dataset ID` (P): the unique identifier of the dataset
+- `Study ID` (F): the name of the study that the dataset originated from
+- `PE System`: the version of the prime editor used in the study
+- `Cell Line`: the cell line used in the study
+- `Study Type`: the type of study, which can be `Library`(0), `Off-target`(1), `Endogenous`(2)
 
-### Sequences 
+### Sequence Tables
+
+
 
 The target as well as the corresponding pegRNA sequence
 
-- Dataset ID (F): the unique identifier of the dataset
-- Sequence ID (P): the unique identifier of the sequence, hashed from the target loci sequence
-- Loci ID: the unique identifier of the target loci, hashed from the protospacer sequence
+- `Dataset ID` (F): the unique identifier of the dataset
+- `Sequence ID` (P): the unique identifier of the sequence, hashed from the target loci sequence
+- `Loci ID`: the unique identifier of the target loci, hashed from the protospacer sequence, useful for train-test-val split as pegRNA targeting the same loci are grouped 
 
 Rest of the columns are the same as specified in the contribution format, including `WT Sequence`, `MT Sequence`, `protospacer Location`, `PBS Location`, `RT Location WT`, `RT Location MT`, `Efficiency`
 
