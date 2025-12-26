@@ -15,9 +15,6 @@ from tqdm import tqdm
 from src.constants import DATA_ROOT
 from src.sequence_utils import align_wt_mut_sequences, remove_padding
 
-endogenetic_data = 'endogenetic'
-library_study = 'library-study'
-
 # ==============================================================================
 # Source data manipulation functions
 # fast recovery of the original data
@@ -55,7 +52,7 @@ def export_deepprime_all() -> None:
         output_path (str): Path to save the converted data.
     """
     # Read the first sheet and use it as catalog
-    DP_ORG_DATA_PATH = DATA_ROOT / library_study / 'deepprime-org' / 'deepprime-org.xlsx'
+    DP_ORG_DATA_PATH = DATA_ROOT / 'deepprime-org' / 'deepprime-org.xlsx'
     original_data_catalog = pd.read_excel(
         DP_ORG_DATA_PATH, sheet_name='Summary', header=0,
     )
@@ -86,7 +83,7 @@ def export_deepprime_all() -> None:
         )
         
         # save the data to a csv file
-        output_path = DATA_ROOT / library_study / 'deepprime' / f"dp-{dp_model_to_datasource[model]}-{cell_line.lower()}-{pe_system.lower()}.csv"
+        output_path = DATA_ROOT / 'deepprime' / f"dp-{dp_model_to_datasource[model]}-{cell_line.lower()}-{pe_system.lower()}.csv"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         original_data.to_csv(output_path, index=False)
         
@@ -456,9 +453,9 @@ def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
     'Target(47bp)', 'PBS', 'RT'
     """
     file_name = f'oped-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
-    file_path = DATA_ROOT / library_study / 'oped' / file_name
+    file_path = DATA_ROOT / 'oped' / file_name
     if file_path.exists():
-        print(f"File {file_name} already exists in {DATA_ROOT / library_study / 'oped'}.")
+        print(f"File {file_name} already exists in {DATA_ROOT / 'oped'}.")
         return pd.read_csv(file_path)
     
     std_file_name = f'std-{model.lower()}-{cell_line.lower()}-{pe_system.lower()}.csv'
@@ -508,10 +505,10 @@ def std_to_oped(cell_line: str, pe_system: str, model: str) -> str:
         'PBS': pbs_sequence,
         'RT': rtt_sequence
     })
-    if not os.path.exists(DATA_ROOT / library_study / 'oped'):
-        os.makedirs(DATA_ROOT / library_study / 'oped')
-    oped_df.to_csv(DATA_ROOT / library_study / 'oped' / file_name, index=False)
-    print(f"OPED data saved to {DATA_ROOT / library_study / 'oped' / file_name}.")
+    if not os.path.exists(DATA_ROOT / 'oped'):
+        os.makedirs(DATA_ROOT / 'oped')
+    oped_df.to_csv(DATA_ROOT / 'oped' / file_name, index=False)
+    print(f"OPED data saved to {DATA_ROOT / 'oped' / file_name}.")
     
 # ==============================================================================
 # Data loading functions 
