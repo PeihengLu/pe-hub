@@ -32,24 +32,24 @@ def chop_pridict_data():
     part3 = pridict_data.iloc[2*len(pridict_data)//3:]
 
     # Save the parts to separate files
-    part1.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part1.csv', index=False)
-    part2.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part2.csv', index=False)
-    part3.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part3.csv', index=False)
+    part1.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part1.csv', index=False)
+    part2.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part2.csv', index=False)
+    part3.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part3.csv', index=False)
 
 def restore_pridict_data():
     """
     Restore the PRIDICT data from three parts after cloning.
     """
     # Load the three parts of the PRIDICT data
-    part1 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part1.csv')
-    part2 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part2.csv')
-    part3 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_part3.csv')
+    part1 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part1.csv')
+    part2 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part2.csv')
+    part3 = pd.read_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-library1_part3.csv')
 
     # Concatenate the parts back into a single DataFrame
     restored_data = pd.concat([part1, part2, part3], ignore_index=True)
 
     # Save the restored data to a single file
-    restored_data.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1-org.csv', index=False)
+    restored_data.to_csv(DATA_ROOT / library_study / 'pridict1-org' / 'pridict1_library1-org.csv', index=False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Chop or restore PRIDICT data.")

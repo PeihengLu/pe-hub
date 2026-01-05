@@ -74,7 +74,13 @@ def export_deepprime_all() -> None:
         model = row['Model']
         
         if model not in dp_model_to_datasource:
-            print(f"Model {model} is not supported. Skipping.")
+            # save the sheet as is
+            data = pd.read_excel(
+                DP_ORG_DATA_PATH, sheet_name=sheet_name, skiprows=3, header=0
+            )
+            output_path = DATA_ROOT / 'deepprime' / f"deepprime-{model}-{cell_line.lower()}-{pe_system.lower()}.csv"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            data.to_csv(output_path, index=False)
             continue
     
         # Load the original data, skipping the first 3 rows and use the forth row as header
@@ -83,7 +89,7 @@ def export_deepprime_all() -> None:
         )
         
         # save the data to a csv file
-        output_path = DATA_ROOT / 'deepprime' / f"dp-{dp_model_to_datasource[model]}-{cell_line.lower()}-{pe_system.lower()}.csv"
+        output_path = DATA_ROOT / 'deepprime' / f"deepprime-{dp_model_to_datasource[model]}-{cell_line.lower()}-{pe_system.lower()}.csv"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         original_data.to_csv(output_path, index=False)
         
