@@ -84,6 +84,6 @@ To try out the complete version of our app and create ensembles of your own, add
 
 The included models need to be downloaded with `git submodule update --remote`
 
-## Citation
+# Citation
 
 If you found this data repo useful in your study, please consider citing our publication:
