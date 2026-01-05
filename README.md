@@ -78,6 +78,12 @@ The target as well as the corresponding pegRNA sequence
 
 Rest of the columns are the same as specified in the contribution format, including `WT Sequence`, `MT Sequence`, `protospacer Location`, `PBS Location`, `RT Location WT`, `RT Location MT`, `Efficiency`
 
+# PE Ensemble
+
+To try out the complete version of our app and create ensembles of your own, additional steps should be taken:
+
+The included models need to be downloaded with `git submodule update --remote`
+
 ## Citation
 
 If you found this data repo useful in your study, please consider citing our publication:
