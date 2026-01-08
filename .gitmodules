@@ -1,12 +1,24 @@
-[submodule "models/DeepPrime"]
-	path = models/deepprime
+[submodule "vendor/models/DeepPrime"]
+	path = vendor/models/deepprime
 	url = git@github.com:PeihengLu/DeepPrime.git
-[submodule "models/OPED"]
-	path = models/oped
+[submodule "vendor/models/OPED"]
+	path = vendor/models/oped
 	url = git@github.com:PeihengLu/OPED.git
-[submodule "models/PRIDICT"]
-	path = models/pridict
+[submodule "vendor/models/PRIDICT"]
+	path = vendor/models/pridict
 	url = git@github.com:PeihengLu/PRIDICT.git
-[submodule "models/PRIDICT2"]
-	path = models/pridict2
+[submodule "vendor/models/PRIDICT2"]
+	path = vendor/models/pridict2
+	url = git@github.com:PeihengLu/PRIDICT2.git
+[submodule "vendor/models/deepprime"]
+	path = vendor/models/deepprime
+	url = git@github.com:PeihengLu/DeepPrime.git
+[submodule "vendor/models/oped"]
+	path = vendor/models/oped
+	url = git@github.com:PeihengLu/OPED.git
+[submodule "vendor/models/pridict"]
+	path = vendor/models/pridict
+	url = git@github.com:PeihengLu/PRIDICT.git
+[submodule "vendor/models/pridict2"]
+	path = vendor/models/pridict2
 	url = git@github.com:PeihengLu/PRIDICT2.git
