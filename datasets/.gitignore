@@ -1,0 +1,7 @@
+# everything but raw data and README files
+*
+!.gitignore
+!README.md
+!raw/
+!raw/**/
+!raw/**/*
