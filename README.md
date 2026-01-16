@@ -1,18 +1,177 @@
-# PE Database
+# PE-DB: Prime Editing Database and Model Ensemble
 
-An PostgresSQL repository of prime editing related experimental data.
+A comprehensive platform for prime editing efficiency data management and model evaluation.
 
-It contains the curated data from various studies containing on target prime editing efficiency using specific pegRNA and prime editor on a given target loci. 
+## Project Overview
 
-## Usage
+This project consists of two main services:
 
-### Query and Export
+### 1. PE Database Service
+A standalone FastAPI application that serves prime editing efficiency data from various sources in standardized or model-specific formats.
 
-The front end application supports querying using study published time, pe version, cell line, as well as the type of study.
+**Features:**
+- Load data from multiple datasets (DeepPrime, PRIDICT, PRIDICT2, etc.)
+- Convert between different data formats
+- Standardize data from various sources
+- REST API for easy data access
+- Docker support for easy deployment
 
-To facilitate easier benchmark with current state of the art models, you can also specify the format required by the model to run, which are PRIDICT, PRIDICT 2.0, as well as DeepPrime 
+### 2. PE Ensemble Service (Coming Soon)
+An interface for training and evaluating state-of-the-art prime editing efficiency prediction models.
 
-### Contributing to the Database
+**Features:**
+- Multiple model architectures support
+- Unified training and evaluation pipeline
+- Automatic data fetching from PE Database
+- Model ensemble capabilities
+
+## Project Structure
+
+```
+pe-db/
+├── packages/
+│   └── pe-common/              # Shared utilities package
+│       ├── pe_common/
+│       │   ├── constants.py    # Project-wide constants
+│       │   ├── sequence_utils.py  # Sequence manipulation
+│       │   └── features.py     # Feature calculations
+│       └── setup.py
+├── services/
+│   ├── pe-db/                  # PE Database service
+│   │   ├── app/
+│   │   │   ├── main.py         # FastAPI application
+│   │   │   └── data_prep/      # Data conversion modules
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   └── pe-ensemble/            # PE Ensemble service (TBD)
+├── datasets/                    # Data directory
+│   ├── raw/                    # Original datasets
+│   └── standardized/           # Converted standardized data
+├── vendor/models/              # Third-party model code
+├── docker-compose.yml
+└── setup-dev.sh               # Development setup script
+```
+
+## Quick Start
+
+### Option 1: Local Development
+
+1. **Setup environment:**
+```bash
+./setup-dev.sh
+```
+
+2. **Activate virtual environment:**
+```bash
+source venv/bin/activate
+```
+
+3. **Run PE Database service:**
+```bash
+cd services/pe-db
+uvicorn app.main:app --reload
+```
+
+Access the API at: http://localhost:8000
+API documentation: http://localhost:8000/docs
+
+### Option 2: Docker
+
+1. **Build and run with Docker Compose:**
+```bash
+docker-compose up pe-db
+```
+
+The service will be available at http://localhost:8000
+
+## PE Database API Usage
+
+### Get Data
+```bash
+# Get data in standardized format
+curl "http://localhost:8000/api/data?cell_line=HEK293T&pe_system=PE2&source_model=dp&target_format=std"
+
+# Get data in DeepPrime format
+curl "http://localhost:8000/api/data?cell_line=A549&pe_system=PE2max&source_model=dp_ft&target_format=deepprime"
+```
+
+### List Available Datasets
+```bash
+curl "http://localhost:8000/api/datasets"
+```
+
+### Convert Data
+```bash
+curl -X POST "http://localhost:8000/api/convert?source=deepprime&cell_line=HEK293T&pe_system=PE2"
+```
+
+## Data Organization
+
+The database contains curated data from various studies on prime editing efficiency: 
+
+### Datasets Directory Structure
+```
+datasets/
+├── raw/                    # Original data files
+│   ├── deepprime/
+│   ├── minsepie/
+│   ├── pridict1/
+│   └── pridict2/
+└── standardized/          # Converted standardized format
+    ├── deepprime/
+    ├── pridict1/
+    └── pridict2/
+```
+
+### Data Formats Supported
+- **Standard Format**: Unified format for all datasets
+- **DeepPrime Format**: Compatible with DeepPrime model
+- **PRIDICT Format**: Compatible with PRIDICT model
+- **PRIDICT2 Format**: Compatible with PRIDICT 2.0 model
+- **OPED Format**: Compatible with OPED model
+
+## Shared Package: pe-common
+
+The `pe-common` package provides shared utilities used by both services:
+
+### Constants
+```python
+from pe_common import DATA_ROOT, MODEL_ROOT, DEVICE
+```
+
+### Sequence Utilities
+```python
+from pe_common.sequence_utils import align_wt_mut_sequences, remove_padding
+```
+
+### Feature Calculations
+```python
+from pe_common.features import calculate_mfe, calculate_mt_wallace, calculate_gc_content
+```
+
+## Development
+
+### Installing in Development Mode
+
+Install the shared package:
+```bash
+pip install -e packages/pe-common
+```
+
+### Module Imports
+
+With this structure, you can now reliably import modules:
+
+```python
+# Instead of relative imports
+from pe_common import DATA_ROOT, DEVICE
+from pe_common.sequence_utils import align_wt_mut_sequences
+from pe_common.features import calculate_gc_content
+```
+
+No more unstable relative path imports!
+
+## Contributing to the Database
 
 Although I am trying my best to scour the internet for all the relevant data, I am sure there are many studies that I have missed. If you have data that you would like to contribute to the database, please convert it to the format specified below and submit a pull request.
 

@@ -13,7 +13,7 @@ import os
 from os.path import join  as pjoin
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
-from src.data import load_data
+from datasets.data import load_data
 from src.constants import DATA_ROOT, MODEL_ROOT, DEVICE
 
 def run_pridict(data_path: str, distribution: bool = False) -> List[float]:

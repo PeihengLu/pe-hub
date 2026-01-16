@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  pe-ensemble:
+    build:
+      context: ../..
+      dockerfile: services/pe-ensemble/Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../../vendor/models:/app/models:ro
+      - ../../src:/app/src:ro
+      - ./pe-ensemble:/app/pe-ensemble
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PE_DB_URL=http://pe-db:8000
+      - MODEL_PATH=/app/models
+    depends_on:
+      - pe-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  pe-db:
+    build:
+      context: ../..
+      dockerfile: services/pe-db/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../../datasets:/app/datasets:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATA_PATH=/app/datasets/standardized
+    restart: unless-stopped

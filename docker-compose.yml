@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  pe-db:
+    build:
+      context: .
+      dockerfile: services/pe-db/Dockerfile
+    container_name: pe-db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./datasets:/app/datasets:ro
+      - ./packages/pe-common:/app/packages/pe-common:ro
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - pe-network
+
+  # PE Ensemble service (to be implemented)
+  # pe-ensemble:
+  #   build:
+  #     context: .
+  #     dockerfile: services/pe-ensemble/Dockerfile
+  #   container_name: pe-ensemble
+  #   ports:
+  #     - "8001:8001"
+  #   volumes:
+  #     - ./vendor/models:/app/vendor/models:ro
+  #     - ./packages/pe-common:/app/packages/pe-common:ro
+  #   environment:
+  #     - PYTHONPATH=/app
+  #     - PE_DB_URL=http://pe-db:8000
+  #   depends_on:
+  #     pe-db:
+  #       condition: service_healthy
+  #   networks:
+  #     - pe-network
+
+networks:
+  pe-network:
+    driver: bridge

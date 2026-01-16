@@ -1,12 +1,62 @@
-# merge the chopped pridict data into one file
-echo "Merging chopped pridict data..."
-python scripts/chop_and_restore_pridict.py -a restore 
-# split the deepprime excel file into multiple csv files
-echo "Splitting DeepPrime Excel file to CSV files..."
-python scripts/convert_deepprime_to_csv.py
-# perform conversions from various data to std format
+#!/bin/bash
 
-# install the required packages
-pip install -r requirements.txt
-# install current project
-# pip install -e .
+# Setup script for PE-DB project
+# This script prepares the datasets and environment
+
+set -e  # Exit on error
+
+echo "======================================"
+echo "PE-DB Project Setup"
+echo "======================================"
+
+# Check if Python is installed
+if ! command -v python3 &> /dev/null; then
+    echo "Error: Python 3 is not installed"
+    exit 1
+fi
+
+echo ""
+echo "Step 1: Restoring PRIDICT datasets..."
+if [ -f "services/pe-db/data_prep/chop_and_restore_pridict.py" ]; then
+    python3 services/pe-db/data_prep/chop_and_restore_pridict.py -a restore
+    echo "✓ PRIDICT datasets restored"
+else
+    echo "⚠ Warning: PRIDICT restoration script not found, skipping..."
+fi
+
+echo ""
+echo "Step 2: Converting DeepPrime datasets..."
+if [ -f "services/pe-db/data_prep/convert_deepprime_to_csv.py" ]; then
+    python3 services/pe-db/data_prep/convert_deepprime_to_csv.py
+    echo "✓ DeepPrime datasets converted"
+else
+    echo "⚠ Warning: DeepPrime conversion script not found, skipping..."
+fi
+
+echo ""
+echo "Step 3: Installing Python dependencies..."
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+    echo "✓ Dependencies installed"
+else
+    echo "⚠ Warning: requirements.txt not found"
+fi
+
+echo ""
+echo "Step 4: Installing project packages..."
+pip install -e .
+pip install -e packages/pe-common
+echo "✓ Project packages installed"
+
+echo ""
+echo "======================================"
+echo "Setup Complete!"
+echo "======================================"
+echo ""
+echo "Next steps:"
+echo "1. Run 'docker-compose -f docker-compose.full.yml up' to start all services"
+echo "2. Or run 'make docker-up' if you have make installed"
+echo "3. Access services at:"
+echo "   - PE Database API: http://localhost:8000"
+echo "   - PE Ensemble API: http://localhost:8001"
+echo ""

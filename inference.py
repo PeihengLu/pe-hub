@@ -2,9 +2,9 @@
 """
 from typing import List
 
-from src.constants import DEVICE, MODEL_ROOT, DATA_ROOT
+from pe_common import DEVICE, MODEL_ROOT, DATA_ROOT
 from src.run_models import run_oped
-from src.data import std_to_oped
+from datasets.data import std_to_oped
 
 if __name__ == "__main__":
     # Example usage
