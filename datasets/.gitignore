@@ -5,3 +5,7 @@
 !raw/
 !raw/**/
 !raw/**/*
+!analysis/
+!analysis/**/
+!analysis/**/*
+!*.py
