@@ -16,25 +16,13 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 echo ""
-echo "Step 1: Restoring PRIDICT datasets..."
-if [ -f "services/pe-db/data_prep/chop_and_restore_pridict.py" ]; then
-    python3 services/pe-db/data_prep/chop_and_restore_pridict.py -a restore
-    echo "✓ PRIDICT datasets restored"
-else
-    echo "⚠ Warning: PRIDICT restoration script not found, skipping..."
-fi
+echo "Step 1: Installing project packages..."
+pip install -e .
+pip install -e packages/pe-common
+echo "✓ Project packages installed"
 
 echo ""
-echo "Step 2: Converting DeepPrime datasets..."
-if [ -f "services/pe-db/data_prep/convert_deepprime_to_csv.py" ]; then
-    python3 services/pe-db/data_prep/convert_deepprime_to_csv.py
-    echo "✓ DeepPrime datasets converted"
-else
-    echo "⚠ Warning: DeepPrime conversion script not found, skipping..."
-fi
-
-echo ""
-echo "Step 3: Installing Python dependencies..."
+echo "Step 2: Installing Python dependencies..."
 if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
     echo "✓ Dependencies installed"
@@ -43,10 +31,23 @@ else
 fi
 
 echo ""
-echo "Step 4: Installing project packages..."
-pip install -e .
-pip install -e packages/pe-common
-echo "✓ Project packages installed"
+echo "Step 3: Restoring PRIDICT datasets..."
+if [ -f "datasets/dataprep/restore_pridict.py" ]; then
+    python3 datasets/dataprep/restore_pridict.py -a restore
+    echo "✓ PRIDICT datasets restored"
+else
+    echo "⚠ Warning: PRIDICT restoration script not found, skipping..."
+fi
+
+echo ""
+echo "Step 4: Converting DeepPrime datasets..."
+if [ -f "datasets/dataprep/standarzied_data.py" ]; then
+    python3 datasets/dataprep/standarzied_data.py
+    echo "✓ DeepPrime datasets converted"
+else
+    echo "⚠ Warning: DeepPrime conversion script not found, skipping..."
+fi
+
 
 echo ""
 echo "======================================"

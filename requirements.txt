@@ -28,3 +28,5 @@ plotly>=5.0.0
 
 # Data processing
 openpyxl>=3.0.0  # For Excel file handling
+viennaRNA>=2.5.0  # For RNA secondary structure prediction
+biopython>=1.79  # For biological computations

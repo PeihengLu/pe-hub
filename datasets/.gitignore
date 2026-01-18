@@ -9,3 +9,6 @@
 !analysis/**/
 !analysis/**/*
 !*.py
+!dataprep/
+~*
+pridict1_library1.csv
