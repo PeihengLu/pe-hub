@@ -8,13 +8,20 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ../../vendor/models:/app/models:ro
-      - ../../src:/app/src:ro
-      - ./pe-ensemble:/app/pe-ensemble
+      # Mount all vendor models (read-only)
+      - ../../vendor/models:/app/vendor/models:ro
+      # Mount datasets for training data access
+      - ../../datasets:/app/datasets:ro
+      # Mount service code for development (optional - remove in production)
+      - ./app:/app/app
+      # Note: pe-common is installed as a Python package in the container, not mounted
     environment:
       - PYTHONUNBUFFERED=1
       - PE_DB_URL=http://pe-db:8000
-      - MODEL_PATH=/app/models
+      - MODEL_PATH=/app/vendor/models
+      - DEEPPRIME_PATH=/app/vendor/models/deepprime
+      - OPED_PATH=/app/vendor/models/oped
+      - PRIDICT2_PATH=/app/vendor/models/pridict2
     depends_on:
       - pe-db
     restart: unless-stopped
@@ -35,4 +42,19 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DATA_PATH=/app/datasets/standardized
+    restart: unless-stopped
+
+  pe-ensemble-frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host --port 5173"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://pe-ensemble:8001
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - pe-ensemble
     restart: unless-stopped
