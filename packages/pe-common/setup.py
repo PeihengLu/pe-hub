@@ -13,6 +13,7 @@ setup(
         "numpy>=1.21.0",
         "biopython>=1.79",
         "torch>=1.9.0",
+        "tensorflow>=2.14.0",
         "viennarna>=2.5.0",  # For RNA structure prediction (MFE)
     ],
     classifiers=[

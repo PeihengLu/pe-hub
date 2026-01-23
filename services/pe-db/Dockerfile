@@ -8,9 +8,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install pe-common package first
-COPY packages/pe-common /app/packages/pe-common
-RUN pip install --no-cache-dir -e /app/packages/pe-common
+# Copy and install pe-common package as a Python library
+COPY packages/pe-common /tmp/pe-common
+RUN pip install --no-cache-dir /tmp/pe-common && \
+    rm -rf /tmp/pe-common
 
 # Copy and install service requirements
 COPY services/pe-db/requirements.txt /app/requirements.txt
@@ -20,7 +21,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY services/pe-db/app /app/app
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH="${PYTHONPATH}:/app"
 ENV PYTHONUNBUFFERED=1
 
 # Expose port

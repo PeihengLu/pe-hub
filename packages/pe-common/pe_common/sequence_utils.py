@@ -1,6 +1,8 @@
 """Sequence manipulation utilities"""
 from typing import Tuple
 
+import numpy as np
+
 
 def align_wt_mut_sequences(
     wt_sequence: str, 
@@ -54,3 +56,22 @@ def remove_padding(sequence: str) -> str:
     if '-' in sequence:
         sequence = sequence.replace('-', '')
     return sequence
+
+
+def onehot_encode(sequence: str) -> np.ndarray:
+    """
+    One-hot encode a DNA/RNA sequence
+    
+    Args:
+        sequence: DNA/RNA sequence string of length n
+        
+    Returns:
+        onehot encoded nx4 numpy array
+    """
+    mapping = {'A': 0, 'C': 1, 'G': 2, 'T': 3,
+               'U': 3, 'a': 0, 'c': 1, 'g': 2, 't': 3, 'u': 3}
+    onehot = np.zeros((len(sequence), 4), dtype=np.int8)
+    for i, nucleotide in enumerate(sequence):
+        if nucleotide in mapping:
+            onehot[i, mapping[nucleotide]] = 1
+    return onehot

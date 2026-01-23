@@ -20,3 +20,6 @@ else:
     DEVICE = (
         "cuda" if torch.cuda.is_available()  # NVIDIA GPU
         else "cpu")
+
+# Commonly used paths
+DEEPSPCAS9_MODEL_DIR = MODEL_ROOT.joinpath("DeepSpCas9").resolve()

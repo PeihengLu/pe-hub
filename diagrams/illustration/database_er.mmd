@@ -1,0 +1,33 @@
+---
+config:
+  theme: 'forest'
+---
+
+erDiagram
+    direction LR
+    STUDY {
+        int id PK
+        string name
+        datetime publication_date
+        authors string
+    }
+
+    Dataset {
+        int id PK
+        string name
+        string description
+        string assay_type
+        int study_id FK
+    }
+
+    Datasheet {
+        int id PK
+        string file_path
+        int dataset_id FK
+        string cell_line
+        string pe_system
+        int num_samples
+    }
+
+    STUDY ||--o{ Dataset: contains
+    Dataset ||--o{ Datasheet: includes
