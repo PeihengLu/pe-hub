@@ -32,7 +32,7 @@ cd services/pe-ensemble
 docker-compose up
 ```
 
-The service will be available at http://localhost:8001
+The service will be available at http://localhost:8001 by default.
 
 ## Running as Part of Full Stack
 

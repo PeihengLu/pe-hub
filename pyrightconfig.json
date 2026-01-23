@@ -1,3 +1,6 @@
 {
-  "extraPaths": ["./packages/pe-common"]
+  "extraPaths": [
+    "./packages/pe-common",
+    "./vendor/models"
+  ]
 }

@@ -1,18 +1,22 @@
 # FastAPI endpoints for PE Ensemble service
+from typing import List, Optional, Dict, Any
+import os
 
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-import os
+
+from models.model_factory import ModelFactory
+from pe_common.constants import DEVICE
 
 app = FastAPI(
     title="PE Ensemble API",
-    description="API for training and evaluating Prime Editing prediction models",
-    version="0.1.0"
+    description="Unified API for training and evaluating Prime Editing prediction models (DeepPrime, OPED, PRIDICT2)",
+    version="0.2.0"
 )
 
-# Enable CORS
+# Enable CORS(Cross-Origin Resource Sharing, allow all origins for simplicity)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,7 +27,13 @@ app.add_middleware(
 
 # Configuration
 PE_DB_URL = os.getenv("PE_DB_URL", "http://localhost:8000")
-MODEL_PATH = os.getenv("MODEL_PATH", "/app/models")
+MODEL_PATH = os.getenv("MODEL_PATH", "/app/vendor/models")
+DEEPPRIME_PATH = os.getenv("DEEPPRIME_PATH", f"{MODEL_PATH}/deepprime")
+OPED_PATH = os.getenv("OPED_PATH", f"{MODEL_PATH}/oped")
+PRIDICT2_PATH = os.getenv("PRIDICT2_PATH", f"{MODEL_PATH}/pridict2")
+
+# Store loaded models in memory
+_loaded_models: Dict[str, Any] = {}
 
 
 class PredictionRequest(BaseModel):
@@ -38,13 +48,25 @@ class TrainingRequest(BaseModel):
     dataset_name: str
     hyperparameters: Optional[Dict[str, Any]] = None
 
-
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """
+    Root endpoint providing service info
+    Returns:
+    {
+        "service": "PE Ensemble",
+        "version": "0.2.0",
+        "status": "running",
+        "pe_db_url": PE_DB_URL,
+        "model_paths": {
+            "deepprime": DEEPPRIME_PATH,
+            "oped": OPED_PATH,
+            "pridict2": PRIDICT2_PATH
+        }
+    """
     return {
         "service": "PE Ensemble",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "status": "running",
         "pe_db_url": PE_DB_URL
     }
@@ -62,25 +84,25 @@ async def list_models():
     models = [
         {
             "name": "deepprime",
-            "description": "Deep learning model for PE efficiency prediction",
+            "description": "CNN model for PE efficiency prediction",
             "type": "neural_network",
             "status": "available"
         },
-        {
-            "name": "pridict",
-            "description": "Position-specific scoring matrix model",
-            "type": "pssm",
-            "status": "available"
-        },
+        # {
+        #     "name": "pridict",
+        #     "description": "RNN based model for PE efficiency prediction",
+        #     "type": "pssm",
+        #     "status": "available"
+        # },
         {
             "name": "pridict2",
-            "description": "Improved version of PRIDICT",
+            "description": "Improved version of PRIDICT with transfer learning",
             "type": "pssm",
             "status": "available"
         },
         {
             "name": "oped",
-            "description": "Optimized Prime Editor prediction model",
+            "description": "Optimized Prime Editor prediction model using transformer architecture",
             "type": "neural_network",
             "status": "available"
         }
@@ -95,7 +117,8 @@ async def predict(request: PredictionRequest):
     if request.model_name not in ["deepprime", "pridict", "pridict2", "oped"]:
         raise HTTPException(status_code=400, detail="Invalid model name")
     
-    # TODO: Implement actual prediction logic
+    model = ModelFactory.create_model(request.model_name, device=torch.device(DEVICE))
+
     return {
         "model": request.model_name,
         "predictions": [],
