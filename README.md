@@ -7,7 +7,7 @@ A comprehensive platform for prime editing efficiency data management and model 
 This project consists of two main services:
 
 ### 1. PE Database Service
-A standalone FastAPI application that serves prime editing efficiency data from various sources in standardized or model-specific formats.
+A standalone FastAPI application that serves and converts prime editing efficiency data into standardized or model-specific formats.
 
 **Features:**
 - Load data from multiple datasets (DeepPrime, PRIDICT, PRIDICT2, etc.)
@@ -16,14 +16,14 @@ A standalone FastAPI application that serves prime editing efficiency data from 
 - REST API for easy data access
 - Docker support for easy deployment
 
-### 2. PE Ensemble Service (Coming Soon)
-An interface for training and evaluating state-of-the-art prime editing efficiency prediction models.
+### 2. PE Ensemble Service
+A web service for evaluating, training, and creating ensembles of prime editing efficiency prediction models.
 
 **Features:**
-- Multiple model architectures support
-- Unified training and evaluation pipeline
+- Model evaluation, training, and ensemble creation endpoints
+- Supports vendor model repositories under `vendor/models/`
+- Conventional ML baselines (for example, XGBoost) alongside deep models
 - Automatic data fetching from PE Database
-- Model ensemble capabilities
 
 ## Project Structure
 
@@ -47,7 +47,7 @@ pe-db/
 ├── datasets/                    # Data directory
 │   ├── raw/                    # Original datasets
 │   └── standardized/           # Converted standardized data
-├── vendor/models/              # Third-party model code
+├── vendor/models/              # Third-party model code (subdirectories)
 ├── docker-compose.yml
 └── setup-dev.sh               # Development setup script
 ```
