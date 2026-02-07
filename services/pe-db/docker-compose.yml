@@ -1,17 +1,17 @@
-version: '3.8'
+version: "3.8"
 
 services:
   pe-db:
     build:
-      context: .
+      context: ../..
       dockerfile: services/pe-db/Dockerfile
     container_name: pe-db
     ports:
       - "${PE_DB_PORT:-8000}:8000"
     volumes:
-      - ./datasets:/app/datasets
-      - ./packages/pe-common:/app/packages/pe-common:ro
-      - ./services/pe-db/app:/app/app
+      - ../../datasets:/app/datasets
+      - ../../packages/pe-common:/app/packages/pe-common:ro
+      - ./app:/app/app
     environment:
       - PE_PROJECT_ROOT=/app
       - DATA_ROOT=/app/datasets
@@ -24,12 +24,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    networks:
-      - pe-network
-
-  # Full stack services live in docker-compose.full.yml
-  # PE DB can also be launched from services/pe-db/docker-compose.yml
-
-networks:
-  pe-network:
-    driver: bridge

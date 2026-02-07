@@ -17,8 +17,8 @@ from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as mt 
 import tensorflow as tf
 
-from sequence_utils import onehot_encode
-from constants import DEEPSPCAS9_MODEL_DIR, DEVICE
+from .sequence_utils import onehot_encode
+from .constants import DEEPSPCAS9_MODEL_DIR, DEVICE
 
 def calculate_rna_mfe(sequence: str) -> float:
     """
@@ -34,6 +34,19 @@ def calculate_rna_mfe(sequence: str) -> float:
     # Use ViennaRNA's fold function to calculate MFE
     structure, mfe = RNA.fold(sequence)
     return mfe
+
+
+def calculate_mfe(sequence: str) -> float:
+    """
+    Backwards-compatible alias for calculate_rna_mfe.
+
+    Args:
+        sequence: RNA sequence string
+
+    Returns:
+        Minimum free energy value in kcal/mol
+    """
+    return calculate_rna_mfe(sequence)
 
 
 def calculate_mt_wallace(sequence: str) -> float:

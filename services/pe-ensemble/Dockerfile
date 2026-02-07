@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy and install pe-common package as a Python library
 COPY packages/pe-common /tmp/pe-common
-RUN pip install --no-cache-dir /tmp/pe-common && \
+RUN pip install --no-cache-dir --no-deps /tmp/pe-common && \
     rm -rf /tmp/pe-common
 
 # Copy and install service dependencies
@@ -40,9 +40,13 @@ COPY vendor/models /app/vendor/models
 # Copy datasets (for training access)
 COPY datasets /app/datasets
 
-# Set Python path to include vendor models
-# Note: pe-common is installed as a package and available via standard imports
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/vendor/models"
+# Set default environment variables
+ENV PE_PROJECT_ROOT=/app
+ENV DATA_ROOT=/app/datasets
+ENV MODEL_ROOT=/app/vendor/models
+
+# Set Python path to include vendor models and shared package overrides
+ENV PYTHONPATH="/app:/app/vendor/models:/app/packages/pe-common:${PYTHONPATH}"
 
 # Expose port
 EXPOSE 8001

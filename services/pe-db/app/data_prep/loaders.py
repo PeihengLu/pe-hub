@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Literal
 import logging
 
-from pe_common import DATA_ROOT
+from pe_common.constants import DATA_ROOT
 
 logger = logging.getLogger(__name__)
 
