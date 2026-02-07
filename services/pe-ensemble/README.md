@@ -1,10 +1,11 @@
 # PE Ensemble Service
 
-A FastAPI-based service for training and evaluating Prime Editing efficiency prediction models.
+A FastAPI-based web service for evaluating, training, and creating ensembles of Prime Editing efficiency prediction models.
 
 ## Features
 
 - Access to state-of-the-art PE prediction models (DeepPrime, PRIDICT, PRIDICT2, OPED)
+- Conventional ML baselines (for example, XGBoost) alongside vendor models
 - Model training and evaluation endpoints
 - Ensemble prediction capabilities
 - Integration with PE Database service for data retrieval
@@ -32,6 +33,7 @@ cd services/pe-ensemble
 docker-compose up
 ```
 
+This compose file starts both `pe-ensemble` and its `pe-db` dependency.
 The service will be available at http://localhost:8001 by default.
 
 ## Running as Part of Full Stack
@@ -55,4 +57,4 @@ PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 800
 
 This service depends on:
 - PE Database service for data retrieval
-- Model weights in `vendor/models/`
+- Vendor model repositories under `vendor/models/` (each subdirectory is a separate model codebase)

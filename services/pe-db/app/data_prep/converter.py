@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 import logging
 
-from pe_common import DATA_ROOT
+from pe_common.constants import DATA_ROOT
 from pe_common.sequence_utils import align_wt_mut_sequences, remove_padding
 
 logger = logging.getLogger(__name__)

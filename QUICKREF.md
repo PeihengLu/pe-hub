@@ -6,6 +6,9 @@
 # Option 1: Docker (Full Stack)
 docker-compose -f docker-compose.full.yml up -d
 
+# Option 1b: Docker (PE DB only)
+cd services/pe-db && docker-compose up -d
+
 # Option 2: Local Development
 make install && bash setup.sh
 ```
@@ -230,6 +233,9 @@ lsof -ti:8000 | xargs kill -9
 
 ```bash
 # .env file
+PE_PROJECT_ROOT=.
+DATA_ROOT=./datasets
+MODEL_ROOT=./vendor/models
 DATA_PATH=./datasets/standardized
 MODEL_PATH=./vendor/models
 PE_DB_URL=http://localhost:8000

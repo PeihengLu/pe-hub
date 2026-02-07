@@ -7,7 +7,7 @@ If the function name does not specify RNA/DNA, then both sequence
 types are supported
 """
 
-import os, sys
+import os
 from typing import List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -18,13 +18,77 @@ import numpy as np
 import RNA
 
 # Calculating melting temperature
-from Bio.Seq import Seq  
-from Bio.SeqUtils import MeltingTemp as mt 
-import tensorflow as tf
+from Bio.Seq import Seq
+from Bio.SeqUtils import MeltingTemp as mt
 
-from sequence_utils import onehot_encode
-from constants import DEEPSPCAS9_MODEL_DIR, DEVICE
-from deepspcas9 import _calculate_DeepSpCas9_score
+from .deepspcas9 import _calculate_DeepSpCas9_score
+
+# ---------- Public single-sequence helpers (backwards compat) ----------
+
+
+def calculate_rna_mfe(sequence: str) -> float:
+    """
+    Calculate the Minimum Free Energy (MFE) of a given RNA sequence
+    using ViennaRNA package.
+
+    Args:
+        sequence: RNA sequence string
+
+    Returns:
+        Minimum free energy value in kcal/mol
+    """
+    structure, mfe = RNA.fold(sequence)
+    return mfe
+
+
+def calculate_mfe(sequence: str) -> float:
+    """
+    Backwards-compatible alias for calculate_rna_mfe.
+
+    Args:
+        sequence: RNA sequence string
+
+    Returns:
+        Minimum free energy value in kcal/mol
+    """
+    return calculate_rna_mfe(sequence)
+
+
+def calculate_mt_wallace(sequence: str) -> float:
+    """
+    Calculate the melting temperature of a given sequence using
+    the Wallace method.
+
+    Args:
+        sequence: DNA/RNA sequence string
+
+    Returns:
+        Melting temperature in degrees Celsius
+    """
+    seq = Seq(sequence)
+    tm = mt.Tm_Wallace(seq)
+    return tm
+
+
+def calculate_gc_content(sequence: str) -> float:
+    """
+    Calculate the GC content of a DNA/RNA sequence.
+
+    Args:
+        sequence: DNA/RNA sequence string
+
+    Returns:
+        GC content as a fraction (0.0 to 1.0)
+    """
+    sequence = sequence.upper()
+    gc_count = sequence.count('G') + sequence.count('C')
+    total_count = len(sequence)
+
+    if total_count == 0:
+        return 0.0
+
+    return gc_count / total_count
+
 
 # ---------- Lightweight helpers (fast, vectorized) ----------
 
@@ -170,12 +234,12 @@ def batch_calculate_features(
     df_in["target_rna_mfe"] = batch_rna_mfe(df_in[target_col].tolist(), max_workers=mfe_workers)
 
     # 4) Length of each region
-    df_in["pbs_length"] = df_in[pbs_col].str.len().fillna
+    df_in["pbs_length"] = df_in[pbs_col].str.len().fillna(0)
     df_in["rtt_length"] = df_in[rtt_col].str.len().fillna(0)
-    df_in["lha_length"] = df_in[lha_col].str.len().fillna
+    df_in["lha_length"] = df_in[lha_col].str.len().fillna(0)
     df_in["rha_length"] = df_in[rha_col].str.len().fillna(0)
 
-    # ) DeepSpCas9 score for target (if pam_location valid)
+    # 5) DeepSpCas9 score for target (if pam_location valid)
     # The DeepSpCas9 expects a 30-nt string: [-4] + 20nt guide + PAM + +3bp
     def _extract_30nt(row: pd.Series) -> Optional[str]:
         t = row[target_col] or ""

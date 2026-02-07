@@ -1,10 +1,11 @@
 # PE Database Service
 
-A FastAPI-based service that provides standardized access to Prime Editing datasets.
+A FastAPI-based service that serves and converts Prime Editing datasets into standardized or model-specific formats.
 
 ## Features
 
 - Serves standardized PE datasets from multiple sources (DeepPrime, PRIDICT, MinSEPIE, OPED)
+- Converts raw datasets into standardized/model-specific formats
 - RESTful API for data retrieval
 - Flexible data filtering and formatting
 - Docker-based deployment
