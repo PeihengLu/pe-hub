@@ -41,8 +41,8 @@ docker-compose -f docker-compose.full.yml down
 docker-compose -f docker-compose.full.yml logs -f
 
 # Individual services
-cd services/pe-db && docker-compose up -d
-cd services/pe-ensemble && docker-compose up -d
+docker-compose up -d pe-db
+docker-compose -f docker-compose.full.yml up -d pe-ensemble
 
 # Debug
 docker exec -it pe-db bash
@@ -230,6 +230,9 @@ lsof -ti:8000 | xargs kill -9
 
 ```bash
 # .env file
+PE_PROJECT_ROOT=.
+DATA_ROOT=./datasets
+MODEL_ROOT=./vendor/models
 DATA_PATH=./datasets/standardized
 MODEL_PATH=./vendor/models
 PE_DB_URL=http://localhost:8000

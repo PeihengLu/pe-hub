@@ -7,12 +7,15 @@ services:
       dockerfile: services/pe-db/Dockerfile
     container_name: pe-db
     ports:
-      - "8000:8000"
+      - "${PE_DB_PORT:-8000}:8000"
     volumes:
-      - ./datasets:/app/datasets:ro
+      - ./datasets:/app/datasets
       - ./packages/pe-common:/app/packages/pe-common:ro
+      - ./services/pe-db/app:/app/app
     environment:
-      - PYTHONPATH=/app
+      - PE_PROJECT_ROOT=/app
+      - DATA_ROOT=/app/datasets
+      - PYTHONPATH=/app:/app/packages/pe-common
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
     healthcheck:
@@ -24,25 +27,7 @@ services:
     networks:
       - pe-network
 
-  # PE Ensemble service (to be implemented)
-  # pe-ensemble:
-  #   build:
-  #     context: .
-  #     dockerfile: services/pe-ensemble/Dockerfile
-  #   container_name: pe-ensemble
-  #   ports:
-  #     - "8001:8001"
-  #   volumes:
-  #     - ./vendor/models:/app/vendor/models:ro
-  #     - ./packages/pe-common:/app/packages/pe-common:ro
-  #   environment:
-  #     - PYTHONPATH=/app
-  #     - PE_DB_URL=http://pe-db:8000
-  #   depends_on:
-  #     pe-db:
-  #       condition: service_healthy
-  #   networks:
-  #     - pe-network
+  # Full stack services live in docker-compose.full.yml
 
 networks:
   pe-network:

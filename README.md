@@ -84,6 +84,13 @@ docker-compose up pe-db
 
 The service will be available at http://localhost:8000
 
+2. **Full stack (DB + Ensemble + Frontend):**
+```bash
+docker-compose -f docker-compose.full.yml up
+```
+
+This starts the database, ensemble API, and frontend dev server.
+
 ## PE Database API Usage
 
 ### Get Data

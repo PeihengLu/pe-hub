@@ -70,13 +70,13 @@ data-prep:
 
 # Individual service management
 db-up:
-	cd services/pe-db && docker-compose up -d
+	docker-compose up -d pe-db
 
 ensemble-up:
 	cd services/pe-ensemble && docker-compose up -d
 
 db-logs:
-	cd services/pe-db && docker-compose logs -f
+	docker-compose logs -f pe-db
 
 ensemble-logs:
 	cd services/pe-ensemble && docker-compose logs -f

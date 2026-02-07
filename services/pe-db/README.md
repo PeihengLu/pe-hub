@@ -19,8 +19,8 @@ A FastAPI-based service that provides standardized access to Prime Editing datas
 ## Running Locally
 
 ```bash
-cd services/pe-db
-docker-compose up
+cd ../..
+docker-compose up pe-db
 ```
 
 The service will be available at http://localhost:8000
