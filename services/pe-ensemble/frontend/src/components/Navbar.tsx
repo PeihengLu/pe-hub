@@ -1,4 +1,4 @@
-import { DNA } from 'lucide-react'
+import { Dna } from 'lucide-react'
 
 interface NavbarProps {
   currentPage: string
@@ -18,7 +18,7 @@ export default function Navbar({ currentPage, onPageChange }: NavbarProps) {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <DNA className="w-8 h-8 text-primary-600" />
+            <Dna className="w-8 h-8 text-primary-600" />
             <h1 className="text-2xl font-bold text-slate-900">PE Ensemble</h1>
           </div>
 

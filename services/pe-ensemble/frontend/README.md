@@ -4,12 +4,12 @@ Modern React + TypeScript frontend for the PE Ensemble API service.
 
 ## Features
 
-- 🎨 Modern UI with Tailwind CSS
-- ⚡ Fast development with Vite
-- 🔄 Real-time API integration with react-query
-- 📊 Data visualization with Recharts
-- 🎯 Type-safe with TypeScript
-- 🎭 Component-based architecture
+-  Modern UI with Tailwind CSS
+-  Fast development with Vite
+-  Real-time API integration with react-query
+-  Data visualization with Recharts
+-  Type-safe with TypeScript
+-  Component-based architecture
 
 ## Getting Started
 

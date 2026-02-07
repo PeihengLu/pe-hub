@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { DNA } from 'lucide-react'
 import Navbar from './components/Navbar'
 import PredictionPage from './pages/PredictionPage'
 import TrainingPage from './pages/TrainingPage'

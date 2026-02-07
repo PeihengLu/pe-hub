@@ -49,6 +49,13 @@ export default function PredictionPage() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Introduction Panel */}
+      <Card className="lg:col-span-3" title="Prime Editing Prediction">
+        <p className="text-slate-600">
+          Use the interface below to submit DNA sequences for Prime Editing efficiency prediction using a pretrained model. Enter one sequence per line. Select the model, cell type and PE system as needed, then click "Predict" to see the results. If a matched model weight is not found, the default weights from their original study will be used.
+        </p>
+      </Card>
+
       {/* Input Panel */}
       <Card className="lg:col-span-1" title="Prediction Input">
         <div className="space-y-4">
@@ -148,6 +155,19 @@ export default function PredictionPage() {
             <p>Submit a prediction to see results here</p>
           </div>
         )}
+      </Card>
+
+      {/* Execution Logs Read from Backend */}
+      <Card className="lg:col-span-3" title="Execution Logs">
+        <div className="bg-slate-100 p-4 rounded-lg h-48 overflow-y-auto font-mono text-sm text-slate-700">
+          {predictMutation.isLoading && <p>Running prediction...</p>}
+          {predictMutation.data &&(
+            <pre>{JSON.stringify(predictMutation.data.data.logs, null, 2)}</pre>
+          ) }
+          {!predictMutation.isLoading && !predictMutation.data && (
+            <p>No logs available. Start execution to see logs here.</p>
+          )}
+        </div>
       </Card>
     </div>
   )
