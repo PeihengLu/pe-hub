@@ -6,6 +6,9 @@
 # Option 1: Docker (Full Stack)
 docker-compose -f docker-compose.full.yml up -d
 
+# Option 1b: Docker (PE DB only)
+cd services/pe-db && docker-compose up -d
+
 # Option 2: Local Development
 make install && bash setup.sh
 ```
@@ -41,8 +44,8 @@ docker-compose -f docker-compose.full.yml down
 docker-compose -f docker-compose.full.yml logs -f
 
 # Individual services
-docker-compose up -d pe-db
-docker-compose -f docker-compose.full.yml up -d pe-ensemble
+cd services/pe-db && docker-compose up -d
+cd services/pe-ensemble && docker-compose up -d
 
 # Debug
 docker exec -it pe-db bash

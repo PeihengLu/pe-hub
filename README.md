@@ -79,13 +79,15 @@ API documentation: http://localhost:8000/docs
 
 1. **Build and run with Docker Compose:**
 ```bash
-docker-compose up pe-db
+cd services/pe-db
+docker-compose up
 ```
 
 The service will be available at http://localhost:8000
 
 2. **Full stack (DB + Ensemble + Frontend):**
 ```bash
+cd ../../
 docker-compose -f docker-compose.full.yml up
 ```
 

@@ -32,6 +32,7 @@ cd services/pe-ensemble
 docker-compose up
 ```
 
+This compose file starts both `pe-ensemble` and its `pe-db` dependency.
 The service will be available at http://localhost:8001 by default.
 
 ## Running as Part of Full Stack

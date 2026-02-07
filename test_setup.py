@@ -147,7 +147,7 @@ def main():
         print("\nNext steps:")
         print("  1. Run PE Database: cd services/pe-db && uvicorn app.main:app --reload")
         print("  2. Access API docs: http://localhost:8000/docs")
-        print("  3. Or use Docker: docker-compose up pe-db")
+        print("  3. Or use Docker: cd services/pe-db && docker-compose up")
         return 0
     else:
         print("\n⚠️  Some tests failed. Please check the errors above.")
