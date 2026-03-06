@@ -45,6 +45,9 @@ services:
       - MODEL_ROOT=/app/vendor/models
       - MODEL_PATH=/app/vendor/models
       - PE_DB_URL=http://pe-db:8000
+      - DEEPPRIME_PATH=/app/vendor/models/deepprime
+      - OPED_PATH=/app/vendor/models/oped
+      - PRIDICT2_PATH=/app/vendor/models/pridict2
       - PYTHONPATH=/app:/app/packages/pe-common:/app/vendor/models
       - PYTHONUNBUFFERED=1
     depends_on:
