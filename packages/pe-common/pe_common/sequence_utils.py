@@ -1,5 +1,5 @@
 """Sequence manipulation utilities"""
-from typing import Tuple
+from typing import Literal, Tuple
 
 import numpy as np
 
@@ -75,3 +75,64 @@ def onehot_encode(sequence: str) -> np.ndarray:
         if nucleotide in mapping:
             onehot[i, mapping[nucleotide]] = 1
     return onehot
+
+def reverse_complement(
+    sequence: str,
+    mode: Literal[
+        "auto", "dna_to_dna", "rna_to_rna", "dna_to_rna", "rna_to_dna"
+    ] = "auto",
+) -> str:
+    """
+    Reverse complement a DNA/RNA sequence
+    
+    Args:
+        sequence: DNA/RNA sequence string of length n
+        mode:
+            - "auto": infer from input (`U` without `T` => RNA-like, else DNA-like)
+            - "dna_to_dna": DNA reverse complement with DNA output alphabet
+            - "rna_to_rna": RNA reverse complement with RNA output alphabet
+            - "dna_to_rna": DNA reverse complement with RNA output alphabet
+            - "rna_to_dna": RNA reverse complement with DNA output alphabet
+        
+    Returns:
+        Reverse complement of the sequence according to ``mode`` .
+    """
+    sequence = str(sequence).upper()
+
+    if mode == "auto":
+        mode = "rna_to_rna" if ("U" in sequence and "T" not in sequence) else "dna_to_dna"
+
+    if mode == "dna_to_dna":
+        complement_map = str.maketrans("ATCGU", "TAGCA")
+    elif mode == "rna_to_rna":
+        complement_map = str.maketrans("AUCGT", "UAGCA")
+    elif mode == "dna_to_rna":
+        complement_map = str.maketrans("ATCGU", "UAGCA")
+    elif mode == "rna_to_dna":
+        complement_map = str.maketrans("AUCGT", "TAGCA")
+    else:
+        raise ValueError(
+            "mode must be one of: auto, dna_to_dna, rna_to_rna, dna_to_rna, rna_to_dna"
+        )
+
+    return sequence[::-1].translate(complement_map)
+
+
+def sanitize_dna_sequence(
+    sequence: str, replacement_base: str = "A", drop: bool = False
+) -> str:
+    """
+    Normalize a sequence to uppercase DNA alphabet.
+
+    Any non-ACGT characters are either removed (when ``drop=True``) or
+    replaced with ``replacement_base``.
+    """
+    sequence = str(sequence).upper()
+    if drop:
+        return "".join(base for base in sequence if base in {"A", "C", "G", "T"})
+
+    replacement_base = str(replacement_base).upper()
+    if replacement_base not in {"A", "C", "G", "T"}:
+        raise ValueError("replacement_base must be one of A/C/G/T")
+
+    return "".join(base if base in {"A", "C", "G", "T"} else replacement_base for base in sequence)

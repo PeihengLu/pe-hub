@@ -18,6 +18,9 @@ dependencies = [
     "tensorflow-metal>=1.0.0; sys_platform == 'darwin'",
     "viennarna>=2.5.0",
     "biopython>=1.79",
+    "pyarrow>=13.0.0",
+    "pyexcel>=0.6.5",
+    "fastparquet>=0.8.0",
 ]
 
 [project.optional-dependencies]

@@ -13,12 +13,27 @@ def _resolve_project_root() -> pathlib.Path:
     if env_root:
         return pathlib.Path(env_root).expanduser().resolve()
 
-    current = pathlib.Path(__file__).resolve()
-    for candidate in [current.parent] + list(current.parents):
-        if (candidate / "datasets").exists() or (candidate / "services").exists():
+    def _looks_like_project_root(path: pathlib.Path) -> bool:
+        return (
+            (path / "packages" / "pe-common" / "pe_common").exists()
+            or (
+                (path / "datasets").exists()
+                and (path / "services").exists()
+                and (path / "requirements.txt").exists()
+            )
+        )
+    # Check current working directory and its parents
+    cwd = pathlib.Path.cwd().resolve()
+    for candidate in [cwd] + list(cwd.parents):
+        if _looks_like_project_root(candidate):
             return candidate
 
-    return current.parents[3] if len(current.parents) > 3 else current.parent
+    current = pathlib.Path(__file__).resolve()
+    for candidate in [current.parent] + list(current.parents):
+        if _looks_like_project_root(candidate):
+            return candidate
+
+    return cwd
 
 
 def _normalize_data_root(path: pathlib.Path) -> pathlib.Path:
@@ -73,12 +88,6 @@ def _torch_version_at_least(major: int, minor: int) -> bool:
         return True
     return parts[0] > major or (parts[0] == major and parts[1] >= minor)
 
-
-# Constants for project paths
-PROJECT_ROOT = _resolve_project_root()
-DATA_ROOT = _resolve_data_root(PROJECT_ROOT)
-MODEL_ROOT = _resolve_model_root(PROJECT_ROOT)
-
 # Constants for device configuration
 if torch is None:
     DEVICE = "cpu"
@@ -91,6 +100,11 @@ elif _torch_version_at_least(2, 0):
     )
 else:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Constants for project paths
+PROJECT_ROOT = _resolve_project_root()
+DATA_ROOT = _resolve_data_root(PROJECT_ROOT)
+MODEL_ROOT = _resolve_model_root(PROJECT_ROOT)
 
 # Commonly used paths
 DEEPSPCAS9_MODEL_DIR = MODEL_ROOT.joinpath("DeepSpCas9").resolve()

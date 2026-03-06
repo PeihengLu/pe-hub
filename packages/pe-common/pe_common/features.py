@@ -23,6 +23,18 @@ from Bio.SeqUtils import MeltingTemp as mt
 
 from .deepspcas9 import _calculate_DeepSpCas9_score
 
+
+def normalize_name(name: str) -> str:
+    """Normalize column/feature/pe-system/cell-line/dataset name.
+
+    Args:
+        name: Column/feature/pe-system/cell-line/dataset name
+
+    Returns:
+        Normalized column/feature/pe-system/cell-line/dataset name
+    """
+    return str(name).strip().lower().replace("_", "-")
+    
 # ---------- Public single-sequence helpers (backwards compat) ----------
 
 
