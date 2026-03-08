@@ -14,6 +14,7 @@ from pe_common.sequence_utils import (
     reverse_complement,
     sanitize_dna_sequence,
 )
+from pe_common.data_utils import build_test_mask_from_group_id
 
 # Ensure that the OPED model code directory is in sys.path
 _vendor_root = resolve_vendor_models_path()
@@ -65,8 +66,8 @@ class OPEDModelWrapper(BasePEModel):
             pd.DataFrame: OPED sequences data in encoded numeric format
         """
         if df_oped.empty:
-            return pd.DataFrame(
-                columns=[
+            empty_columns = pd.Index(
+                [
                     "Target",
                     "PBS",
                     "RT",
@@ -77,6 +78,9 @@ class OPEDModelWrapper(BasePEModel):
                     "PBS_o3",
                     "RT_o3",
                 ]
+            )
+            return pd.DataFrame(
+                columns=empty_columns
             )
 
         char2id = OPEDModelWrapper._build_kmer_vocab(1)
@@ -136,7 +140,10 @@ class OPEDModelWrapper(BasePEModel):
 
 
     def _standardized_to_oped_sequence_df(
-        self, df: pd.DataFrame, target_len: int = 47
+        self,
+        df: pd.DataFrame,
+        target_len: int = 47,
+        protospacer_upstream_bases: int = 4,
     ) -> pd.DataFrame:
         seq_records = []
         efficiency = df["editing_efficiency"].astype(float).to_numpy()
@@ -149,8 +156,10 @@ class OPEDModelWrapper(BasePEModel):
         prot_l = df["protospacer_location_l"].astype(int).to_numpy()
         index_values = df.index.to_numpy()
 
-        for idx, wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i in zip(
+        for row_pos, (idx, wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i) in enumerate(
+            zip(
             index_values, wt_series, mut_series, pbs_l, pbs_r, rtt_l, rtt_r, prot_l
+            )
         ):
 
             # Use WT base, and fill masked/alignment chars from MUT.
@@ -172,14 +181,19 @@ class OPEDModelWrapper(BasePEModel):
                     ref_chars.append(base if base in {"A", "C", "G", "T"} else "A")
             ref_seq = "".join(ref_chars)
 
-            # Infer spacer prefix from standardized protospacer_location_l.
-            target_start = max(0, prot_l_i - int(prot_l_i))
+            # Build OPED's Target(47bp) as a protospacer-anchored window:
+            # keep a fixed number of upstream bases before protospacer start.
+            target_start = max(0, int(prot_l_i) - int(protospacer_upstream_bases))
             target_end = target_start + target_len
             if target_end > len(ref_seq):
                 target_start = max(0, len(ref_seq) - target_len)
                 target_end = len(ref_seq)
 
             target = ref_seq[target_start:target_end]
+            pbs_l_i = max(0, int(pbs_l_i))
+            pbs_r_i = min(len(ref_seq), int(pbs_r_i))
+            rtt_l_i = max(0, int(rtt_l_i))
+            rtt_r_i = min(len(ref_seq), int(rtt_r_i))
             pbs = ref_seq[pbs_l_i:pbs_r_i]
             rt = ref_seq[rtt_l_i:rtt_r_i]
 
@@ -191,11 +205,13 @@ class OPEDModelWrapper(BasePEModel):
                 target = target + ("A" * (target_len - len(target)))
 
             record = {"Target(47bp)": target, "PBS": pbs, "RT": rt, "_source_index": idx}
-            record["Efficiency"] = efficiency[idx]
+            record["Efficiency"] = float(efficiency[row_pos])
             seq_records.append(record)
 
         if not seq_records:
-            return pd.DataFrame(columns=["Target(47bp)", "PBS", "RT", "Efficiency"])
+            return pd.DataFrame(
+                columns=pd.Index(["Target(47bp)", "PBS", "RT", "Efficiency"])
+            )
         out_df = pd.DataFrame(seq_records).set_index("_source_index")
         return out_df
 
@@ -215,12 +231,11 @@ class OPEDModelWrapper(BasePEModel):
         # fallback split by standardized group id when fold split is unavailable
         group_col = "group_id"
         rng = np.random.default_rng(random_state)
-        group_values = df[group_col].dropna().unique().tolist()
-
-        rng.shuffle(group_values)
-        n_test_groups = max(1, int(np.ceil(len(group_values) * test_size)))
-        test_groups = group_values[:n_test_groups]
-        test_mask = df[group_col].isin(test_groups)
+        test_mask = build_test_mask_from_group_id(
+            group_series=pd.Series(df[group_col], copy=False),
+            test_size=test_size,
+            random_state=random_state,
+        )
 
         if not bool((~test_mask).any()) or not bool(test_mask.any()):
             row_indices = np.arange(len(df))
@@ -314,6 +329,7 @@ class OPEDModelWrapper(BasePEModel):
         random_state = int(kwargs.get("random_state", 42))
         holdout_fold_value = int(kwargs.get("holdout_fold_value", -1))
         target_len = int(kwargs.get("target_len", 47))
+        protospacer_upstream_bases = int(kwargs.get("protospacer_upstream_bases", 4))
         use_cache = bool(kwargs.get("use_cache", False))
 
         cache_path = self._build_cache_path(
@@ -328,7 +344,11 @@ class OPEDModelWrapper(BasePEModel):
                 )
             encoded_full = cached_obj
         else:
-            sequence_df = self._standardized_to_oped_sequence_df(df, target_len=target_len)
+            sequence_df = self._standardized_to_oped_sequence_df(
+                df,
+                target_len=target_len,
+                protospacer_upstream_bases=protospacer_upstream_bases,
+            )
             if sequence_df.empty:
                 raise ValueError("No valid rows after OPED data preparation.")
 
@@ -403,16 +423,16 @@ class OPEDModelWrapper(BasePEModel):
         
         # Assume caller provides OPED-encoded data (e.g. output of prepare_data).
         X_train = train_data.copy()
-        X_train_y = X_train["Efficiency"].astype(float).reset_index(drop=True)
+        y_train = X_train["Efficiency"].astype(float).reset_index(drop=True)
         X_train = X_train.drop(columns=["Efficiency"])
         
         if val_data is not None:
             X_val = val_data.copy()
-            X_val_y = X_val["Efficiency"].astype(float).reset_index(drop=True)
+            y_val = X_val["Efficiency"].astype(float).reset_index(drop=True)
             X_val = X_val.drop(columns=["Efficiency"])
         else:
             # Use training data as validation if not provided
-            X_val, X_val_y = X_train, X_train_y
+            X_val, y_val = X_train, y_train
         
         # Default hyperparameters for OPED transformer
         default_params = {
@@ -426,13 +446,16 @@ class OPEDModelWrapper(BasePEModel):
             'drop_out': 0.1,
             'epoch_num': 100,
             'batch_size': 128,
-            'lr': 0.001,
+            'lr': 0.0003,
             'weight_decay': 0.0,
             'device': self.device,
             'best_epoch': True,
             'transfer': False,
             'freezing': freezing,
-            'other_size': 0
+            'other_size': 0,
+            'grad_clip': 1.0,
+            'reshuffle_each_epoch': True,
+            'early_stopping_patience': 10,
         }
         
         if hyperparameters:
@@ -442,8 +465,8 @@ class OPEDModelWrapper(BasePEModel):
         trained_model = train_and_test_transformer_order3(
             X_train=X_train,
             X_test=X_val,
-            y_train=X_train_y,
-            y_test=X_val_y,
+            y_train=y_train,
+            y_test=y_val,
             hyperparameters=default_params,
             transformer=None  # Train from scratch
         )
@@ -457,7 +480,7 @@ class OPEDModelWrapper(BasePEModel):
         results, _, _ = evaluate_transformer_order3(
             transformer=self.model,
             X_train=X_val,
-            y_train=X_val_y,
+            y_train=y_val,
             batch_size_test=1024,
             device=self.device,
             verbose=True

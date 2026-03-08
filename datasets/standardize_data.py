@@ -769,8 +769,8 @@ if __name__ == "__main__":
         logger.debug("Debug mode enabled")
         exit(0)
 
-    # export_original_data()
+    export_original_data()
 
-    # standardize_pe_data(study="deepprime", dataset="deepprime-small")
-    # standardize_pe_data(study="deepprime", dataset="deepprime-clinvar")
+    standardize_pe_data(study="deepprime", dataset="deepprime-small")
+    standardize_pe_data(study="deepprime", dataset="deepprime-clinvar")
     standardize_pe_data(study="pridict1", dataset="library1")

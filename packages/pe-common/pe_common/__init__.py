@@ -6,6 +6,7 @@ __version__ = "0.1.0"
 
 from .constants import PROJECT_ROOT, DATA_ROOT, MODEL_ROOT, DEVICE
 from .sequence_utils import align_wt_mut_sequences, remove_padding
+from .data_utils import build_test_mask_from_group_id
 
 __all__ = [
     # Constants
@@ -16,6 +17,7 @@ __all__ = [
     # Sequence utilities
     "align_wt_mut_sequences",
     "remove_padding",
+    "build_test_mask_from_group_id",
     # Feature calculations (lazy-loaded via __getattr__)
     "calculate_mfe",
     "calculate_mt_wallace",
