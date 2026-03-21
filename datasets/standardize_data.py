@@ -172,7 +172,11 @@ def _export_pridict2_library_diverse_datasheets() -> None:
         # remove columns where editing efficiency is NaN
         data = data.dropna(subset=[efficiency_column])
 
-        output_path = (DATA_ROOT / 'exported' / 'pridict2' / 'library-diverse' /
+        if cell_line == 'AdV':
+            output_path = (DATA_ROOT / 'exported' / 'pridict2' / 'library-diverse-invivo' /
+                       f'{cell_line.lower().replace("-", "_")}-pe2.csv')
+        else:
+            output_path = (DATA_ROOT / 'exported' / 'pridict2' / 'library-diverse' /
                        f'{cell_line.lower().replace("-", "_")}-pe2.csv')
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data.to_csv(output_path, index=False)
@@ -271,11 +275,7 @@ def standardize_pe_data(
                     f"{current_dataset}"
                 )
         elif current_study == "pridict2":
-            if current_dataset == "library-diverse":
-                if file_data is None:
-                    raise ValueError(
-                        "PRIDICT2 standardization requires file-backed input data."
-                    )
+            if current_dataset in {"library-diverse", "library-diverse-invivo"}:
                 _standardize_pridict2_library_diverse(
                     file_data, file_cell_line, file_pe_system, current_dataset
                 )
@@ -378,19 +378,70 @@ def standardize_pe_data(
             else:
                 _dispatch_single_file(study_name, dataset_name, None, cell_line, pe_system)
 
-def _standardize_data_types(data: pd.DataFrame) -> pd.DataFrame:
+def _build_standardized_output_df(
+    group_id: pd.Series | np.ndarray, 
+    type_sub: pd.Series | np.ndarray, type_ins: pd.Series | np.ndarray, type_del: pd.Series | np.ndarray, edit_len: pd.Series | np.ndarray, 
+    wt_sequence: pd.Series | np.ndarray, mut_sequence: pd.Series | np.ndarray, 
+    protospacer_location_l: int | np.ndarray | pd.Series, protospacer_location_r: int | np.ndarray | pd.Series, 
+    pbs_location_l: pd.Series | np.ndarray, pbs_location_r: pd.Series | np.ndarray, 
+    rtt_location_l: pd.Series | np.ndarray, rtt_location_r: pd.Series | np.ndarray, 
+    lha_location_l: pd.Series | np.ndarray, lha_location_r: pd.Series | np.ndarray, 
+    rha_location_l: pd.Series | np.ndarray, rha_location_r: pd.Series | np.ndarray, 
+    spcas9_score: pd.Series | np.ndarray, editing_efficiency: pd.Series | np.ndarray, 
+    original_fold: Optional[pd.Series | np.ndarray] = None) -> pd.DataFrame:
     """
     Standardize the data types in output dataframe
     
     Args:
-        data: DataFrame in standardized format with possibly incorrect types
-        
+        group_id: Series of group IDs
+        type_sub: Series of boolean type_sub values
+        type_ins: Series of boolean type_ins values
+        type_del: Series of boolean type_del values
+        edit_len: Series of edit lengths
+        wt_sequence: Series of wild type sequences
+        mut_sequence: Series of mutated sequences
+        protospacer_location_l: int of protospacer location left
+        protospacer_location_r: int of protospacer location right
+        pbs_location_l: Series of PBS location left
+        pbs_location_r: Series of PBS location right
+        rtt_location_l: Series of RTT location left
+        rtt_location_r: Series of RTT location right
+        lha_location_l: Series of LHA location left
+        lha_location_r: Series of LHA location right
+        rha_location_l: Series of RHA location left
+        rha_location_r: Series of RHA location right
+        spcas9_score: Series of spcas9 scores
+        editing_efficiency: Series of editing efficiencies
+        original_fold: Series of original fold values
     Returns:
         DataFrame with correct types
     """
+    output_df = pd.DataFrame({
+        'group_id': group_id,
+        'type_sub': type_sub,
+        'type_ins': type_ins,
+        'type_del': type_del,
+        'edit_len': edit_len,
+        'wt_sequence': wt_sequence,
+        'mut_sequence': mut_sequence,
+        'protospacer_location_l': protospacer_location_l,
+        'protospacer_location_r': protospacer_location_r,
+        'pbs_location_l': pbs_location_l,
+        'pbs_location_r': pbs_location_r,
+        'rtt_location_l': rtt_location_l,
+        'rtt_location_r': rtt_location_r,
+        'lha_location_l': lha_location_l,
+        'lha_location_r': lha_location_r,
+        'rha_location_l': rha_location_l,
+        'rha_location_r': rha_location_r,
+        'spcas9_score': spcas9_score,
+        'editing_efficiency': editing_efficiency,
+        'original_fold': original_fold.astype(int) if original_fold is not None else np.nan,
+    })
+
     # String transformations
-    data['wt_sequence'] = data['wt_sequence'].str.upper()
-    data['mut_sequence'] = data['mut_sequence'].str.upper()
+    output_df['wt_sequence'] = output_df['wt_sequence'].str.upper()
+    output_df['mut_sequence'] = output_df['mut_sequence'].str.upper()
 
     # Batch type conversions
     bool_columns = ['type_sub', 'type_ins', 'type_del']
@@ -404,12 +455,25 @@ def _standardize_data_types(data: pd.DataFrame) -> pd.DataFrame:
     ]
     float_columns = ['spcas9_score', 'editing_efficiency']
 
-    data[bool_columns] = data[bool_columns].astype(bool)
-    data[int_columns] = data[int_columns].astype(int)
-    data[float_columns] = data[float_columns].astype(float)
-    data['original_fold'] = data['original_fold'].astype(int) if 'original_fold' in data.columns else np.nan
+    output_df[bool_columns] = output_df[bool_columns].astype(bool)
+    output_df[int_columns] = output_df[int_columns].astype(int)
+    output_df[float_columns] = output_df[float_columns].astype(float)
 
-    return data
+    return output_df
+
+def _parse_pridict_location_column(
+    location_series: pd.Series, column_name: str
+) -> tuple[pd.Series, pd.Series]:
+    """Vectorized parser for PRIDICT location strings like '[13, 26]'."""
+    series = pd.Series(location_series, copy=False)
+    extracted = series.astype('string').str.extract(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
+    invalid = pd.Series(extracted.isna().any(axis=1), index=series.index)
+    if bool(invalid.any()):
+        bad_examples = [str(value) for value in series[invalid].tolist()[:3]]
+        raise ValueError(
+            f"Invalid location format in column {column_name}: {bad_examples}"
+        )
+    return extracted[0].astype(int), extracted[1].astype(int)
 
 def _standardize_deepprime_ontarget(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
@@ -523,32 +587,13 @@ def _standardize_deepprime_ontarget(
     aligned.columns = ['wt_aligned', 'mut_aligned']
 
     # ---- Step 6: Build output DataFrame ----
-    output_df = pd.DataFrame({
-        'group_id': df['group_id'],
-        'type_sub': df['type_sub'],
-        'type_ins': df['type_ins'],
-        'type_del': df['type_del'],
-        'edit_len': df['edit_len'],
-        'wt_sequence': aligned['wt_aligned'],
-        'mut_sequence': aligned['mut_aligned'],
-        'protospacer_location_l': PROTOSPACER_L,
-        'protospacer_location_r': PROTOSPACER_R,
-        'pbs_location_l': df['pbs_l'],
-        'pbs_location_r': df['pbs_r'],
-        'rtt_location_l': df['rtt_l'],
-        'rtt_location_r': df['rtt_r'],
-        'lha_location_l': df['lha_l'],
-        'lha_location_r': df['lha_r'],
-        'rha_location_l': df['rha_l'],
-        'rha_location_r': df['rha_r'],
-        'spcas9_score': df['deepspcas9_score'],
-        'editing_efficiency': df['measured_pe_efficiency'],
-        'original_fold': df['fold'] if 'fold' in df.columns else np.nan,
-    })
     # replace 'Test' in original_fold with -1
-    output_df['original_fold'] = output_df['original_fold'].replace('Test', -1)
-    # cast to correct type before saving
-    output_df = _standardize_data_types(output_df)
+    df['original_fold'] = df['fold'].replace('Test', -1)
+    output_df = _build_standardized_output_df(
+        df['group_id'], df['type_sub'], df['type_ins'], df['type_del'], df['edit_len'], 
+        aligned['wt_aligned'], aligned['mut_aligned'], PROTOSPACER_L, PROTOSPACER_R, 
+        df['pbs_l'], df['pbs_r'], df['rtt_l'], df['rtt_r'], df['lha_l'], df['lha_r'], df['rha_l'], df['rha_r'], 
+        df['deepspcas9_score'], df['measured_pe_efficiency'], df['original_fold'])
 
     # export the data to a parquet file
     output_path = DATA_ROOT / 'standardized' / 'deepprime' / dataset / output_name
@@ -564,9 +609,10 @@ def _standardize_pridict2_library_diverse(
     dataset = _normalize_name(dataset)
     cell_line = _normalize_name(cell_line)
     pe_system = _normalize_name(pe_system)
-    output_name = f"{dataset}-{cell_line}-{pe_system}.parquet"
+    input_name = f"{cell_line}-{pe_system}.csv"
+    output_name = f"{cell_line}-{pe_system}.parquet"
     if data is None:
-        data = pd.read_parquet(DATA_ROOT / 'exported' / 'pridict2' / dataset / output_name)
+        data = pd.read_csv(DATA_ROOT / 'exported' / 'pridict2' / dataset / input_name)
     logger.info(
         "Standardizing PRIDICT2 dataset=%s cell_line=%s pe_system=%s rows=%s",
         dataset,
@@ -578,7 +624,100 @@ def _standardize_pridict2_library_diverse(
     # ---- Step 1: calculate group ID based on the spacer column
     df = data.copy()
     df['group_id'] = df.groupby('spacer').ngroup()
-    raise NotImplementedError("Standardization logic for PRIDICT2 is not implemented yet")
+
+    # ---- Step 2: determine mutation type and edit length ----
+    correction_type = pd.Series(df['Correction_Type'], copy=False).astype('string').str.strip().str.lower()
+    type_sub = correction_type.eq('replacement')
+    type_ins = correction_type.eq('insertion')
+    type_del = correction_type.eq('deletion')
+
+    unknown_mask = ~(type_sub | type_ins | type_del)
+    if unknown_mask.any():
+        unknown_values = df.loc[unknown_mask, 'Correction_Type'].astype(str).unique().tolist()[:5]
+        print(unknown_values)
+        raise ValueError(f"Unsupported Correction_Type values: {unknown_values}")
+
+    # used for alignment, 0 for substitution, 1 for insertion, 2 for deletion
+    edit_type = pd.Series(
+        np.select([type_sub, type_ins, type_del], [0, 1, 2], default=-1),
+        index=df.index,
+    ).astype(int)
+    edit_len = pd.Series(pd.to_numeric(df['Correction_Length'], errors='raise'), index=df.index).astype(int)
+
+    # ---- Step 3: compute protospacer / PBS / RTT / LHA / RHA locations ----
+    wt_sequence = pd.Series(df['wide_initial_target'], copy=False).astype('string').str.upper()
+    mut_sequence = pd.Series(df['wide_mutated_target'], copy=False).astype('string').str.upper()
+
+    protospacer_l, protospacer_r = _parse_pridict_location_column(
+        pd.Series(df['protospacerlocation_only_initial'], copy=False), 'protospacerlocation_only_initial'
+    )
+    pbs_l, pbs_r = _parse_pridict_location_column(pd.Series(df['PBSlocation'], copy=False), 'PBSlocation')
+    rtt_wt_l, rtt_wt_r = _parse_pridict_location_column(
+        pd.Series(df['RT_initial_location'], copy=False), 'RT_initial_location'
+    )
+    rtt_mut_l, rtt_mut_r = _parse_pridict_location_column(
+        pd.Series(df['RT_mutated_location'], copy=False), 'RT_mutated_location'
+    )
+
+    rha_len = pd.Series(df['RTToverhang'], copy=False).astype('string').str.upper().str.len().astype(int)
+    lha_len = pd.Series(np.where(
+        type_del,
+        rtt_mut_r - rtt_mut_l - rha_len,
+        rtt_mut_r - rtt_mut_l - rha_len - edit_len,
+    ), index=df.index).astype(int)
+    lha_l = rtt_wt_l
+    lha_r = rtt_wt_l + lha_len
+
+    rha_wt_l = rtt_wt_r - rha_len
+    rha_mut_r = rtt_mut_r
+
+    # ---- Step 4: align WT and mut sequences on edit position ----
+    aligned = pd.DataFrame(
+        {
+            'wt': wt_sequence,
+            'mut': mut_sequence,
+            'lha_r': lha_r,
+            'edit_len': edit_len,
+            'edit_type': edit_type,
+        }
+    ).apply(
+        lambda row: align_wt_mut_sequences(
+            row['wt'],
+            row['mut'],
+            int(row['lha_r']),
+            edit_length=int(row['edit_len']),
+            edit_type=int(row['edit_type']),
+        ),
+        axis=1,
+        result_type='expand',
+    )
+    aligned.columns = ['wt_sequence', 'mut_sequence']
+    wt_aligned = pd.Series(aligned['wt_sequence'], index=df.index)
+    mut_aligned = pd.Series(aligned['mut_sequence'], index=df.index)
+
+    # ---- Step 5: assemble score/efficiency/fold fields ----
+    spcas9_score = pd.Series(pd.to_numeric(df['deepcas9'], errors='coerce'), index=df.index)
+    efficiency_column = next(
+        (col for col in df.columns if col.lower().endswith('averageedited')),
+        None,
+    )
+    if efficiency_column is None:
+        raise ValueError("Could not find cell-line specific averageedited column in PRIDICT2 data.")
+    editing_efficiency = pd.Series(pd.to_numeric(df[efficiency_column], errors='coerce'), index=df.index)
+    original_fold = pd.Series(pd.to_numeric(df['testset_fold'], errors='coerce'), index=df.index).fillna(-1).astype(int)
+
+    # ---- Step 6: build and save standardized output ----
+    output_df = _build_standardized_output_df(
+        pd.Series(df['group_id'], index=df.index), type_sub, type_ins, type_del, edit_len,
+        wt_aligned, mut_aligned, protospacer_l, protospacer_r,
+        pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r,
+        spcas9_score, editing_efficiency, original_fold)
+
+    output_path = DATA_ROOT / 'standardized' / 'pridict2' / dataset / output_name
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    output_df.to_parquet(output_path, index=False)
+    logger.info("Saved standardized PRIDICT2 data: %s", output_path)
 
 def _standardize_pridict1_library1(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
@@ -607,18 +746,6 @@ def _standardize_pridict1_library1(
     # Step 
     df = data.copy()
 
-    def _parse_location_column(location_series: pd.Series, column_name: str) -> tuple[pd.Series, pd.Series]:
-        """Vectorized parser for location strings like '[13, 26]'."""
-        series = pd.Series(location_series, copy=False)
-        extracted = series.astype('string').str.extract(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
-        invalid = pd.Series(extracted.isna().any(axis=1), index=series.index)
-        if bool(invalid.any()):
-            bad_examples = [str(value) for value in series[invalid].tolist()[:3]]
-            raise ValueError(
-                f"Invalid location format in column {column_name}: {bad_examples}"
-            )
-        return extracted[0].astype(int), extracted[1].astype(int)
-
     # ---- Step 1: Determine mutation type and filter invalid rows ----
     correction_type = pd.Series(df['Correction_Type'], copy=False).astype('string').str.strip().str.lower()
     type_sub = correction_type.eq('replacement')
@@ -640,7 +767,7 @@ def _standardize_pridict1_library1(
     wt_sequence = pd.Series(df['wide_initial_target'], copy=False).astype('string').str.upper()
     mut_sequence = pd.Series(df['wide_mutated_target'], copy=False).astype('string').str.upper()
 
-    protospacer_l, protospacer_r = _parse_location_column(
+    protospacer_l, protospacer_r = _parse_pridict_location_column(
         pd.Series(df['protospacerlocation_only_initial'], copy=False), 'protospacerlocation_only_initial'
     )
     protospacer_bounds = pd.DataFrame(
@@ -658,11 +785,11 @@ def _standardize_pridict1_library1(
     df['group_id'] = df.groupby('protospacer').ngroup()
 
     # ---- Step 3: Compute PBS, RTT, LHA and RHA locations ----
-    pbs_l, pbs_r = _parse_location_column(pd.Series(df['PBSlocation'], copy=False), 'PBSlocation')
-    rtt_wt_l, rtt_wt_r = _parse_location_column(
+    pbs_l, pbs_r = _parse_pridict_location_column(pd.Series(df['PBSlocation'], copy=False), 'PBSlocation')
+    rtt_wt_l, rtt_wt_r = _parse_pridict_location_column(
         pd.Series(df['RT_initial_location'], copy=False), 'RT_initial_location'
     )
-    rtt_mut_l, rtt_mut_r = _parse_location_column(
+    rtt_mut_l, rtt_mut_r = _parse_pridict_location_column(
         pd.Series(df['RT_mutated_location'], copy=False), 'RT_mutated_location'
     )
 
@@ -711,31 +838,11 @@ def _standardize_pridict1_library1(
         editing_efficiency = average_edited
 
     # ---- Step 6: Build output DataFrame ----
-    output_df = pd.DataFrame({
-        'group_id': df['group_id'],
-        'type_sub': type_sub,
-        'type_ins': type_ins,
-        'type_del': type_del,
-        'edit_len': edit_len,
-        'wt_sequence': aligned['wt_sequence'],
-        'mut_sequence': aligned['mut_sequence'],
-        'protospacer_location_l': protospacer_l,
-        'protospacer_location_r': protospacer_r,
-        'pbs_location_l': pbs_l,
-        'pbs_location_r': pbs_r,
-        'rtt_location_l': rtt_wt_l,
-        # deletion results in the same location as the wild type after alignment
-        'rtt_location_r': np.where(type_del, rtt_wt_r, rtt_mut_r),
-        'lha_location_l': lha_l,
-        'lha_location_r': lha_r,
-        'rha_location_l': rha_wt_l,
-        # deletion results in the same location as the wild type after alignment
-        'rha_location_r': np.where(type_del, rha_wt_r, rha_mut_r), 
-        'spcas9_score': spcas9_score,
-        'editing_efficiency': editing_efficiency,
-    })
-    # cast to correct type before saving
-    output_df = _standardize_data_types(output_df)
+    output_df = _build_standardized_output_df(
+        pd.Series(df['group_id'], index=df.index), type_sub, type_ins, type_del, edit_len, 
+        wt_sequence, mut_sequence, protospacer_l, protospacer_r, 
+        pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r, 
+        spcas9_score, editing_efficiency)
 
     output_path = DATA_ROOT / 'standardized' / 'pridict1' / dataset / f"{output_name}"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -769,8 +876,9 @@ if __name__ == "__main__":
         logger.debug("Debug mode enabled")
         exit(0)
 
-    export_original_data()
+    # export_original_data()
 
-    standardize_pe_data(study="deepprime", dataset="deepprime-small")
-    standardize_pe_data(study="deepprime", dataset="deepprime-clinvar")
-    standardize_pe_data(study="pridict1", dataset="library1")
+    # standardize_pe_data(study="deepprime", dataset="deepprime-small")
+    # standardize_pe_data(study="deepprime", dataset="deepprime-clinvar")
+    # standardize_pe_data(study="pridict1", dataset="library1")
+    standardize_pe_data(study="pridict2", )
