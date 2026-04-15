@@ -73,6 +73,24 @@ class PEDataLoader:
             raise ValueError(f"Unknown target format: {target_format}")
         
         if not file_path.exists():
+            # If model-format file is missing, try to synthesize it from standardized data.
+            if target_format != "std":
+                std_file = self._find_standardized_file(cell_line_lower, pe_system_lower, source_model)
+                if std_file.exists():
+                    from .converter import DataConverter
+
+                    converter = DataConverter(self.datasets_dir)
+                    logger.info(
+                        "Model-format file missing; generating %s from standardized file %s",
+                        target_format,
+                        std_file,
+                    )
+                    converted_df = converter.convert_standardized_file(
+                        std_file,
+                        target_format=target_format,
+                        output_file=file_path,
+                    )
+                    return converted_df
             raise FileNotFoundError(
                 f"Data file not found: {file_path}\n"
                 f"Parameters: cell_line={cell_line}, pe_system={pe_system}, "
@@ -152,3 +170,7 @@ class PEDataLoader:
                         })
         
         return pd.DataFrame(datasets)
+
+
+# Backward compatible alias used by app.main import.
+DataLoader = PEDataLoader

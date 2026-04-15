@@ -9,7 +9,12 @@ from typing import Optional, Dict, List
 import logging
 
 from pe_common.constants import DATA_ROOT
-from pe_common.sequence_utils import align_wt_mut_sequences, remove_padding
+from .model_converters import (
+    is_standardized_dataframe,
+    standardized_to_pridict_dataframe,
+    standardized_to_deepprime_dataframe,
+    standardized_to_oped_dataframe,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +42,46 @@ class DataConverter:
         
         logger.info(f"DataConverter initialized with datasets_dir: {self.datasets_dir}")
     
+    def convert_standardized_dataframe(self, df: pd.DataFrame, target_format: str) -> pd.DataFrame:
+        """
+        Convert a standardized dataframe into a model-specific format.
+
+        Args:
+            df: Standardized dataframe
+            target_format: One of {"std", "deepprime", "pridict", "pridict2", "oped"}
+        """
+        if target_format == "std":
+            return df.copy()
+        if not is_standardized_dataframe(df):
+            raise ValueError("Input dataframe is not in standardized schema.")
+        if target_format == "deepprime":
+            return standardized_to_deepprime_dataframe(df)
+        if target_format in {"pridict", "pridict2"}:
+            return standardized_to_pridict_dataframe(df)
+        if target_format == "oped":
+            return standardized_to_oped_dataframe(df)
+        raise ValueError(f"Unsupported target format: {target_format}")
+
+    def convert_standardized_file(
+        self,
+        standardized_file: Path,
+        *,
+        target_format: str,
+        output_file: Optional[Path] = None,
+    ) -> pd.DataFrame:
+        """
+        Convert a standardized CSV file to a model-specific CSV.
+        """
+        if not standardized_file.exists():
+            raise FileNotFoundError(f"Standardized data file not found: {standardized_file}")
+        df = pd.read_csv(standardized_file)
+        converted = self.convert_standardized_dataframe(df, target_format=target_format)
+        if output_file is not None:
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            converted.to_csv(output_file, index=False)
+            logger.info(f"Converted standardized file to {target_format}: {output_file}")
+        return converted
+
 
     
     def convert_to_standardized(

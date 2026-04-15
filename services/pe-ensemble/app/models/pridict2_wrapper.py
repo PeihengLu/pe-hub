@@ -1,15 +1,23 @@
 import sys
-from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import torch
 import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
+from pe_common.preprocessing import (
+    ensure_schema,
+    standardized_to_pridict_dataframe,
+    STANDARDIZED_BASE_COLUMNS,
+)
 
-# Add vendor model path
+# Add vendor model paths required by PRIDICT2 imports.
 _vendor_root = resolve_vendor_models_path()
-sys.path.insert(0, str(_vendor_root))
+_pridict2_root = resolve_vendor_models_path("pridict2")
+if str(_vendor_root) not in sys.path:
+    sys.path.insert(0, str(_vendor_root))
+if str(_pridict2_root) not in sys.path:
+    sys.path.insert(0, str(_pridict2_root))
 
 from pe_common.model_interface import BasePEModel
 
@@ -27,6 +35,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         'base_390k_decinit_HEKhyongbum_FT',
         'base_390k_decinit_HEKschwank_FT'
     ]
+    STANDARDIZED_REQUIRED_COLUMNS = STANDARDIZED_BASE_COLUMNS
     
     def __init__(self, device: Optional[torch.device] = None, 
                  wsize: int = 20,
@@ -49,7 +58,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
                 f"Supported: {self.SUPPORTED_MODEL_NAMES}"
             )
         
-        from pridict.pridictv2.predict_outcomedistrib import PRIEML_Model
+        from pridict2.pridict.pridictv2.predict_outcomedistrib import PRIEML_Model
         
         self.prieml_model = PRIEML_Model(
             device=device or torch.device('cpu'),
@@ -58,6 +67,50 @@ class PRIDICT2ModelWrapper(BasePEModel):
             fdtype=torch.float32
         )
         self.model_components = None
+        self.loaded_model_dir: Optional[str] = None
+
+    def _default_outcomes(self) -> List[str]:
+        # Original PRIDICT1 base models were mostly used for intended edits.
+        if self.model_name_str in {"base_90k", "base_390k"}:
+            return ["averageedited"]
+        return ["averageedited", "averageunedited", "averageindel"]
+
+    def _to_pridict_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        return ensure_schema(
+            df,
+            native_required={
+                "seq_id",
+                "wide_initial_target",
+                "wide_mutated_target",
+                "deepeditposition",
+                "deepeditposition_lst",
+                "Correction_Type",
+                "Correction_Length",
+                "protospacerlocation_only_initial",
+                "PBSlocation",
+                "RT_initial_location",
+                "RT_mutated_location",
+            },
+            converters={"standardized_to_pridict": standardized_to_pridict_dataframe},
+        )
+
+    def _predict_from_loaded_or_current_model(
+        self, dloader: Any, y_ref: List[str]
+    ) -> pd.DataFrame:
+        if self.model_components is not None:
+            # PRIDICT2 wrapper exposes a "loaded-models" prediction entrypoint.
+            return self.prieml_model.predict_from_dloader_using_loaded_models(
+                dloader=dloader,
+                models=self.model_components,
+                y_ref=y_ref,
+            )
+        if self.loaded_model_dir:
+            return self.prieml_model.predict_from_dloader(
+                dloader=dloader,
+                model_dir=self.loaded_model_dir,
+                y_ref=y_ref,
+            )
+        raise ValueError("Model not loaded. Call load_model() first.")
     
     def load_model(self, model_path: str) -> None:
         """
@@ -66,6 +119,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Args:
             model_path: Path to the trained model directory
         """
+        self.loaded_model_dir = model_path
         self.model_components = self.prieml_model.build_retrieve_models(model_path)
         self.model = self.model_components
         self.is_trained = True
@@ -84,7 +138,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Returns:
             DataLoader ready for PRIDICT2 prediction
         """
-        y_ref = kwargs.get('y_ref', ['averageedited', 'averageunedited', 'averageindel'])
+        df = self._to_pridict_dataframe(df)
+        y_ref = kwargs.get('y_ref', self._default_outcomes())
         batch_size = kwargs.get('batch_size', 500)
         cell_types = kwargs.get('cell_types', None)
         
@@ -99,35 +154,36 @@ class PRIDICT2ModelWrapper(BasePEModel):
         
         return dloader
     
-    def predict(self, data: Any, batch_size: int = 500) -> List[List[float]]:
+    def predict(self, data: Any, batch_size: int = 500) -> List[float]:
         """
-        Make predictions using PRIDICT2 model
+        Make predictions using PRIDICT model.
         
         Args:
             data: DataLoader from prepare_data()
             batch_size: Batch size (not used, kept for API consistency)
             
         Returns:
-            List of predictions [edited, unedited, indel] for each sample
+            List of intended edit predictions.
         """
         if not self.is_trained:
             raise ValueError("Model not loaded. Call load_model() first.")
-        
-        # Make predictions for all three outcomes
-        pred_df = self.prieml_model.predict_from_dloader(
+        pred_df = self._predict_from_loaded_or_current_model(
             dloader=data,
-            model_dir=None,  # model already loaded
-            y_ref=['averageedited', 'averageunedited', 'averageindel']
+            y_ref=["averageedited"],
         )
-        
-        # Return all three outcomes as a list of lists
-        predictions = pred_df[[
-            'pred_averageedited',
-            'pred_averageunedited', 
-            'pred_averageindel'
-        ]].values.tolist()
-        
-        return predictions
+        return pred_df["pred_averageedited"].astype(float).tolist()
+
+    def predict_distribution(
+        self,
+        data: Any,
+        outcomes: Optional[List[str]] = None,
+    ) -> List[List[float]]:
+        """Predict one or multiple PRIDICT outcomes in batch."""
+        if not self.is_trained:
+            raise ValueError("Model not loaded. Call load_model() first.")
+        y_ref = outcomes or self._default_outcomes()
+        pred_df = self._predict_from_loaded_or_current_model(dloader=data, y_ref=y_ref)
+        return pred_df[[f"pred_{outcome}" for outcome in y_ref]].values.tolist()
     
     def predict_single_outcome(self, data: Any, outcome: str = 'averageedited') -> List[float]:
         """
@@ -147,11 +203,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         if outcome not in valid_outcomes:
             raise ValueError(f"Invalid outcome: {outcome}. Must be one of {valid_outcomes}")
         
-        pred_df = self.prieml_model.predict_from_dloader(
-            dloader=data,
-            model_dir=None,
-            y_ref=[outcome]
-        )
+        pred_df = self._predict_from_loaded_or_current_model(dloader=data, y_ref=[outcome])
         
         return pred_df[f'pred_{outcome}'].tolist()
     
@@ -168,21 +220,65 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Returns:
             Dictionary with training results
         """
-        from pridict.pridictv2.run_workflow import build_config_map, run_cont_pe_RNN_distribution
-        
-        # This requires setting up the full training pipeline
-        # with proper data loaders, model initialization, etc.
-        # For now, raise NotImplementedError with guidance
-        
-        raise NotImplementedError(
-            "PRIDICT2 training requires complex setup. "
-            "To train PRIDICT2:\n"
-            "1. Prepare data in PRIDICT2 format with all required columns\n"
-            "2. Use pridict.pridictv2.run_workflow module directly\n"
-            "3. Configure hyperparameters using RNNHyperparamConfig\n"
-            "4. Call run_cont_pe_RNN_distribution() with proper data partition\n"
-            "See vendor/models/pridict2/notebooks/ for training examples."
+        from torch import nn
+        from pridict2.pridict.pridictv2.run_workflow import build_config_map, train_val_run
+
+        hyperparameters = hyperparameters or {}
+        y_ref = list(hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes())
+        train_df = self._to_pridict_dataframe(train_data)
+        if val_data is not None:
+            val_df = self._to_pridict_dataframe(val_data)
+        else:
+            val_df = train_df.sample(frac=0.2, random_state=int(hyperparameters.get("random_state", 42)))
+            train_df = train_df.drop(index=val_df.index).reset_index(drop=True)
+            val_df = val_df.reset_index(drop=True)
+
+        norm_cols_tr, proc_tr, init_tr, n_init_tr, mut_tr, n_mut_tr = self.prieml_model._process_df(train_df)
+        dtensor_train = self.prieml_model._construct_datatensor(
+            norm_cols_tr, proc_tr, init_tr, n_init_tr, mut_tr, n_mut_tr, y_ref=y_ref
         )
+        norm_cols_val, proc_val, init_val, n_init_val, mut_val, n_mut_val = self.prieml_model._process_df(val_df)
+        dtensor_val = self.prieml_model._construct_datatensor(
+            norm_cols_val, proc_val, init_val, n_init_val, mut_val, n_mut_val, y_ref=y_ref
+        )
+
+        data_partitions = {0: {"train": dtensor_train, "validation": dtensor_val}}
+        run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
+        output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
+
+        batch_size = int(hyperparameters.get("batch_size", 128))
+        num_epochs = int(hyperparameters.get("num_epochs", 20))
+        trf_tup = hyperparameters.get(
+            "trf_tup",
+            (64, 64, 1, True, 0.1, nn.GRU, nn.ReLU(), 1e-4, batch_size, num_epochs),
+        )
+        experiment_options = {
+            "experiment_desc": str(hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")),
+            "model_name": "PE_RNN_distribution",
+            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
+            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
+            "seqlevel_featdim": int(hyperparameters.get("seqlevel_featdim", len(norm_cols_tr or []))),
+            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
+        }
+        config_map = build_config_map(trf_tup, experiment_options, loss_func=str(hyperparameters.get("loss_func", "KLDloss")))
+        train_val_run(
+            datatensor_partitions=data_partitions,
+            config_map=config_map,
+            train_val_dir=output_dir,
+            run_gpu_map=run_gpu_map,
+            num_epochs=num_epochs,
+        )
+
+        run_dir = f"{output_dir}/train_val/run_0"
+        self.load_model(run_dir)
+        return {
+            "status": "success",
+            "output_dir": output_dir,
+            "model_dir": run_dir,
+            "num_train_rows": len(train_df),
+            "num_val_rows": len(val_df),
+            "outcomes": y_ref,
+        }
     
     def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
         """
@@ -199,25 +295,28 @@ class PRIDICT2ModelWrapper(BasePEModel):
         
         from scipy.stats import pearsonr, spearmanr
         
+        test_df = self._to_pridict_dataframe(test_data)
+        outcomes = [o for o in self._default_outcomes() if o in test_df.columns]
+        if not outcomes:
+            outcomes = ["averageedited"]
+
         # Prepare data
         dloader = self.prepare_data(
-            test_data,
-            y_ref=['averageedited', 'averageunedited', 'averageindel']
+            test_df,
+            y_ref=outcomes
         )
         
         # Make predictions
-        pred_df = self.prieml_model.predict_from_dloader(
-            dloader=dloader,
-            model_dir=None,
-            y_ref=['averageedited', 'averageunedited', 'averageindel']
-        )
+        pred_df = self._predict_from_loaded_or_current_model(dloader=dloader, y_ref=outcomes)
         
         results = {}
+        n_samples = 0
         
         # Evaluate each outcome
-        for outcome in ['averageedited', 'averageunedited', 'averageindel']:
+        for outcome in outcomes:
             y_true = pred_df[f'true_{outcome}'].values
             y_pred = pred_df[f'pred_{outcome}'].values
+            n_samples = len(y_true)
             
             # Remove NaN values if present
             mask = ~(np.isnan(y_true) | np.isnan(y_pred))
@@ -225,13 +324,15 @@ class PRIDICT2ModelWrapper(BasePEModel):
             y_pred_clean = y_pred[mask]
             
             if len(y_true_clean) > 0:
-                pearson_corr, _ = pearsonr(y_true_clean, y_pred_clean)
-                spearman_corr, _ = spearmanr(y_true_clean, y_pred_clean)
+                pearson_res = pearsonr(y_true_clean, y_pred_clean)
+                spearman_res = spearmanr(y_true_clean, y_pred_clean)
+                pearson_corr = float(np.asarray(pearson_res).reshape(-1)[0])
+                spearman_corr = float(np.asarray(spearman_res).reshape(-1)[0])
                 mse = np.mean((y_true_clean - y_pred_clean) ** 2)
                 mae = np.mean(np.abs(y_true_clean - y_pred_clean))
                 
-                results[f'{outcome}_pearson'] = float(pearson_corr)
-                results[f'{outcome}_spearman'] = float(spearman_corr)
+                results[f'{outcome}_pearson'] = pearson_corr
+                results[f'{outcome}_spearman'] = spearman_corr
                 results[f'{outcome}_mse'] = float(mse)
                 results[f'{outcome}_mae'] = float(mae)
             else:
@@ -240,7 +341,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
                 results[f'{outcome}_mse'] = np.nan
                 results[f'{outcome}_mae'] = np.nan
         
-        results['n_samples'] = len(y_true)
+        results['n_samples'] = n_samples
         
         return results
     
@@ -274,7 +375,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
             'supported_cell_types': self.SUPPORTED_CELL_TYPES,
             'supported_model_names': self.SUPPORTED_MODEL_NAMES,
             'available_cell_types': self.prieml_model.get_celltypes(self.model_name_str),
-            'outcomes': ['averageedited', 'averageunedited', 'averageindel'],
+            'outcomes': self._default_outcomes(),
+            'supports_standardized_input': True,
             'description': 'PRIDICT2 model for predicting outcome distribution (edited/unedited/indel)'
         })
         return info
