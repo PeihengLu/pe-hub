@@ -30,18 +30,10 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 
 ```bash
 cd services/pe-ensemble
-docker-compose up
+PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
 ```
 
-This compose file starts both `pe-ensemble` and its `pe-db` dependency.
 The service will be available at http://localhost:8001 by default.
-
-## Running as Part of Full Stack
-
-```bash
-cd ../..
-docker-compose -f docker-compose.full.yml up
-```
 
 ## Development
 

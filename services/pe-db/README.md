@@ -8,7 +8,6 @@ A FastAPI-based service that serves and converts Prime Editing datasets into sta
 - Converts raw datasets into standardized/model-specific formats
 - RESTful API for data retrieval
 - Flexible data filtering and formatting
-- Docker-based deployment
 
 ## API Endpoints
 
@@ -21,17 +20,10 @@ A FastAPI-based service that serves and converts Prime Editing datasets into sta
 
 ```bash
 cd services/pe-db
-docker-compose up
+uvicorn pe_db.main:app --reload --port 8000
 ```
 
 The service will be available at http://localhost:8000
-
-## Running as Part of Full Stack
-
-```bash
-cd ../..
-docker-compose -f docker-compose.full.yml up pe-db
-```
 
 ## Development
 

@@ -14,7 +14,6 @@ A standalone FastAPI application that serves and converts prime editing efficien
 - Convert between different data formats
 - Standardize data from various sources
 - REST API for easy data access
-- Docker support for easy deployment
 
 ### 2. PE Ensemble Service
 A web service for evaluating, training, and creating ensembles of prime editing efficiency prediction models.
@@ -41,14 +40,12 @@ pe-db/
 │   │   ├── app/
 │   │   │   ├── main.py         # FastAPI application
 │   │   │   └── data_prep/      # Data conversion modules
-│   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   └── pe-ensemble/            # PE Ensemble service (TBD)
 ├── datasets/                    # Data directory
 │   ├── raw/                    # Original datasets
 │   └── standardized/           # Converted standardized data
 ├── vendor/models/              # Third-party model code (subdirectories)
-├── docker-compose.yml
 └── setup-dev.sh               # Development setup script
 ```
 
@@ -74,24 +71,6 @@ uvicorn app.main:app --reload
 
 Access the API at: http://localhost:8000
 API documentation: http://localhost:8000/docs
-
-### Option 2: Docker
-
-1. **Build and run with Docker Compose:**
-```bash
-cd services/pe-db
-docker-compose up
-```
-
-The service will be available at http://localhost:8000
-
-2. **Full stack (DB + Ensemble + Frontend):**
-```bash
-cd ../../
-docker-compose -f docker-compose.full.yml up
-```
-
-This starts the database, ensemble API, and frontend dev server.
 
 ## PE Database API Usage
 

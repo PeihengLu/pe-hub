@@ -8,7 +8,7 @@ import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
 
-# Ensure vendor models are importable both locally and in Docker
+# Ensure vendor models are importable in local development
 _vendor_root = resolve_vendor_models_path()
 sys.path.insert(0, str(_vendor_root))
 

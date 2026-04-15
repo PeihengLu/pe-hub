@@ -127,7 +127,7 @@ See [TRAINING_GUIDE.md](services/pe-ensemble/TRAINING_GUIDE.md) for detailed ste
 2. Add model ensemble functionality
 3. Create FastAPI endpoints
 4. Add model versioning
-5. Create Docker containers
+5. Prepare a deployment package
 
 ## 📁 File Structure
 
