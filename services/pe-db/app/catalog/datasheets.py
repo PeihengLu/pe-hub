@@ -92,6 +92,8 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
         ("pridict2", "library-diverse", "k562", "pe2"),
         ("pridict2", "library-diverse", "k562mlh1dn", "pe2"),
         ("pridict2", "library-diverse-invivo", "adv", "pe2"),
+        # Legacy export path if AdV rows were written under library-diverse
+        ("pridict2", "library-diverse", "adv", "pe2"),
     ]
     return [
         DatasheetScaffoldAssignment(
@@ -180,7 +182,7 @@ def _count_samples(file_path: Path) -> int:
     if not file_path.exists():
         return 0
     try:
-        return len(pd.read_csv(file_path))
+        return len(pd.read_csv(file_path, low_memory=False))
     except Exception as exc:
         logger.warning("Could not count samples in %s: %s", file_path, exc)
         return 0

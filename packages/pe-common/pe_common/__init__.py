@@ -14,18 +14,6 @@ from .preprocessing import (
     standardized_to_deepprime_features,
     ensure_schema,
 )
-from .training import (
-    EarlyStopping,
-    LightningTrainerConfig,
-    clip_gradients,
-    build_lr_scheduler,
-    build_group_kfold_indices,
-    ensure_lightning_available,
-    fit_lightning_module,
-    lightning_accelerator_from_device,
-    pearson_spearman,
-    run_supervised_training_loop,
-)
 
 __all__ = [
     # Constants
@@ -43,7 +31,7 @@ __all__ = [
     "standardized_to_pridict_dataframe",
     "standardized_to_deepprime_features",
     "ensure_schema",
-    # Training utilities
+    # Training utilities (lazy-loaded — requires torch)
     "EarlyStopping",
     "LightningTrainerConfig",
     "clip_gradients",
@@ -54,15 +42,38 @@ __all__ = [
     "lightning_accelerator_from_device",
     "pearson_spearman",
     "run_supervised_training_loop",
-    # Feature calculations (lazy-loaded via __getattr__)
+    # Feature calculations (lazy-loaded)
     "calculate_mfe",
     "calculate_mt_wallace",
     "calculate_gc_content",
 ]
 
+_TRAINING_EXPORTS = {
+    "EarlyStopping",
+    "LightningTrainerConfig",
+    "clip_gradients",
+    "build_lr_scheduler",
+    "build_group_kfold_indices",
+    "ensure_lightning_available",
+    "fit_lightning_module",
+    "lightning_accelerator_from_device",
+    "pearson_spearman",
+    "run_supervised_training_loop",
+}
+
+_FEATURE_EXPORTS = {
+    "calculate_mfe",
+    "calculate_mt_wallace",
+    "calculate_gc_content",
+}
+
 
 def __getattr__(name: str) -> Any:
-    if name in {"calculate_mfe", "calculate_mt_wallace", "calculate_gc_content"}:
+    if name in _TRAINING_EXPORTS:
+        from . import training
+
+        return getattr(training, name)
+    if name in _FEATURE_EXPORTS:
         from .features import calculate_mfe, calculate_mt_wallace, calculate_gc_content
 
         return {

@@ -1,4 +1,7 @@
-"""Static study and dataset metadata for the PE Database catalog."""
+"""Static study and dataset metadata for the PE Database catalog.
+
+Should be refactored to be more extensible if the study count grows.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +47,7 @@ STUDY_REGISTRY: tuple[StudyRecord, ...] = (
     ),
     StudyRecord(
         key="minsepie",
-        display_name="MinSePIE",
+        display_name="MinsePIE",
         publication_date=date(2023, 10, 1),
         authors="Koeppel et al.",
     ),

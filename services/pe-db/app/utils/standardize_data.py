@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 SUPPORTED_STUDIES = {"deepprime", "pridict2", "pridict1", "minsepie"}
+
+# Exported datasets that can be converted to the shared on-target PE schema.
+# DeepPrime off-target libraries use a different column layout and are export-only.
+STANDARDIZABLE_DATASETS: dict[str, frozenset[str]] = {
+    "deepprime": frozenset({"deepprime_clinvar", "deepprime_small"}),
+    "pridict1": frozenset({"library1"}),
+    "pridict2": frozenset({"library_diverse", "library_diverse_invivo"}),
+    "minsepie": frozenset({"library_insert"}),
+}
+
 DATASETS = {
     "deeppe": [
 
@@ -40,6 +50,13 @@ DATASETS = {
 def _normalize_name(value: str) -> str:
     """Normalize dataset/cell line/PE system names for filenames."""
     return str(value).strip().lower().replace("-", "_")
+
+
+def is_standardizable(study: str, dataset: str) -> bool:
+    """Return True when an exported CSV can be converted to the shared on-target schema."""
+    study_key = str(study).strip().lower()
+    dataset_key = _normalize_name(dataset)
+    return dataset_key in STANDARDIZABLE_DATASETS.get(study_key, frozenset())
 
 
 def export_original_data(study: Optional[str] = None, force_reexport: bool = False) -> None:
@@ -114,6 +131,13 @@ def standardize_exported_data(
                 DATA_ROOT / "standardized" / study_key / normalized_dataset /
                 f"{_normalize_name(cell_line)}-{_normalize_name(pe_system)}.parquet"
             )
+            if not is_standardizable(study_key, dataset_name):
+                logger.debug(
+                    "Skipping standardization for %s/%s (export-only or unsupported schema)",
+                    study_key,
+                    dataset_name,
+                )
+                continue
             if output_path.exists() and not force:
                 logger.debug("Already standardized: %s", output_path)
                 continue
@@ -124,12 +148,23 @@ def standardize_exported_data(
                 cell_line,
                 pe_system,
             )
-            standardize_pe_data(
-                study=study_key,
-                dataset=dataset_name,
-                cell_line=cell_line,
-                pe_system=pe_system,
-            )
+            try:
+                standardize_pe_data(
+                    study=study_key,
+                    dataset=dataset_name,
+                    cell_line=cell_line,
+                    pe_system=pe_system,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Failed to standardize %s/%s %s-%s: %s",
+                    study_key,
+                    dataset_name,
+                    cell_line,
+                    pe_system,
+                    exc,
+                )
+                continue
             count += 1
     logger.info("Standardized %s exported datasheet(s)", count)
     return count
@@ -1151,6 +1186,9 @@ def standardize_pe_data(
 
     Input hierarchy:
     exported/{study}/{dataset}/{cell_line}-{pe_system}.csv
+
+    Raises:
+        ValueError: If the dataset is not standardizable (e.g. DeepPrime off-target).
     """
     study = _normalize_name(study)
     cell_line = _normalize_name(cell_line)
@@ -1166,6 +1204,11 @@ def standardize_pe_data(
             )
     dataset = str(dataset).strip().lower()
     normalized_dataset = _normalize_name(dataset)
+    if not is_standardizable(study, dataset):
+        raise ValueError(
+            f"Dataset {study}/{dataset} is not standardizable to the shared on-target schema "
+            "(e.g. DeepPrime off-target exports). Use exported CSV directly."
+        )
     dataset_candidates = [dataset]
     if normalized_dataset not in dataset_candidates:
         dataset_candidates.append(normalized_dataset)
@@ -1186,6 +1229,11 @@ def standardize_pe_data(
 
     data = pd.read_csv(input_path)
     if study == "deepprime":
+        if normalized_dataset not in STANDARDIZABLE_DATASETS["deepprime"]:
+            raise ValueError(
+                f"DeepPrime dataset {dataset} is off-target / sub-pool format and cannot use "
+                "the on-target standardizer."
+            )
         _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "pridict1":
         if normalized_dataset != "library1":
