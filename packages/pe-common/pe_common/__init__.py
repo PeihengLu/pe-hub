@@ -14,6 +14,18 @@ from .preprocessing import (
     standardized_to_deepprime_features,
     ensure_schema,
 )
+from .training import (
+    EarlyStopping,
+    LightningTrainerConfig,
+    clip_gradients,
+    build_lr_scheduler,
+    build_group_kfold_indices,
+    ensure_lightning_available,
+    fit_lightning_module,
+    lightning_accelerator_from_device,
+    pearson_spearman,
+    run_supervised_training_loop,
+)
 
 __all__ = [
     # Constants
@@ -31,6 +43,17 @@ __all__ = [
     "standardized_to_pridict_dataframe",
     "standardized_to_deepprime_features",
     "ensure_schema",
+    # Training utilities
+    "EarlyStopping",
+    "LightningTrainerConfig",
+    "clip_gradients",
+    "build_lr_scheduler",
+    "build_group_kfold_indices",
+    "ensure_lightning_available",
+    "fit_lightning_module",
+    "lightning_accelerator_from_device",
+    "pearson_spearman",
+    "run_supervised_training_loop",
     # Feature calculations (lazy-loaded via __getattr__)
     "calculate_mfe",
     "calculate_mt_wallace",

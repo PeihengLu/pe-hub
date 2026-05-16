@@ -26,7 +26,15 @@ erDiagram
         int dataset_id FK
         string cell_line
         string pe_system
+        string scaffold_id
         int num_samples
+    }
+
+    Scaffold {
+        string id PK
+        string sequence
+        string name
+        string description
     }
 
     STUDY ||--o{ Dataset: contains

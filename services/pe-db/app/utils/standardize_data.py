@@ -1,4 +1,3 @@
-import argparse
 import logging
 from pathlib import Path
 from typing import Optional
@@ -9,10 +8,33 @@ import pandas as pd
 from pe_common.constants import DATA_ROOT
 from pe_common.sequence_utils import align_wt_mut_sequences, reverse_complement
 
+from ..catalog.scaffolds import scaffold_id_for_minsepie_sequence
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 SUPPORTED_STUDIES = {"deepprime", "pridict2", "pridict1", "minsepie"}
+DATASETS = {
+    "deeppe": [
+
+    ],
+    "deepprime": [
+        "deepprime-clinvar",
+        "deepprime-small",
+        "deepprime-off",
+        "deepprime-off-subpool",
+    ],
+    "pridict2": [
+        "library-diverse",
+        "library-diverse-invivo",
+    ],
+    "pridict1": [
+        "library1",
+    ],
+    "minsepie": [
+        "library-insert",
+    ],
+}
 
 
 def _normalize_name(value: str) -> str:
@@ -20,15 +42,18 @@ def _normalize_name(value: str) -> str:
     return str(value).strip().lower().replace("-", "_")
 
 
-def export_original_data(study: Optional[str] = None) -> None:
+def export_original_data(study: Optional[str] = None, force_reexport: bool = False) -> None:
     """
     Export raw study files into standardized exported datasheets.
 
     Output naming convention:
     ``{study}/{dataset}/{cell_line}-{pe_system}.csv``
 
+    After export, updates Datasheet rows in the catalog DB from ``datasets/exported/``.
+
     Args:
         study: Study key. If None, export all supported studies.
+        force_reexport: If True, re-export all data even if it already exists.
     """
     exporters = {
         "deepprime": _export_deepprime_datasheets,
@@ -40,9 +65,75 @@ def export_original_data(study: Optional[str] = None) -> None:
     target_studies = sorted(exporters) if study is None else [study]
     for study_name in target_studies:
         if study_name not in exporters:
-            raise ValueError(f"Unknown study: {study_name}")
-        logger.info("Exporting study=%s", study_name)
-        exporters[study_name]()
+            raise ValueError(f"Study={study_name} not supported")
+        exported_marker = DATA_ROOT / "exported" / study_name
+        if force_reexport or not exported_marker.exists():
+            logger.info("Exporting study=%s", study_name)
+            exporters[study_name]()
+        else:
+            logger.info("Study=%s already exported", study_name)
+
+    from ..catalog.datasheets import index_exported_datasheets
+
+    index_exported_datasheets()
+
+
+def standardize_exported_data(
+    study: Optional[str] = None,
+    *,
+    force: bool = False,
+) -> int:
+    """
+    Standardize all exported CSV datasheets under ``datasets/exported/``.
+
+    Writes parquet files to ``datasets/standardized/{study}/{dataset}/``.
+
+    Returns the number of datasheets standardized (or skipped when already present).
+    """
+    exported_root = DATA_ROOT / "exported"
+    if not exported_root.exists():
+        logger.warning("No exported data directory at %s", exported_root)
+        return 0
+
+    studies = sorted(SUPPORTED_STUDIES) if study is None else [study.strip().lower()]
+    count = 0
+    for study_key in studies:
+        study_dir = exported_root / study_key
+        if not study_dir.is_dir():
+            continue
+        for csv_path in study_dir.rglob("*.csv"):
+            if not csv_path.is_file():
+                continue
+            rel_parts = csv_path.relative_to(study_dir).parts
+            if len(rel_parts) != 2 or "-" not in csv_path.stem:
+                continue
+            dataset_name, _filename = rel_parts
+            cell_line, pe_system = csv_path.stem.rsplit("-", 1)
+            normalized_dataset = _normalize_name(dataset_name)
+            output_path = (
+                DATA_ROOT / "standardized" / study_key / normalized_dataset /
+                f"{_normalize_name(cell_line)}-{_normalize_name(pe_system)}.parquet"
+            )
+            if output_path.exists() and not force:
+                logger.debug("Already standardized: %s", output_path)
+                continue
+            logger.info(
+                "Standardizing %s/%s %s-%s",
+                study_key,
+                dataset_name,
+                cell_line,
+                pe_system,
+            )
+            standardize_pe_data(
+                study=study_key,
+                dataset=dataset_name,
+                cell_line=cell_line,
+                pe_system=pe_system,
+            )
+            count += 1
+    logger.info("Standardized %s exported datasheet(s)", count)
+    return count
+
 
 def _export_deepprime_datasheets() -> None:
     """
@@ -148,7 +239,6 @@ def _export_pridict1_datasheets() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     restored_data.to_csv(output_path, index=False)
     logger.info(f"Saved restored PRIDICT1 library1 data to {output_path}")
-
     # TODO: work on library2 and endogenous data
 
 
@@ -172,59 +262,252 @@ def _export_pridict2_library_diverse_datasheets() -> None:
         # remove columns where editing efficiency is NaN
         data = data.dropna(subset=[efficiency_column])
 
+        cell_line_norm = cell_line.lower().replace("-", "_")
         if cell_line == 'AdV':
-            output_path = (DATA_ROOT / 'exported' / 'pridict2' / 'library-diverse-invivo' /
-                       f'{cell_line.lower().replace("-", "_")}-pe2.csv')
+            dataset_name = 'library-diverse-invivo'
+            output_path = (
+                DATA_ROOT / 'exported' / 'pridict2' / dataset_name /
+                f'{cell_line_norm}-pe2.csv'
+            )
         else:
-            output_path = (DATA_ROOT / 'exported' / 'pridict2' / 'library-diverse' /
-                       f'{cell_line.lower().replace("-", "_")}-pe2.csv')
+            dataset_name = 'library-diverse'
+            output_path = (
+                DATA_ROOT / 'exported' / 'pridict2' / dataset_name /
+                f'{cell_line_norm}-pe2.csv'
+            )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         data.to_csv(output_path, index=False)
         logger.info(f"Saved PRIDICT2 library diverse data for {cell_line} to {output_path}")
+# ------------------------------------------------------------------------------
+# MinSePIE constants
+# ------------------------------------------------------------------------------
+# Mapping from experiment name (in MOESM5 ``experiment`` column) to the ST6
+# pegRNA row identified by (target, purpose). See Koeppel et al., Nature
+# Biotechnology 2023, Supplementary Tables 4-6 for details.
+_MINSEPIE_EXPERIMENT_TO_PEGRNA: dict[str, tuple[str, str]] = {
+    # Main prime insertion screen (+1 insertions at nick)
+    "CLYBL_293T_PE2_3": ("CLYBL", "prime insertion screen"),
+    "CLYBL_293T_PE2_6": ("CLYBL", "prime insertion screen"),
+    "EMX1_293T_PE2_3": ("EMX1", "prime insertion screen"),
+    "EMX1_293T_PE2_6": ("EMX1", "prime insertion screen"),
+    "FANCF_293T_PE2_3": ("FANCF", "prime insertion screen"),
+    "FANCF_293T_PE2_6": ("FANCF", "prime insertion screen"),
+    "FANCF_HAP1_PBPE_8": ("FANCF", "prime insertion screen"),
+    "FANCF_HAP1dMLH1_PBPE_7": ("FANCF", "prime insertion screen"),
+    "HEK3_293T_PE2_1": ("HEK3", "prime insertion screen"),
+    "HEK3_293T_PE2_6": ("HEK3", "prime insertion screen"),
+    "HEK3_293T_PE2_EV": ("HEK3", "prime insertion screen"),
+    "HEK3_293T_PE2_FEN1": ("HEK3", "prime insertion screen"),
+    "HEK3_293T_PE2_TREX1": ("HEK3", "prime insertion screen"),
+    "HEK3_293T_PE2_TREX2": ("HEK3", "prime insertion screen"),
+    "HEK3_HAP1_PBPE_8": ("HEK3", "prime insertion screen"),
+    "HEK3_HAP1dMLH1_PBPE_7": ("HEK3", "prime insertion screen"),
+    # Barnacle (codon-variant) library on HEK3 uses the main HEK3 pegRNA
+    "HEK3_293T_barnacle": ("HEK3", "prime insertion screen"),
+    # Engineered epegRNA
+    "HEK3_293T_epeg_10": ("HEK3", "prime insertion screen epegRNA"),
+    # 18nt insertion library (HEK3 main site labelled HEK3-S1 in experiment names)
+    "HEK3-S1_293T_5": ("HEK3", "prime insertion screen with 18 nt insertions"),
+    "HEK3-S2_293T_5": ("HEK3-S2", "prime insertion screen with 18 nt insertions"),
+    "HEK3-S3_293T_5": ("HEK3-S3", "prime insertion screen with 18 nt insertions"),
+    "HEK3-S4_293T_5": ("HEK3-S4", "prime insertion screen with 18 nt insertions"),
+    "HEK3-S5_293T_5": ("HEK3-S5", "prime insertion screen with 18 nt insertions"),
+    "HEK3-S6_293T_5": ("HEK3-S6", "prime insertion screen with 18 nt insertions"),
+    # Codon-variant (barnacle) library at endogenous loci
+    "LMNB1_293T_barnacle": ("LMNB1", "prime insertion screen with codon variants"),
+    "LMNB1rc_293T_barnacle": ("LMNB1_rc", "prime insertion screen with codon variants"),
+    "ACTB_293T_barnacle": ("ACTB", "prime insertion screen with codon variants"),
+    "ACTBrc_293T_barnacle": ("ACTB_rc", "prime insertion screen with codon variants"),
+    "NOLC1_293T_barnacle": ("NOLC1", "prime insertion screen with codon variants"),
+    "TP53_293T_barnacle": ("TP53", "prime insertion screen with codon variants"),
+    "TP53rc_293T_barnacle": ("TP53_rc", "prime insertion screen with codon variants"),
+    # RNF1 in experiment names corresponds to RNF2 in ST6 (author typo).
+    "RNF1_293T_barnacle": ("RNF2", "prime insertion screen with codon variants"),
+}
+
+_MINSEPIE_CELL_ABBR_TO_FULL: dict[str, str] = {
+    "293T": "hek293t",
+    "HAP1": "hap1",
+    "HAP1dMLH1": "hap1dmlh1",
+}
+
+# Library-name → integer fold id. Used as ``original_fold`` in the standardized
+# schema so CV splits can be reproduced downstream.
+_MINSEPIE_SET_TO_FOLD: dict[str, int] = {
+    "set1": 0,
+    "set2": 1,
+    "codon_validation": 2,
+    "epegRNAs": 3,
+    "18nt_inserts_HEK3": 4,
+    "18nt_inserts_HEK3-S2": 5,
+    "18nt_inserts_HEK3-S3": 6,
+    "18nt_inserts_HEK3-S4": 7,
+    "18nt_inserts_HEK3-S5": 8,
+    "18nt_inserts_HEK3-S6": 9,
+}
+
+
+def _parse_minsepie_experiment(experiment: str) -> tuple[str, str, str]:
+    """Parse a MinSePIE experiment string into (target_variant, cell_abbr, pe_condition).
+
+    Experiment strings follow ``<target>_<cell_abbr>_<pe_condition>`` where
+    ``cell_abbr`` is one of {``293T``, ``HAP1``, ``HAP1dMLH1``}. ``target`` and
+    ``pe_condition`` may themselves contain underscores (e.g. ``HEK3-S2`` or
+    ``PE2_FEN1``).
+    """
+    tokens = experiment.split("_")
+    for index, token in enumerate(tokens):
+        if token in _MINSEPIE_CELL_ABBR_TO_FULL:
+            target_variant = "_".join(tokens[:index])
+            pe_condition = "_".join(tokens[index + 1:])
+            return target_variant, token, pe_condition
+    raise ValueError(f"Could not parse cell line from MinSePIE experiment '{experiment}'")
+
+
+def _parse_minsepie_insertion_position(insertions_text: str) -> int:
+    """Extract the ``+N`` insertion position from an ST6 ``insertions`` cell.
+
+    Falls back to ``+1`` (the most common) when the text does not explicitly
+    encode a position (e.g. the epegRNA "Structure library" entry).
+    """
+    import re
+
+    match = re.search(r"\+\s*(\d+)\s*position", str(insertions_text).lower())
+    if match:
+        return int(match.group(1))
+    return 1
+
+
+def _load_minsepie_pegrna_table() -> pd.DataFrame:
+    """Load and index ST6_pegRNAs from the MinSePIE supplementary workbook."""
+    xlsx_path = DATA_ROOT / "raw" / "minsepie" / "41587_2023_1678_MOESM3_ESM.xlsx"
+    pegrna_df = pd.read_excel(xlsx_path, sheet_name="ST6_pegRNAs", header=0)
+    pegrna_df = pegrna_df.rename(
+        columns={
+            "ha": "pegrna_ha",
+            "pbs": "pegrna_pbs",
+            "spacer": "pegrna_spacer",
+            "scaffold": "pegrna_scaffold_seq",
+        }
+    )
+    pegrna_df["target"] = pegrna_df["target"].astype(str)
+    pegrna_df["purpose"] = pegrna_df["purpose"].astype(str)
+    return pegrna_df
+
 
 def _export_minsepie_datasheets() -> None:
     """
-    Export the MinSePIE datasheets.
+    Export the MinSePIE datasheets (Koeppel et al., Nat. Biotechnol. 2023).
 
-    MinSePIE (Nature Biotechnology, 2023) is an insertion-only PE dataset that
-    measures editing efficiency for a library of DNA insertions at specific
-    genomic target sites across different cell lines and PE system variants.
+    MinSePIE is an insertion-only PE dataset that measures editing efficiency
+    for libraries of DNA insertions at specific genomic target sites across
+    different cell lines and PE system variants.
 
-    Raw data consists of two supplementary tables:
-      - MOESM4 (Suppl. Table 4): Insert library mapping names → sequences + set/fold
-      - MOESM5 (Suppl. Table 5): Experimental results (editing efficiency per insert/target/condition)
+    Raw data (under ``raw/minsepie/``):
+      - MOESM3 (Suppl. Table 3): Contains two sheets
+          * ``ST5_gene_fragments``: reference gene fragments (e.g. ``puroR``) used in the screen
+          * ``ST6_pegRNAs``: the pegRNA design for each screen (spacer / HA / PBS /
+            insertion position marker). This is what we need to reconstruct
+            WT/mutant target sequences and positional fields.
+      - MOESM4 (Suppl. Table 4): Insert library mapping ``name`` → ``insert_sequence``
+        plus a ``set`` column that identifies the library subset.
+      - MOESM5 (Suppl. Table 5): Experimental results (editing efficiency per
+        insert / target / condition).
 
-    TODO: reformat this
-    Data is grouped by experiment and exported as separate CSV files with naming:
-        {target}-{cell_line}-{pe_condition}.csv
+    Each row in MOESM5 belongs to exactly one ``experiment`` (32 total). We
+    enrich MOESM5 with pegRNA design info from ST6 and library metadata from
+    MOESM4, then split per-experiment into files named
+    ``exported/minsepie/library-insert/{cell_line}-{target_variant}_{pe_condition}.csv``.
     """
-    # Read the main experimental data (Supplementary Table 5)
-    data_path = DATA_ROOT / 'raw' / 'minsepie' / '41587_2023_1678_MOESM5_ESM.tsv'
-    data = pd.read_csv(data_path, sep='\t')
+    raw_dir = DATA_ROOT / "raw" / "minsepie"
+    data_path = raw_dir / "41587_2023_1678_MOESM5_ESM.tsv"
+    library_path = raw_dir / "41587_2023_1678_MOESM4_ESM.tsv"
 
-    # Read the insert library (Supplementary Table 4) for set/fold assignments
-    library_path = DATA_ROOT / 'raw' / 'minsepie' / '41587_2023_1678_MOESM4_ESM.tsv'
-    library = pd.read_csv(library_path, sep='\t')
+    data = pd.read_csv(data_path, sep="\t")
+    library = pd.read_csv(library_path, sep="\t")
 
-    # The library contains forward/reverse complement pairs with the same name
-    # but different sequences. Since we only need the 'set' column (same for both),
-    # deduplicate by name before merging to avoid row explosion.
-    library_dedup = library.drop_duplicates(subset='name', keep='first')
+    # ---- Merge library metadata (set) onto each experimental row ----
+    # MOESM4 lists forward/reverse complement pairs with the same ``name`` but
+    # different ``insert_sequence``. Only ``set`` is needed and is identical for
+    # both orientations, so deduplicate by name before merging.
+    library_dedup = library.drop_duplicates(subset="name", keep="first")
+    data = data.merge(library_dedup[["name", "set"]], on="name", how="left")
 
-    # Left-join to add set info (some names won't match — those get NaN)
-    data = data.merge(library_dedup[['name', 'set']], on='name', how='left')
+    # ``cell_line`` == "rc" in MOESM5 is a quirk: these are HEK293T experiments
+    # that target the reverse-complement variant of the locus (ACTBrc, LMNB1rc,
+    # TP53rc). The target variant is already encoded in ``experiment``.
+    data.loc[data["cell_line"] == "rc", "cell_line"] = "HEK293T"
 
-    # Fix "rc" cell_line values — these are HEK293T experiments with reverse
-    # complement target orientation, not a different cell line.
-    data.loc[data['cell_line'] == 'rc', 'cell_line'] = 'HEK293T'
+    # ---- Attach pegRNA design (spacer, HA, PBS, insertion position) ----
+    pegrna_df = _load_minsepie_pegrna_table()
+    pegrna_lookup: dict[tuple[str, str], pd.Series] = {
+        (str(row["target"]), str(row["purpose"])): row
+        for _, row in pegrna_df.iterrows()
+    }
 
-    # Experiment names use abbreviated cell line names (e.g. "293T" for HEK293T)
-    cell_abbr_to_full = {'293T': 'hek293t', 'HAP1': 'hap1', 'HAP1dMLH1': 'hap1dmlh1'}
+    missing_experiments: list[str] = []
+    rows_without_mapping = 0
+    pegrna_columns = {
+        "pegrna_spacer": [],
+        "pegrna_ha": [],
+        "pegrna_pbs": [],
+        "pegrna_ins_position": [],
+        "pegrna_purpose": [],
+        "pegrna_scaffold": [],
+    }
+    for experiment in data["experiment"].astype(str):
+        key = _MINSEPIE_EXPERIMENT_TO_PEGRNA.get(experiment)
+        if key is None or key not in pegrna_lookup:
+            if experiment not in missing_experiments:
+                missing_experiments.append(experiment)
+            rows_without_mapping += 1
+            for values in pegrna_columns.values():
+                values.append(None)
+            continue
+        pegrna_row = pegrna_lookup[key]
+        pegrna_columns["pegrna_spacer"].append(str(pegrna_row["pegrna_spacer"]))
+        pegrna_columns["pegrna_ha"].append(str(pegrna_row["pegrna_ha"]))
+        pegrna_columns["pegrna_pbs"].append(str(pegrna_row["pegrna_pbs"]))
+        pegrna_columns["pegrna_ins_position"].append(
+            _parse_minsepie_insertion_position(pegrna_row["insertions"])
+        )
+        pegrna_columns["pegrna_purpose"].append(str(pegrna_row["purpose"]))
+        pegrna_columns["pegrna_scaffold"].append(
+            str(pegrna_row["pegrna_scaffold_seq"]).upper()
+            if pd.notna(pegrna_row.get("pegrna_scaffold_seq"))
+            else None
+        )
 
-    logger.info(f"Exporting MinSePIE data: {len(data)} entries across "
-                f"{data['experiment'].nunique()} experiments")
+    for column, values in pegrna_columns.items():
+        data[column] = values
 
-    # TODO: work on the library insert data
+    if missing_experiments:
+        logger.warning(
+            "MinSePIE: %s rows across %s experiments have no pegRNA mapping "
+            "and will be skipped: %s",
+            rows_without_mapping,
+            len(missing_experiments),
+            missing_experiments,
+        )
+    data = data.dropna(subset=["pegrna_spacer", "pegrna_ha", "pegrna_pbs"])
+
+    logger.info(
+        "Exporting MinSePIE data: %s entries across %s experiments",
+        len(data),
+        data["experiment"].nunique(),
+    )
+
+    # ---- Split per-experiment and write one CSV per experiment ----
+    dataset_root = DATA_ROOT / "exported" / "minsepie" / "library-insert"
+    dataset_root.mkdir(parents=True, exist_ok=True)
+
+    for experiment, experiment_df in data.groupby("experiment"):
+        target_variant, cell_abbr, pe_condition = _parse_minsepie_experiment(str(experiment))
+        cell_line = _MINSEPIE_CELL_ABBR_TO_FULL[cell_abbr]
+        pe_system = _normalize_name(f"{target_variant}_{pe_condition}")
+        output_path = dataset_root / f"{cell_line}-{pe_system}.csv"
+        experiment_df.to_csv(output_path, index=False)
+        logger.info("Saved MinSePIE datasheet: %s (%s rows)", output_path, len(experiment_df))
 
 # ==============================================================================
 # Standardize PE datasets into the shared schema.
@@ -236,147 +519,6 @@ standard_pe_data_columns = [
         'pbs_location_l', 'pbs_location_r', 'rtt_location_l', 'rtt_location_r', 
         'lha_location_l', 'lha_location_r', 'rha_location_l', 'rha_location_r', 
         'spcas9_score', 'editing_efficiency', 'original_fold']
-
-def standardize_pe_data(
-    study: Optional[str] = None,
-    dataset: Optional[str] = None,
-    data: Optional[pd.DataFrame] = None,
-    cell_line: Optional[str] = None,
-    pe_system: Optional[str] = None,
-) -> None:
-    """
-    Standardize the PE data format
-
-    Args:
-        study: Study name. If None, standardize all studies under exported/.
-        dataset: Dataset name
-        data: DataFrame in original format
-        cell_line: Cell line name
-        pe_system: PE system name
-        
-    Returns:
-        DataFrame in standardized format
-    """
-    def _dispatch_single_file(
-        current_study: str,
-        current_dataset: str,
-        file_data: Optional[pd.DataFrame],
-        file_cell_line: str,
-        file_pe_system: str,
-    ) -> None:
-        if current_study == "deepprime":
-            if current_dataset in {"deepprime-clinvar", "deepprime-small"}:
-                _standardize_deepprime_ontarget(
-                    file_data, file_cell_line, file_pe_system, current_dataset
-                )
-            else:
-                raise ValueError(
-                    "Unsupported DeepPrime dataset for standardization: "
-                    f"{current_dataset}"
-                )
-        elif current_study == "pridict2":
-            if current_dataset in {"library-diverse", "library-diverse-invivo"}:
-                _standardize_pridict2_library_diverse(
-                    file_data, file_cell_line, file_pe_system, current_dataset
-                )
-            else:
-                raise ValueError(
-                    "Unsupported PRIDICT2 dataset for standardization: "
-                    f"{current_dataset}"
-                )
-        elif current_study == "pridict1":
-            if current_dataset == "library1":
-                _standardize_pridict1_library1(
-                    file_data, file_cell_line, file_pe_system, current_dataset
-                )
-            else:
-                raise ValueError(
-                    "Unsupported PRIDICT1 dataset for standardization: "
-                    f"{current_dataset}"
-                )
-        elif current_study == "minsepie":
-            _standardize_minsepie(
-                file_data, file_cell_line, file_pe_system, current_dataset
-            )
-        else:
-            raise ValueError(f"Unknown study: {current_study}")
-
-    if data is not None:
-        if None in (study, dataset, cell_line, pe_system):
-            raise ValueError(
-                "When `data` is provided, you must also provide "
-                "`study`, `dataset`, `cell_line`, and `pe_system`."
-            )
-        assert study is not None
-        assert dataset is not None
-        assert cell_line is not None
-        assert pe_system is not None
-        provided_study = study
-        provided_dataset = dataset
-        provided_cell_line = cell_line
-        provided_pe_system = pe_system
-        _dispatch_single_file(
-            provided_study, provided_dataset, data, provided_cell_line, provided_pe_system
-        )
-        return
-
-    exported_root = DATA_ROOT / "exported"
-    if study is None:
-        study_names = sorted(
-            p.name for p in exported_root.iterdir()
-            if p.is_dir() and p.name in SUPPORTED_STUDIES
-        )
-    else:
-        if study not in SUPPORTED_STUDIES:
-            raise ValueError(f"Unknown study: {study}")
-        study_names = [study]
-
-    for study_name in study_names:
-        study_root = exported_root / study_name
-        if not study_root.exists():
-            logger.warning(f"Exported study directory not found: {study_root}")
-            continue
-
-        if dataset is None:
-            dataset_names = sorted(p.name for p in study_root.iterdir() if p.is_dir())
-        else:
-            dataset_names = [dataset]
-
-        for dataset_name in dataset_names:
-            dataset_root = study_root / dataset_name
-            if not dataset_root.exists() or not dataset_root.is_dir():
-                logger.warning(f"Exported dataset directory not found: {dataset_root}")
-                continue
-
-            if cell_line is None or pe_system is None:
-                csv_files = sorted(dataset_root.glob("*.csv"))
-                parquet_files = sorted(dataset_root.glob("*.parquet"))
-                # Prefer CSV exports; keep parquet as backward-compatible fallback.
-                files_to_standardize = csv_files if csv_files else parquet_files
-
-                for file_path in files_to_standardize:
-                    logger.info("Standardizing file=%s dataset=%s", file_path.name, dataset_name)
-                    stem_parts = file_path.stem.split("-", 1)
-                    if len(stem_parts) != 2:
-                        logger.warning(
-                            "Skipping file with unexpected name format "
-                            f"(expected <cell_line>-<pe_system>.<ext>): {file_path.name}"
-                        )
-                        continue
-                    file_cell_line, file_pe_system = stem_parts
-                    if file_path.suffix == ".csv":
-                        file_data = pd.read_csv(file_path)
-                    elif file_path.suffix == ".parquet":
-                        file_data = pd.read_parquet(file_path)
-                    else:
-                        logger.warning("Skipping unsupported file type: %s", file_path)
-                        continue
-                    _dispatch_single_file(
-                        study_name, dataset_name, file_data, file_cell_line, file_pe_system
-                    )
-                    logger.info("Completed file=%s dataset=%s", file_path.name, dataset_name)
-            else:
-                _dispatch_single_file(study_name, dataset_name, None, cell_line, pe_system)
 
 def _build_standardized_output_df(
     group_id: pd.Series | np.ndarray, 
@@ -855,30 +997,225 @@ def _standardize_minsepie(
     Convert MinSePIE data to the shared PE schema.
 
     MinSePIE is an insertion-only PE dataset. The pegRNA design information
-    (spacer, PBS, HA) is loaded from MOESM3 (Supplementary Table 3) to
-    reconstruct the full WT and mutated target strand sequences and compute
-    all standard positional indices.
+    (``spacer`` / ``ha`` / ``pbs`` / insertion position) is enriched onto each
+    experimental row during export from ST6 so this step only needs to
+    reconstruct WT and mutant target-strand sequences and derive positional
+    fields.
 
-    Key reconstruction:
-      - WT target strand = spacer[:17] + RC(HA)  (guide-same strand, 5'→3')
-      - Mut target strand = wt[:ins_pos] + insertion + wt[ins_pos:]
-        where ins_pos = 17 + len(HA_right)  (insertion offset from nick)
-      - Mut is padded with N at the edit position to align with WT
+    Coordinate system (all positions are 0-indexed, left-inclusive right-exclusive):
+      - The SpCas9 nick sits between protospacer positions 17 and 18; we anchor
+        the target window at the first base of the protospacer (position 0).
+      - The ST6 ``ha`` column is stored in pegRNA (RTT) orientation. Where the
+        insertion is not at +1, it contains a literal "-Ins-" marker that
+        splits ``ha`` into (HA_left, HA_right) on the pegRNA. Relative to the
+        target strand, the bases immediately 3' of the nick are RC(HA_right)
+        and the bases further 3' (past the insertion) are RC(HA_left).
+      - Non-aligned target-strand WT = spacer[:17] + RC(HA_right) + RC(HA_left)
+        Non-aligned Mut = spacer[:17] + RC(HA_right) + insertion + RC(HA_left)
+      - To keep both sequences the same length (as required by the shared
+        schema) we pad the WT with N's at the insertion position.
     """
-    pass
+    dataset = _normalize_name(dataset)
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    input_name = f"{cell_line}-{pe_system}.csv"
+    output_name = f"{cell_line}-{pe_system}.parquet"
+    if data is None:
+        data = pd.read_csv(DATA_ROOT / "exported" / "minsepie" / dataset / input_name)
 
-if __name__ == "__main__":
-    argparser = argparse.ArgumentParser(description="Standardize data from various PE studies")
-    argparser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = argparser.parse_args()
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-        logger.debug("Debug mode enabled")
-        exit(0)
+    logger.info(
+        "Standardizing MinSePIE dataset=%s cell_line=%s pe_system=%s rows=%s",
+        dataset,
+        cell_line,
+        pe_system,
+        len(data),
+    )
 
-    # export_original_data()
+    df = data.copy()
 
-    # standardize_pe_data(study="deepprime", dataset="deepprime-small")
-    # standardize_pe_data(study="deepprime", dataset="deepprime-clinvar")
-    # standardize_pe_data(study="pridict1", dataset="library1")
-    standardize_pe_data(study="pridict2", )
+    # ---- Step 1: clean up pegRNA design columns ----
+    spacer_upper = df["pegrna_spacer"].astype(str).str.upper()
+    pbs_upper = df["pegrna_pbs"].astype(str).str.upper()
+    ha_upper = df["pegrna_ha"].astype(str).str.upper()
+    ins_position = df["pegrna_ins_position"].astype(int)
+    insertion_seq = df["insertion"].astype(str).str.upper()
+
+    # Split HA around the "-Ins-" marker. If absent, the insertion sits at +1
+    # (right at the nick) and the entire HA is on the 5' (HA_left) side.
+    ha_split = ha_upper.str.split("-INS-", n=1, expand=True)
+    if ha_split.shape[1] == 1:
+        ha_split[1] = ""
+    ha_left = ha_split[0].fillna("")
+    ha_right = ha_split[1].fillna("")
+
+    # HA without the marker (for sanity / full RC of downstream genomic region).
+    ha_full = ha_left + ha_right
+
+    pbs_len = pbs_upper.str.len().astype(int)
+
+    # ---- Step 2: reconstruct WT and mut target-strand sequences ----
+    # The nick is after position 16 (i.e. between index 16 and 17 of the
+    # spacer). Everything 3' of the nick comes from RC(HA).
+    rc_ha_right = ha_right.map(reverse_complement)
+    rc_ha_left = ha_left.map(reverse_complement)
+
+    edit_len = insertion_seq.str.len().astype(int)
+    edit_position = 17 + rc_ha_right.str.len().astype(int)
+
+    def _build_aligned(row_spacer: str, rc_right: str, rc_left: str,
+                       insertion: str, pad_length: int) -> tuple[str, str]:
+        head = row_spacer[:17]
+        wt = head + rc_right + ("N" * pad_length) + rc_left
+        mut = head + rc_right + insertion + rc_left
+        return wt, mut
+
+    aligned = pd.DataFrame({
+        "spacer": spacer_upper,
+        "rc_right": rc_ha_right,
+        "rc_left": rc_ha_left,
+        "insertion": insertion_seq,
+        "edit_len": edit_len,
+    }).apply(
+        lambda row: _build_aligned(
+            row["spacer"], row["rc_right"], row["rc_left"],
+            row["insertion"], int(row["edit_len"]),
+        ),
+        axis=1,
+        result_type="expand",
+    )
+    aligned.columns = ["wt_sequence", "mut_sequence"]
+
+    # ---- Step 3: assign group IDs (one group per unique protospacer) ----
+    df["group_id"] = spacer_upper.groupby(spacer_upper).ngroup()
+
+    # ---- Step 4: compute positional fields in the aligned sequence ----
+    # Protospacer spans [0, 20) on the non-aligned target strand. When the
+    # insertion falls within the last 3 protospacer bases (positions 17-19),
+    # the N-padding pushes those bases further 3' so the protospacer region in
+    # the aligned sequence covers [0, 20 + edit_len).
+    within_protospacer = edit_position < 20
+    protospacer_l = pd.Series(0, index=df.index, dtype=int)
+    protospacer_r = pd.Series(
+        np.where(within_protospacer, 20 + edit_len, 20),
+        index=df.index,
+    ).astype(int)
+
+    pbs_l = (17 - pbs_len).clip(lower=0).astype(int)
+    pbs_r = pd.Series(17, index=df.index, dtype=int)
+
+    lha_l = pd.Series(17, index=df.index, dtype=int)
+    lha_r = edit_position.astype(int)
+    rha_l = (edit_position + edit_len).astype(int)
+    rha_r = (edit_position + edit_len + rc_ha_left.str.len()).astype(int)
+    rtt_l = pd.Series(17, index=df.index, dtype=int)
+    rtt_r = rha_r
+
+    # ---- Step 5: assemble efficiency, score and fold fields ----
+    editing_efficiency = pd.to_numeric(df.get("percIns"), errors="coerce")
+    # MinSePIE does not provide a DeepSpCas9 score; fill with NaN → 0.0 so the
+    # schema's ``float`` cast succeeds. Downstream can recompute if needed.
+    spcas9_score = pd.Series(np.nan, index=df.index, dtype=float).fillna(0.0)
+
+    set_series = df.get("set", pd.Series("", index=df.index)).astype(str).fillna("")
+    original_fold = set_series.map(_MINSEPIE_SET_TO_FOLD).fillna(-1).astype(int)
+
+    # ---- Step 6: build and persist the standardized output ----
+    type_ins = pd.Series(True, index=df.index)
+    type_sub = pd.Series(False, index=df.index)
+    type_del = pd.Series(False, index=df.index)
+
+    output_df = _build_standardized_output_df(
+        df["group_id"], type_sub, type_ins, type_del, edit_len,
+        aligned["wt_sequence"], aligned["mut_sequence"],
+        protospacer_l, protospacer_r,
+        pbs_l, pbs_r, rtt_l, rtt_r,
+        lha_l, lha_r, rha_l, rha_r,
+        spcas9_score, editing_efficiency, original_fold,
+    )
+
+    output_path = DATA_ROOT / "standardized" / "minsepie" / dataset / output_name
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_df.to_parquet(output_path, index=False)
+    logger.info("Saved standardized MinSePIE data: %s", output_path)
+
+
+def standardize_pe_data(
+    *,
+    study: str,
+    cell_line: str,
+    pe_system: str,
+    dataset: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Standardize exported PE data into the shared schema.
+
+    Input hierarchy:
+    exported/{study}/{dataset}/{cell_line}-{pe_system}.csv
+    """
+    study = _normalize_name(study)
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+
+    if dataset is None:
+        available = DATASETS.get(study, [])
+        if len(available) == 1:
+            dataset = available[0]
+        else:
+            raise ValueError(
+                f"dataset is required for study={study}. Available datasets: {available}"
+            )
+    dataset = str(dataset).strip().lower()
+    normalized_dataset = _normalize_name(dataset)
+    dataset_candidates = [dataset]
+    if normalized_dataset not in dataset_candidates:
+        dataset_candidates.append(normalized_dataset)
+
+    input_path = None
+    for dataset_candidate in dataset_candidates:
+        candidate_path = (
+            DATA_ROOT / "exported" / study / dataset_candidate / f"{cell_line}-{pe_system}.csv"
+        )
+        if candidate_path.exists():
+            input_path = candidate_path
+            break
+    if input_path is None:
+        raise FileNotFoundError(
+            "Exported input file not found for any dataset variant: "
+            f"{dataset_candidates} (study={study}, cell_line={cell_line}, pe_system={pe_system})"
+        )
+
+    data = pd.read_csv(input_path)
+    if study == "deepprime":
+        _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
+    elif study == "pridict1":
+        if normalized_dataset != "library1":
+            raise ValueError(
+                f"Unsupported dataset for study=pridict1: {dataset}. Supported: ['library1']"
+            )
+        _standardize_pridict1_library1(data, cell_line, pe_system, normalized_dataset)
+    elif study == "pridict2":
+        if normalized_dataset not in {"library_diverse", "library_diverse_invivo"}:
+            raise ValueError(
+                "Unsupported dataset for study=pridict2: "
+                f"{dataset}. Supported: ['library-diverse', 'library-diverse-invivo']"
+            )
+        _standardize_pridict2_library_diverse(data, cell_line, pe_system, normalized_dataset)
+    elif study == "minsepie":
+        if normalized_dataset != "library_insert":
+            raise ValueError(
+                "Unsupported dataset for study=minsepie: "
+                f"{dataset}. Supported: ['library-insert']"
+            )
+        _standardize_minsepie(data, cell_line, pe_system, normalized_dataset)
+    else:
+        raise ValueError(f"Unsupported study: {study}")
+
+    output_path = (
+        DATA_ROOT / "standardized" / study / normalized_dataset / f"{cell_line}-{pe_system}.parquet"
+    )
+    if not output_path.exists():
+        raise FileNotFoundError(
+            "Standardization did not produce expected output file: "
+            f"{output_path}"
+        )
+    return pd.read_parquet(output_path)

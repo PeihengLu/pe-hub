@@ -12,10 +12,9 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 
 ## Models Supported
 
-- **DeepPrime** - Deep learning model for PE efficiency prediction
-- **PRIDICT** - Position-specific scoring matrix model
-- **PRIDICT2** - Improved version of PRIDICT
-- **OPED** - Optimized Prime Editor prediction model
+- **DeepPrime** - CNN-GRU model for PE efficiency prediction
+- **PRIDICT2** - Attention-based bidirectional LSTM model for PE efficiency prediction
+- **OPED** - Transformer-based model for PE efficiency prediction
 
 ## API Endpoints
 

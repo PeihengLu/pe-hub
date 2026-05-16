@@ -1,36 +1,75 @@
 # PE Database Service
 
-A FastAPI-based service that serves and converts Prime Editing datasets into standardized or model-specific formats.
+FastAPI service aligned with `diagrams/illustration/database_er.mmd`.
 
-## Features
+## What lives in the catalog database
 
-- Serves standardized PE datasets from multiple sources (DeepPrime, PRIDICT, MinSEPIE, OPED)
-- Converts raw datasets into standardized/model-specific formats
-- RESTful API for data retrieval
-- Flexible data filtering and formatting
+| Table | How it is maintained |
+|-------|----------------------|
+| `study` | **Seeded** — hand-coded in `app/catalog/studies.py` |
+| `dataset` | **Seeded** — hand-coded in `app/catalog/studies.py` |
+| `scaffold` | **Seeded** — hand-coded in `app/catalog/scaffolds.py` |
+| `datasheet` | **Semi-automatic** — indexed from `datasets/exported/**/*.csv` after export |
 
-## API Endpoints
+Edit-level rows are **not** in SQL. They live in `datasets/exported/` (raw CSV) and `datasets/standardized/` (parquet) and are loaded with Pandas behind the API.
 
-- `GET /health` - Health check endpoint
-- `GET /datasets` - List available datasets
-- `GET /datasets/{dataset_id}` - Get specific dataset
-- `POST /query` - Query datasets with filters
+SQLite path: `datasets/catalog/pe_database.db` (override with `DATABASE_URL`).
 
-## Running Locally
+## Database initialization (three steps)
+
+`initialize_database()` runs on API startup:
+
+| Step | Function | What it does |
+|------|----------|--------------|
+| 1. **Seed** | `init_catalog()` | Creates SQL tables; inserts/updates Study, Dataset, Scaffold from Python registries |
+| 2. **Export** | `export_original_data()` | Writes `datasets/exported/` from raw Excel/CSV; indexes **Datasheet** rows |
+| 3. **Standardize** | `standardize_exported_data()` | Writes `datasets/standardized/` parquet from exported CSVs |
+
+### What “seed” means
+
+**Seed** = populate fixed lookup tables from code you maintain by hand.
+
+It is the same idea as `db/seeds/` in Rails or `INSERT` scripts for reference data: the database gets the canonical list of studies (DeepPrime, PRIDICT, …), datasets (`deepprime-clinvar`, `library1`, …), and pegRNA scaffolds (conventional, optimized, …) before any file scanning happens.
+
+Seed does **not**:
+
+- Read edit data from disk
+- Export or standardize measurements
+- Fill the `Datasheet` table (that happens during **export**, when CSV paths are registered)
+
+## Manual usage
+
+```python
+from app.catalog.initialize import initialize_database
+from app.converter import DataConverter
+
+initialize_database()  # seed + export + standardize
+# or
+DataConverter().initialize_database(force_export=True, force_standardize=True)
+```
+
+```bash
+curl -X POST 'http://localhost:8000/api/export'
+curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprime-clinvar&cell_line=hek293t&pe_system=pe2'
+```
+
+## API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/studies` | List studies |
+| GET | `/api/datasets` | List datasets |
+| GET | `/api/datasheets` | List datasheet catalog entries |
+| GET | `/api/scaffolds` | List pegRNA scaffolds |
+| GET | `/api/data` | Load edit records (Pandas) |
+| POST | `/api/export` | Export (+ optional standardize) |
+| POST | `/api/convert` | Standardize one sheet |
+
+## Run locally
 
 ```bash
 cd services/pe-db
-uvicorn pe_db.main:app --reload --port 8000
-```
-
-The service will be available at http://localhost:8000
-
-## Development
-
-```bash
-# Install dependencies
-pip install -e .
-
-# Run development server
-uvicorn pe_db.main:app --reload --port 8000
+pip install -r requirements.txt
+pip install -e ../../packages/pe-common
+uvicorn app.main:app --reload --port 8000
 ```
