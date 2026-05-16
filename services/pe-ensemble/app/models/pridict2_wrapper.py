@@ -10,6 +10,7 @@ from pe_common.preprocessing import (
     standardized_to_pridict_dataframe,
     STANDARDIZED_BASE_COLUMNS,
 )
+from pe_common.training import build_group_kfold_indices, pearson_spearman
 
 # Add vendor model paths required by PRIDICT2 imports.
 _vendor_root = resolve_vendor_models_path()
@@ -206,6 +207,131 @@ class PRIDICT2ModelWrapper(BasePEModel):
         pred_df = self._predict_from_loaded_or_current_model(dloader=data, y_ref=[outcome])
         
         return pred_df[f'pred_{outcome}'].tolist()
+
+    @staticmethod
+    def _split_train_validation(
+        train_df: pd.DataFrame,
+        *,
+        val_fraction: float,
+        random_state: int,
+        group_col: str = "group_id",
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        n_rows = len(train_df)
+        if n_rows < 2:
+            raise ValueError("Need at least 2 rows to train PRIDICT2 model.")
+        val_fraction = max(0.05, min(0.5, float(val_fraction)))
+        n_splits = max(2, int(round(1.0 / val_fraction)))
+        n_splits = min(n_splits, n_rows)
+        folds = build_group_kfold_indices(
+            train_df.reset_index(drop=True),
+            n_splits=n_splits,
+            group_col=group_col,
+            random_state=random_state,
+        )
+        if folds:
+            tr_idx, va_idx = folds[0]
+            tr_df = train_df.iloc[tr_idx].reset_index(drop=True)
+            va_df = train_df.iloc[va_idx].reset_index(drop=True)
+            return tr_df, va_df
+
+        rng = np.random.default_rng(random_state)
+        indices = np.arange(n_rows)
+        rng.shuffle(indices)
+        n_val = max(1, int(np.ceil(n_rows * val_fraction)))
+        val_idx = indices[:n_val]
+        tr_idx = indices[n_val:]
+        if len(tr_idx) == 0:
+            tr_idx = np.asarray([int(val_idx[0])], dtype=int)
+            val_idx = np.asarray([int(i) for i in range(n_rows) if i != int(tr_idx[0])], dtype=int)
+        return (
+            train_df.iloc[tr_idx].reset_index(drop=True),
+            train_df.iloc[val_idx].reset_index(drop=True),
+        )
+
+    def _build_datatensor(self, df: pd.DataFrame, y_ref: List[str]) -> tuple[Any, List[str]]:
+        norm_cols, proc, init, n_init, mut, n_mut = self.prieml_model._process_df(df)
+        dtensor = self.prieml_model._construct_datatensor(
+            norm_cols, proc, init, n_init, mut, n_mut, y_ref=y_ref
+        )
+        return dtensor, list(norm_cols or [])
+
+    def _run_train_val_once(
+        self,
+        *,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        y_ref: List[str],
+        hyperparameters: Dict[str, Any],
+        output_dir: str,
+        run_suffix: str,
+        trainer_backend: str = "legacy",
+    ) -> Dict[str, Any]:
+        from torch import nn
+        from pridict2.pridict.pridictv2.run_workflow import build_config_map, train_val_run
+
+        dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
+        dtensor_val, _ = self._build_datatensor(val_df, y_ref)
+        data_partitions = {0: {"train": dtensor_train, "validation": dtensor_val}}
+        run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
+        batch_size = int(hyperparameters.get("batch_size", 128))
+        num_epochs = int(hyperparameters.get("num_epochs", 20))
+        trf_tup = hyperparameters.get(
+            "trf_tup",
+            (64, 64, 1, True, 0.1, nn.GRU, nn.ReLU(), 1e-4, batch_size, num_epochs),
+        )
+        experiment_options = {
+            "experiment_desc": str(hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")),
+            "model_name": "PE_RNN_distribution",
+            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
+            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
+            "seqlevel_featdim": int(hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))),
+            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
+        }
+        config_map = build_config_map(
+            trf_tup,
+            experiment_options,
+            loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
+        )
+        run_output_dir = f"{output_dir}/{run_suffix}"
+        train_val_run(
+            data_partitions,
+            config_map,
+            run_output_dir,
+            run_gpu_map,
+            None,
+            num_epochs,
+            trainer_backend,
+        )
+        model_dir = f"{run_output_dir}/train_val/run_0"
+        self.load_model(model_dir)
+        prepared_val = self.prepare_data(val_df, y_ref=y_ref)
+        pred_df = self._predict_from_loaded_or_current_model(dloader=prepared_val, y_ref=y_ref)
+        fold_metrics: Dict[str, float] = {}
+        for outcome in y_ref:
+            true_col = f"true_{outcome}"
+            pred_col = f"pred_{outcome}"
+            if true_col not in pred_df.columns or pred_col not in pred_df.columns:
+                continue
+            y_true = pd.Series(pd.to_numeric(pred_df[true_col], errors="coerce"), index=pred_df.index)
+            y_pred = pd.Series(pd.to_numeric(pred_df[pred_col], errors="coerce"), index=pred_df.index)
+            mask = ~(y_true.isna().to_numpy() | y_pred.isna().to_numpy())
+            y_true_clean = y_true.to_numpy(dtype=np.float64)[mask]
+            y_pred_clean = y_pred.to_numpy(dtype=np.float64)[mask]
+            if len(y_true_clean) == 0:
+                fold_metrics[f"{outcome}_pearson"] = float("nan")
+                fold_metrics[f"{outcome}_spearman"] = float("nan")
+                continue
+            corr = pearson_spearman(y_true_clean.tolist(), y_pred_clean.tolist())
+            fold_metrics[f"{outcome}_pearson"] = float(corr["pearson"])
+            fold_metrics[f"{outcome}_spearman"] = float(corr["spearman"])
+
+        return {
+            "output_dir": run_output_dir,
+            "model_dir": model_dir,
+            "num_train_rows": len(train_df),
+            "num_val_rows": len(val_df),
+            "metrics": fold_metrics,
+        }
     
     def train(self, train_data: pd.DataFrame, val_data: Optional[pd.DataFrame] = None,
               hyperparameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -220,65 +346,72 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Returns:
             Dictionary with training results
         """
-        from torch import nn
-        from pridict2.pridict.pridictv2.run_workflow import build_config_map, train_val_run
-
         hyperparameters = hyperparameters or {}
+        trainer_backend = str(
+            hyperparameters.get("trainer_backend", "pytorch-lightning")
+        ).strip().lower()
+        if trainer_backend in {"pytorch-lightning", "lightning", "pl"}:
+            trainer_backend = "pytorch-lightning"
+        else:
+            trainer_backend = "legacy"
         y_ref = list(hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes())
         train_df = self._to_pridict_dataframe(train_data)
         if val_data is not None:
             val_df = self._to_pridict_dataframe(val_data)
         else:
-            val_df = train_df.sample(frac=0.2, random_state=int(hyperparameters.get("random_state", 42)))
-            train_df = train_df.drop(index=val_df.index).reset_index(drop=True)
-            val_df = val_df.reset_index(drop=True)
+            train_df, val_df = self._split_train_validation(
+                train_df,
+                val_fraction=float(hyperparameters.get("val_fraction", 0.2)),
+                random_state=int(hyperparameters.get("random_state", 42)),
+                group_col=str(hyperparameters.get("split_group_col", "group_id")),
+            )
 
-        norm_cols_tr, proc_tr, init_tr, n_init_tr, mut_tr, n_mut_tr = self.prieml_model._process_df(train_df)
-        dtensor_train = self.prieml_model._construct_datatensor(
-            norm_cols_tr, proc_tr, init_tr, n_init_tr, mut_tr, n_mut_tr, y_ref=y_ref
-        )
-        norm_cols_val, proc_val, init_val, n_init_val, mut_val, n_mut_val = self.prieml_model._process_df(val_df)
-        dtensor_val = self.prieml_model._construct_datatensor(
-            norm_cols_val, proc_val, init_val, n_init_val, mut_val, n_mut_val, y_ref=y_ref
-        )
-
-        data_partitions = {0: {"train": dtensor_train, "validation": dtensor_val}}
-        run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
         output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
+        cv_folds = int(hyperparameters.get("cv_folds", 1))
+        fold_reports: List[Dict[str, Any]] = []
 
-        batch_size = int(hyperparameters.get("batch_size", 128))
-        num_epochs = int(hyperparameters.get("num_epochs", 20))
-        trf_tup = hyperparameters.get(
-            "trf_tup",
-            (64, 64, 1, True, 0.1, nn.GRU, nn.ReLU(), 1e-4, batch_size, num_epochs),
-        )
-        experiment_options = {
-            "experiment_desc": str(hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")),
-            "model_name": "PE_RNN_distribution",
-            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
-            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
-            "seqlevel_featdim": int(hyperparameters.get("seqlevel_featdim", len(norm_cols_tr or []))),
-            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
-        }
-        config_map = build_config_map(trf_tup, experiment_options, loss_func=str(hyperparameters.get("loss_func", "KLDloss")))
-        train_val_run(
-            datatensor_partitions=data_partitions,
-            config_map=config_map,
-            train_val_dir=output_dir,
-            run_gpu_map=run_gpu_map,
-            num_epochs=num_epochs,
-        )
+        if val_data is None and cv_folds > 1:
+            cv_indices = build_group_kfold_indices(
+                train_df.reset_index(drop=True),
+                n_splits=min(cv_folds, len(train_df)),
+                group_col=str(hyperparameters.get("split_group_col", "group_id")),
+                random_state=int(hyperparameters.get("random_state", 42)),
+            )
+            for fold_idx, (tr_idx, va_idx) in enumerate(cv_indices):
+                fold_train_df = train_df.iloc[tr_idx].reset_index(drop=True)
+                fold_val_df = train_df.iloc[va_idx].reset_index(drop=True)
+                report = self._run_train_val_once(
+                    train_df=fold_train_df,
+                    val_df=fold_val_df,
+                    y_ref=y_ref,
+                    hyperparameters=hyperparameters,
+                    output_dir=output_dir,
+                    run_suffix=f"cv_fold_{fold_idx}",
+                    trainer_backend=trainer_backend,
+                )
+                fold_reports.append({"fold": fold_idx, **report})
 
-        run_dir = f"{output_dir}/train_val/run_0"
-        self.load_model(run_dir)
-        return {
+        run_report = self._run_train_val_once(
+            train_df=train_df,
+            val_df=val_df,
+            y_ref=y_ref,
+            hyperparameters=hyperparameters,
+            output_dir=output_dir,
+            run_suffix="final",
+            trainer_backend=trainer_backend,
+        )
+        result: Dict[str, Any] = {
             "status": "success",
-            "output_dir": output_dir,
-            "model_dir": run_dir,
-            "num_train_rows": len(train_df),
-            "num_val_rows": len(val_df),
+            "output_dir": run_report["output_dir"],
+            "model_dir": run_report["model_dir"],
+            "num_train_rows": int(run_report["num_train_rows"]),
+            "num_val_rows": int(run_report["num_val_rows"]),
             "outcomes": y_ref,
+            "validation_metrics": run_report["metrics"],
         }
+        if fold_reports:
+            result["cross_validation"] = fold_reports
+        return result
     
     def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
         """
@@ -292,8 +425,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
         """
         if not self.is_trained:
             raise ValueError("Model not loaded. Call load_model() first.")
-        
-        from scipy.stats import pearsonr, spearmanr
         
         test_df = self._to_pridict_dataframe(test_data)
         outcomes = [o for o in self._default_outcomes() if o in test_df.columns]
@@ -324,10 +455,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
             y_pred_clean = y_pred[mask]
             
             if len(y_true_clean) > 0:
-                pearson_res = pearsonr(y_true_clean, y_pred_clean)
-                spearman_res = spearmanr(y_true_clean, y_pred_clean)
-                pearson_corr = float(np.asarray(pearson_res).reshape(-1)[0])
-                spearman_corr = float(np.asarray(spearman_res).reshape(-1)[0])
+                corr = pearson_spearman(y_true_clean.tolist(), y_pred_clean.tolist())
+                pearson_corr = float(corr["pearson"])
+                spearman_corr = float(corr["spearman"])
                 mse = np.mean((y_true_clean - y_pred_clean) ** 2)
                 mae = np.mean(np.abs(y_true_clean - y_pred_clean))
                 

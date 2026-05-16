@@ -1,10 +1,13 @@
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 import sys
 import os
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Optional, Tuple, cast
 import pandas as pd
 import torch
 import numpy as np
+from torch.utils.data import DataLoader, Dataset
+
+import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
 from .vendor_path import resolve_vendor_models_path
 
@@ -15,6 +18,67 @@ if str(_vendor_root) not in sys.path:
 
 from pe_common.model_interface import BasePEModel
 from pe_common.preprocessing import ensure_schema, standardized_to_deepprime_features
+from pe_common.training import (
+    build_lr_scheduler,
+    build_group_kfold_indices,
+    fit_lightning_module,
+    LightningTrainerConfig,
+)
+
+
+class _DeepPrimeTensorDataset(Dataset):
+    def __init__(self, g: torch.Tensor, x: torch.Tensor, y: np.ndarray) -> None:
+        self.g = g.detach().cpu()
+        self.x = x.detach().cpu()
+        self.y = torch.tensor(y, dtype=torch.float32).reshape(-1, 1)
+
+    def __len__(self) -> int:
+        return int(self.y.shape[0])
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.g[idx], self.x[idx], self.y[idx]
+
+
+class _DeepPrimeLightningRegressor(pl.LightningModule):
+    def __init__(self, model: torch.nn.Module, train_hparams: Dict[str, Any]) -> None:
+        super().__init__()
+        self.model = model
+        self.hparams_map = dict(train_hparams)
+        self.criterion = torch.nn.MSELoss()
+
+    def _predict_batch(self, g: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        return self.model(g.permute((0, 3, 1, 2)), x)
+
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _batch_idx: int) -> torch.Tensor:
+        g, x, y = batch
+        pred = self._predict_batch(g, x)
+        loss = self.criterion(pred, y)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        return loss
+
+    def validation_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], _batch_idx: int
+    ) -> torch.Tensor:
+        g, x, y = batch
+        pred = self._predict_batch(g, x)
+        loss = self.criterion(pred, y)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self) -> Any:
+        optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=float(self.hparams_map.get("lr", 1e-4)),
+            weight_decay=float(self.hparams_map.get("weight_decay", 0.0)),
+        )
+        scheduler = build_lr_scheduler(
+            optimizer,
+            scheduler_name=str(self.hparams_map.get("scheduler", "none")),
+            scheduler_kwargs=cast(Optional[Dict[str, Any]], self.hparams_map.get("scheduler_kwargs")),
+        )
+        if scheduler is None:
+            return optimizer
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
 
 
 class DeepPrimeModelWrapper(BasePEModel):
@@ -73,6 +137,62 @@ class DeepPrimeModelWrapper(BasePEModel):
             native_required=self.DEEPPRIME_REQUIRED_COLUMNS,
             converters={"standardized_to_deepprime": standardized_to_deepprime_features},
         )
+
+    @staticmethod
+    def _extract_targets(source_df: pd.DataFrame, feature_df: pd.DataFrame, split_name: str) -> np.ndarray:
+        if "editing_efficiency" in source_df.columns:
+            series = pd.Series(pd.to_numeric(source_df["editing_efficiency"], errors="coerce"), index=source_df.index)
+            return series.fillna(0.0).to_numpy(dtype=np.float32)
+        if "Efficiency" in feature_df.columns:
+            series = pd.Series(pd.to_numeric(feature_df["Efficiency"], errors="coerce"), index=feature_df.index)
+            return series.fillna(0.0).to_numpy(dtype=np.float32)
+        raise ValueError(
+            f"{split_name} data must include 'editing_efficiency' or 'Efficiency' column."
+        )
+
+    @staticmethod
+    def _split_train_validation(
+        train_source_df: pd.DataFrame,
+        train_feature_df: pd.DataFrame,
+        y_train: np.ndarray,
+        *,
+        val_fraction: float,
+        random_state: int,
+        group_col: str,
+    ) -> tuple[pd.DataFrame, np.ndarray, pd.DataFrame, np.ndarray]:
+        n_rows = len(train_feature_df)
+        if n_rows < 2:
+            raise ValueError("Need at least 2 rows to train DeepPrime model.")
+
+        val_fraction = max(0.05, min(0.5, float(val_fraction)))
+        n_val = max(1, int(np.ceil(n_rows * val_fraction)))
+        n_splits = max(2, int(round(1.0 / val_fraction)))
+        n_splits = min(n_splits, n_rows)
+
+        folds = build_group_kfold_indices(
+            train_source_df.reset_index(drop=True),
+            n_splits=n_splits,
+            group_col=group_col,
+            random_state=random_state,
+        )
+        if folds:
+            train_idx, val_idx = folds[0]
+        else:
+            rng = np.random.default_rng(random_state)
+            indices = np.arange(n_rows)
+            rng.shuffle(indices)
+            val_idx = indices[:n_val]
+            train_idx = indices[n_val:]
+
+        if len(train_idx) == 0:
+            train_idx = np.asarray([int(val_idx[0])], dtype=int)
+            val_idx = np.asarray([int(i) for i in range(n_rows) if i != int(train_idx[0])], dtype=int)
+
+        tr_df = train_feature_df.iloc[train_idx].reset_index(drop=True)
+        va_df = train_feature_df.iloc[val_idx].reset_index(drop=True)
+        tr_y = y_train[train_idx]
+        va_y = y_train[val_idx]
+        return tr_df, tr_y, va_df, va_y
     
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
@@ -216,93 +336,94 @@ class DeepPrimeModelWrapper(BasePEModel):
         weight_decay = float(hyperparameters.get("weight_decay", 0.0))
         train_ensemble = bool(hyperparameters.get("train_ensemble", False))
         load_pretrained = bool(hyperparameters.get("load_pretrained", True))
+        grad_clip = float(hyperparameters.get("grad_clip", 1.0))
+        scheduler_name = hyperparameters.get("scheduler", "none")
+        scheduler_kwargs = hyperparameters.get("scheduler_kwargs", None)
+        early_stopping_patience = int(hyperparameters.get("early_stopping_patience", 10))
+        early_stopping_min_delta = float(hyperparameters.get("early_stopping_min_delta", 0.0))
+        reshuffle_each_epoch = bool(hyperparameters.get("reshuffle_each_epoch", True))
+        val_fraction = float(hyperparameters.get("val_fraction", 0.1))
+        val_random_state = int(hyperparameters.get("val_random_state", 42))
+        split_group_col = str(hyperparameters.get("split_group_col", "group_id"))
 
         train_feature_df = self._to_deepprime_feature_df(train_data)
-        if "editing_efficiency" in train_data.columns:
-            y_train = pd.Series(
-                pd.to_numeric(train_data["editing_efficiency"], errors="coerce"),
-                index=train_data.index,
-            ).fillna(0.0).to_numpy(dtype=np.float32)
-        elif "Efficiency" in train_feature_df.columns:
-            y_train = pd.Series(
-                pd.to_numeric(train_feature_df["Efficiency"], errors="coerce"),
-                index=train_feature_df.index,
-            ).fillna(0.0).to_numpy(dtype=np.float32)
-        else:
-            raise ValueError("Training data must include 'editing_efficiency' or 'Efficiency' column.")
+        y_train = self._extract_targets(train_data, train_feature_df, "Training")
 
         if val_data is not None:
             val_feature_df = self._to_deepprime_feature_df(val_data)
-            if "editing_efficiency" in val_data.columns:
-                y_val = pd.Series(
-                    pd.to_numeric(val_data["editing_efficiency"], errors="coerce"),
-                    index=val_data.index,
-                ).fillna(0.0).to_numpy(dtype=np.float32)
-            elif "Efficiency" in val_feature_df.columns:
-                y_val = pd.Series(
-                    pd.to_numeric(val_feature_df["Efficiency"], errors="coerce"),
-                    index=val_feature_df.index,
-                ).fillna(0.0).to_numpy(dtype=np.float32)
-            else:
-                raise ValueError("Validation data must include 'editing_efficiency' or 'Efficiency' column.")
+            y_val = self._extract_targets(val_data, val_feature_df, "Validation")
         else:
-            val_feature_df = None
-            y_val = None
+            train_feature_df, y_train, val_feature_df, y_val = self._split_train_validation(
+                train_data,
+                train_feature_df,
+                y_train,
+                val_fraction=val_fraction,
+                random_state=val_random_state,
+                group_col=split_group_col,
+            )
 
         if not self.is_trained:
             if load_pretrained:
                 self.load_model()
             else:
                 from deepprime.src.dprime import GeneInteractionModel
+
                 self.models = [GeneInteractionModel(hidden_size=128, num_layers=1).to(self.device)]
                 self.model = self.models
                 self.is_trained = True
 
         train_inputs = self.prepare_data(train_feature_df)
-        y_train_t = torch.tensor(y_train, dtype=torch.float32, device=self.device).reshape(-1, 1)
-        if y_val is not None and val_feature_df is not None:
-            val_inputs = self.prepare_data(val_feature_df)
-            y_val_t = torch.tensor(y_val, dtype=torch.float32, device=self.device).reshape(-1, 1)
-        else:
-            val_inputs = None
-            y_val_t = None
+        val_inputs = self.prepare_data(val_feature_df)
+        train_dataset = _DeepPrimeTensorDataset(train_inputs["g"], train_inputs["x"], y_train)
+        val_dataset = _DeepPrimeTensorDataset(val_inputs["g"], val_inputs["x"], y_val)
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=reshuffle_each_epoch,
+            drop_last=False,
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
 
         models_to_train = self.models if train_ensemble else self.models[:1]
         history: List[Dict[str, float]] = []
+        model_summaries: List[Dict[str, float]] = []
+
         for model_idx, model in enumerate(models_to_train):
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-            criterion = torch.nn.MSELoss()
-
-            for epoch in range(epochs):
-                model.train()
-                perm = torch.randperm(y_train_t.shape[0], device=self.device)
-                epoch_losses: List[float] = []
-                for start in range(0, y_train_t.shape[0], batch_size):
-                    idx = perm[start:start + batch_size]
-                    g_batch = train_inputs["g"][idx].permute((0, 3, 1, 2))
-                    x_batch = train_inputs["x"][idx]
-                    y_batch = y_train_t[idx]
-
-                    optimizer.zero_grad()
-                    pred = model(g_batch, x_batch)
-                    loss = criterion(pred, y_batch)
-                    loss.backward()
-                    optimizer.step()
-                    epoch_losses.append(float(loss.detach().cpu()))
-
-                train_loss = float(np.mean(epoch_losses)) if epoch_losses else float("nan")
-                log_entry: Dict[str, float] = {
+            lightning_hparams = dict(hyperparameters)
+            lightning_hparams["lr"] = lr
+            lightning_hparams["weight_decay"] = weight_decay
+            lightning_hparams["scheduler"] = scheduler_name
+            lightning_hparams["scheduler_kwargs"] = scheduler_kwargs
+            lightning_module = _DeepPrimeLightningRegressor(model, lightning_hparams)
+            metrics = fit_lightning_module(
+                lightning_module,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                device=self.device,
+                config=LightningTrainerConfig(
+                    max_epochs=epochs,
+                    grad_clip=grad_clip,
+                    patience=early_stopping_patience,
+                    min_delta=early_stopping_min_delta,
+                    enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
+                    log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
+                ),
+            )
+            for row in cast(List[Dict[str, float]], metrics["history"]):
+                history.append({"model_index": float(model_idx), **row})
+            model_summaries.append(
+                {
                     "model_index": float(model_idx),
-                    "epoch": float(epoch + 1),
-                    "train_loss": train_loss,
+                    "best_epoch": float(metrics["best_epoch"]),
+                    "best_val_loss": float(metrics["best_val_loss"]),
+                    "n_epochs_ran": float(metrics["n_epochs_ran"]),
                 }
-                if val_inputs is not None and y_val_t is not None:
-                    model.eval()
-                    with torch.no_grad():
-                        pred_val = model(val_inputs["g"].permute((0, 3, 1, 2)), val_inputs["x"])
-                        val_loss = float(criterion(pred_val, y_val_t).detach().cpu())
-                    log_entry["val_loss"] = val_loss
-                history.append(log_entry)
+            )
 
         self._last_training_history = history
         self.model = self.models
@@ -316,6 +437,7 @@ class DeepPrimeModelWrapper(BasePEModel):
             "lr": lr,
             "final_train_loss": final.get("train_loss"),
             "final_val_loss": final.get("val_loss"),
+            "model_summaries": model_summaries,
         }
     
     def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:

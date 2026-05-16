@@ -2,10 +2,13 @@ import sys
 import os
 import hashlib
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, cast
 import pandas as pd
 import torch
 import numpy as np
+from torch.utils.data import DataLoader, Dataset
+
+import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
 from .vendor_path import resolve_vendor_models_path
 from pe_common.model_interface import BasePEModel
@@ -15,10 +18,90 @@ from pe_common.sequence_utils import (
     sanitize_dna_sequence,
 )
 from pe_common.data_utils import build_test_mask_from_group_id
+from pe_common.training import (
+    build_lr_scheduler,
+    build_group_kfold_indices,
+    fit_lightning_module,
+    LightningTrainerConfig,
+    pearson_spearman,
+)
 
 # Ensure that the OPED model code directory is in sys.path
 _vendor_root = resolve_vendor_models_path()
-sys.path.insert(0, str(_vendor_root))
+if str(_vendor_root) not in sys.path:
+    sys.path.insert(0, str(_vendor_root))
+
+
+class _OPEDEncodedDataset(Dataset):
+    def __init__(self, encoded_df: pd.DataFrame) -> None:
+        feature_columns = [
+            "Target",
+            "PBS",
+            "RT",
+            "Target_o2",
+            "PBS_o2",
+            "RT_o2",
+            "Target_o3",
+            "PBS_o3",
+            "RT_o3",
+        ]
+        self.features: List[np.ndarray] = [
+            np.asarray(list(encoded_df[col]), dtype=np.int64) for col in feature_columns
+        ]
+        self.targets = encoded_df["Efficiency"].astype(float).to_numpy(dtype=np.float32)
+
+    def __len__(self) -> int:
+        return int(self.targets.shape[0])
+
+    def __getitem__(self, idx: int) -> Tuple[Tuple[torch.Tensor, ...], torch.Tensor]:
+        features = tuple(
+            torch.tensor(feature[idx], dtype=torch.long) for feature in self.features
+        )
+        target = torch.tensor(self.targets[idx], dtype=torch.float32)
+        return features, target
+
+
+class _OPEDLightningRegressor(pl.LightningModule):
+    def __init__(self, model: torch.nn.Module, hparams: Dict[str, Any]) -> None:
+        super().__init__()
+        self.model = model
+        self.hparams_map = dict(hparams)
+        self.criterion = torch.nn.MSELoss()
+
+    def forward(self, inputs: Tuple[torch.Tensor, ...]) -> torch.Tensor:
+        pred, _ = self.model(inputs)
+        return pred.squeeze(-1)
+
+    def training_step(self, batch: Tuple[Tuple[torch.Tensor, ...], torch.Tensor], _batch_idx: int) -> torch.Tensor:
+        inputs, target = batch
+        pred = self.forward(inputs)
+        loss = self.criterion(pred, target)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        return loss
+
+    def validation_step(
+        self, batch: Tuple[Tuple[torch.Tensor, ...], torch.Tensor], _batch_idx: int
+    ) -> torch.Tensor:
+        inputs, target = batch
+        pred = self.forward(inputs)
+        loss = self.criterion(pred, target)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self) -> Any:
+        optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=float(self.hparams_map.get("lr", 3e-4)),
+            weight_decay=float(self.hparams_map.get("weight_decay", 0.0)),
+        )
+        scheduler = build_lr_scheduler(
+            optimizer,
+            scheduler_name=self.hparams_map.get("scheduler", "step"),
+            scheduler_kwargs=self.hparams_map.get("scheduler_kwargs", {"step_size": 10, "gamma": 0.95}),
+        )
+        if scheduler is None:
+            return optimizer
+        return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
 
 class OPEDModelWrapper(BasePEModel):
     """Wrapper for OPED (Order-based Prediction of Editing outcomes and Deletion) model"""
@@ -406,6 +489,105 @@ class OPEDModelWrapper(BasePEModel):
         
         return outputs.tolist() if isinstance(outputs, np.ndarray) else outputs
 
+    @staticmethod
+    def _build_model_from_hparams(hparams: Dict[str, Any]) -> torch.nn.Module:
+        from oped.pegRNA_PredictingCodes.train_model import TransformerEncoderModelOrder3
+
+        ntokens_value = hparams.get("ntokens", hparams.get("ntoken", [4, 16, 64]))
+        if isinstance(ntokens_value, int):
+            ntokens_value = [ntokens_value, 16, 64]
+        model = TransformerEncoderModelOrder3(
+            ntokens=ntokens_value,
+            embedding_size=int(hparams.get("embedding_size", 64)),
+            hidden_size=hparams.get("hidden_size", [2048, 2048, 2048]),
+            hidden_size_fully=hparams.get("hidden_size_fully", None),
+            output_size=int(hparams.get("output_size", 1)),
+            nhead=int(hparams.get("nhead", 8)),
+            num_encoder_layers=hparams.get("num_encoder_layers", [6, 6, 6]),
+            dropout=float(hparams.get("drop_out", hparams.get("dropout", 0.1))),
+            other_size=int(hparams.get("other_size", 0)),
+        )
+        return model
+
+    @staticmethod
+    def _batch_inputs_from_encoded_df(batch_df: pd.DataFrame, device: torch.device) -> Tuple[torch.Tensor, ...]:
+        return (
+            torch.tensor(list(batch_df["Target"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["PBS"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["RT"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["Target_o2"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["PBS_o2"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["RT_o2"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["Target_o3"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["PBS_o3"]), device=device, dtype=torch.long),
+            torch.tensor(list(batch_df["RT_o3"]), device=device, dtype=torch.long),
+        )
+
+    def _predict_encoded_df(
+        self,
+        model: torch.nn.Module,
+        encoded_df: pd.DataFrame,
+        batch_size: int = 1024,
+    ) -> np.ndarray:
+        model.eval()
+        outputs: List[float] = []
+        with torch.no_grad():
+            for start in range(0, len(encoded_df), batch_size):
+                xb = encoded_df.iloc[start : start + batch_size, :]
+                if xb.empty:
+                    continue
+                inputs = self._batch_inputs_from_encoded_df(xb, self.device)
+                pred, _ = model(inputs)
+                outputs.extend(pred.squeeze(-1).detach().cpu().numpy().tolist())
+        return np.asarray(outputs, dtype=float)
+
+    def _run_training_loop(
+        self,
+        model: torch.nn.Module,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        hparams: Dict[str, Any],
+    ) -> Tuple[torch.nn.Module, Dict[str, Any]]:
+        batch_size = int(hparams.get("batch_size", 128))
+        num_epochs = int(hparams.get("epoch_num", hparams.get("epochs", 100)))
+        grad_clip = float(hparams.get("grad_clip", 1.0))
+        early_stopping_patience = int(hparams.get("early_stopping_patience", 10))
+        early_stopping_delta = float(hparams.get("early_stopping_min_delta", 0.0))
+        train_loader = DataLoader(
+            _OPEDEncodedDataset(train_df),
+            batch_size=batch_size,
+            shuffle=bool(hparams.get("reshuffle_each_epoch", True)),
+            drop_last=False,
+        )
+        val_loader = DataLoader(
+            _OPEDEncodedDataset(val_df),
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+        lightning_module = _OPEDLightningRegressor(model=model, hparams=hparams)
+        metrics = fit_lightning_module(
+            lightning_module,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            device=self.device,
+            config=LightningTrainerConfig(
+                max_epochs=num_epochs,
+                grad_clip=grad_clip,
+                patience=early_stopping_patience,
+                min_delta=early_stopping_delta,
+                enable_progress_bar=bool(hparams.get("progress_bar", False)),
+                log_every_n_steps=int(hparams.get("log_every_n_steps", 25)),
+            ),
+        )
+        model = lightning_module.model
+        return model, {
+            "history": metrics["history"],
+            "best_val_loss": float(metrics["best_val_loss"]),
+            "best_epoch": int(metrics["best_epoch"]),
+            "n_epochs_ran": int(metrics["n_epochs_ran"]),
+        }
+
     def train(self, train_data: pd.DataFrame, val_data: Optional[pd.DataFrame] = None,
               hyperparameters: Optional[Dict[str, Any]] = None, freezing: bool = False) -> Dict[str, Any]:
         """
@@ -419,79 +601,150 @@ class OPEDModelWrapper(BasePEModel):
         Returns:
             Dictionary with training results
         """
-        from oped.pegRNA_PredictingCodes.train_model import train_and_test_transformer_order3
-        
-        # Assume caller provides OPED-encoded data (e.g. output of prepare_data).
-        X_train = train_data.copy()
-        y_train = X_train["Efficiency"].astype(float).reset_index(drop=True)
-        X_train = X_train.drop(columns=["Efficiency"])
-        
-        if val_data is not None:
-            X_val = val_data.copy()
-            y_val = X_val["Efficiency"].astype(float).reset_index(drop=True)
-            X_val = X_val.drop(columns=["Efficiency"])
-        else:
-            # Use training data as validation if not provided
-            X_val, y_val = X_train, y_train
-        
-        # Default hyperparameters for OPED transformer
-        default_params = {
-            'ntoken': 4,
-            'embedding_size': 64,
-            'hidden_size': [2048, 2048, 2048],
-            'hidden_size_fully': None,
-            'output_size': 1,
-            'nhead': 8,
-            'num_encoder_layers': [6, 6, 6],
-            'drop_out': 0.1,
-            'epoch_num': 100,
-            'batch_size': 128,
-            'lr': 0.0003,
-            'weight_decay': 0.0,
-            'device': self.device,
-            'best_epoch': True,
-            'transfer': False,
-            'freezing': freezing,
-            'other_size': 0,
-            'grad_clip': 1.0,
-            'reshuffle_each_epoch': True,
-            'early_stopping_patience': 10,
+        # Assume caller provides OPED-encoded data (output of prepare_data).
+        if "Efficiency" not in train_data.columns:
+            raise ValueError("train_data must include 'Efficiency' column.")
+        if val_data is not None and "Efficiency" not in val_data.columns:
+            raise ValueError("val_data must include 'Efficiency' column.")
+
+        default_params: Dict[str, Any] = {
+            "ntokens": [4, 16, 64],
+            "embedding_size": 64,
+            "hidden_size": [2048, 2048, 2048],
+            "hidden_size_fully": None,
+            "output_size": 1,
+            "nhead": 8,
+            "num_encoder_layers": [6, 6, 6],
+            "drop_out": 0.1,
+            "epoch_num": 100,
+            "batch_size": 128,
+            "lr": 3e-4,
+            "weight_decay": 0.0,
+            "other_size": 0,
+            # Shared training controls
+            "grad_clip": 1.0,
+            "reshuffle_each_epoch": True,
+            "early_stopping_patience": 10,
+            "early_stopping_min_delta": 0.0,
+            "scheduler": "step",
+            "scheduler_kwargs": {"step_size": 10, "gamma": 0.95},
+            # CV controls (applied when val_data is None and cv_folds > 1)
+            "cv_folds": 1,
+            "cv_group_col": "group_id",
+            "cv_random_state": 42,
+            # Holdout split controls for final fit when val_data is absent
+            "val_fraction": 0.1,
+            "val_random_state": 42,
         }
-        
         if hyperparameters:
             default_params.update(hyperparameters)
-        
-        # Train model
-        trained_model = train_and_test_transformer_order3(
-            X_train=X_train,
-            X_test=X_val,
-            y_train=y_train,
-            y_test=y_val,
-            hyperparameters=default_params,
-            transformer=None  # Train from scratch
+
+        # Optional layer freezing for transfer-learning-style finetuning.
+        def apply_freezing_if_needed(model_obj: torch.nn.Module) -> None:
+            if not freezing:
+                return
+            for param in model_obj.parameters():
+                param.requires_grad = False
+            fc_layers = getattr(model_obj, "fully_connected_layers", None)
+            if isinstance(fc_layers, torch.nn.Module):
+                for param in fc_layers.parameters():
+                    param.requires_grad = True
+
+        train_df = train_data.copy().reset_index(drop=True)
+        cv_reports: List[Dict[str, Any]] = []
+        cv_folds = int(default_params.get("cv_folds", 1))
+
+        if val_data is None and cv_folds > 1:
+            folds = build_group_kfold_indices(
+                train_df,
+                n_splits=cv_folds,
+                group_col=str(default_params.get("cv_group_col", "group_id")),
+                random_state=int(default_params.get("cv_random_state", 42)),
+            )
+            for fold_idx, (tr_idx, va_idx) in enumerate(folds):
+                fold_train = train_df.iloc[tr_idx].reset_index(drop=True)
+                fold_val = train_df.iloc[va_idx].reset_index(drop=True)
+                fold_model = self._build_model_from_hparams(default_params).to(self.device)
+                apply_freezing_if_needed(fold_model)
+                fold_model, fold_metrics = self._run_training_loop(
+                    fold_model,
+                    fold_train,
+                    fold_val,
+                    default_params,
+                )
+                fold_pred = self._predict_encoded_df(
+                    fold_model,
+                    fold_val.drop(columns=["Efficiency"]),
+                    batch_size=int(default_params.get("batch_size", 128)),
+                )
+                fold_true = fold_val["Efficiency"].astype(float).to_numpy()
+                fold_corr = pearson_spearman(fold_true.tolist(), fold_pred.tolist())
+                cv_reports.append(
+                    {
+                        "fold": fold_idx,
+                        "n_train": int(len(fold_train)),
+                        "n_val": int(len(fold_val)),
+                        "best_epoch": int(fold_metrics["best_epoch"]),
+                        "best_val_loss": float(fold_metrics["best_val_loss"]),
+                        "val_pearson": float(fold_corr["pearson"]),
+                        "val_spearman": float(fold_corr["spearman"]),
+                    }
+                )
+
+        if val_data is not None:
+            final_train = train_df
+            final_val = val_data.copy().reset_index(drop=True)
+        else:
+            val_fraction = float(default_params.get("val_fraction", 0.1))
+            val_fraction = max(0.05, min(0.5, val_fraction))
+            n_rows = len(train_df)
+            if n_rows < 2:
+                raise ValueError("Need at least 2 rows to train OPED model.")
+            n_val = max(1, int(np.ceil(n_rows * val_fraction)))
+            rng = np.random.default_rng(int(default_params.get("val_random_state", 42)))
+            all_idx = np.arange(n_rows)
+            rng.shuffle(all_idx)
+            val_idx = all_idx[:n_val]
+            train_idx = all_idx[n_val:]
+            if len(train_idx) == 0:
+                train_idx = val_idx[:1]
+                val_idx = all_idx[1:]
+            final_train = train_df.iloc[train_idx].reset_index(drop=True)
+            final_val = train_df.iloc[val_idx].reset_index(drop=True)
+
+        model = self._build_model_from_hparams(default_params).to(self.device)
+        apply_freezing_if_needed(model)
+        model, train_metrics = self._run_training_loop(model, final_train, final_val, default_params)
+        val_pred = self._predict_encoded_df(
+            model,
+            final_val.drop(columns=["Efficiency"]),
+            batch_size=int(default_params.get("batch_size", 128)),
         )
-        
-        self.model = trained_model
+        val_true = final_val["Efficiency"].astype(float).to_numpy()
+        val_corr = pearson_spearman(val_true.tolist(), val_pred.tolist())
+
+        self.model = model
         self.is_trained = True
-        
-        # Evaluate on validation set
-        from oped.pegRNA_PredictingCodes.evaluate_model import evaluate_transformer_order3
-        
-        results, _, _ = evaluate_transformer_order3(
-            transformer=self.model,
-            X_train=X_val,
-            y_train=y_val,
-            batch_size_test=1024,
-            device=self.device,
-            verbose=True
-        )
-        
-        return {
-            'status': 'success',
-            'hyperparameters': default_params,
-            'val_pearson': results['pearson'][0],
-            'val_spearman': results['spearman'][0]
+
+        result: Dict[str, Any] = {
+            "status": "success",
+            "hyperparameters": default_params,
+            "best_epoch": int(train_metrics["best_epoch"]),
+            "best_val_loss": float(train_metrics["best_val_loss"]),
+            "val_pearson": float(val_corr["pearson"]),
+            "val_spearman": float(val_corr["spearman"]),
+            "n_train_final": int(len(final_train)),
+            "n_val_final": int(len(final_val)),
         }
+        if cv_reports:
+            pearsons = [r["val_pearson"] for r in cv_reports if not np.isnan(r["val_pearson"])]
+            spearmans = [r["val_spearman"] for r in cv_reports if not np.isnan(r["val_spearman"])]
+            result["cross_validation"] = {
+                "folds": cv_reports,
+                "mean_val_pearson": float(np.mean(pearsons)) if pearsons else float("nan"),
+                "mean_val_spearman": float(np.mean(spearmans)) if spearmans else float("nan"),
+            }
+        return result
     
     def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
         """
