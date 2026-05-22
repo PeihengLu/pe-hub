@@ -29,7 +29,7 @@ class CatalogRepository:
         rows = self._session.scalars(select(Scaffold).order_by(Scaffold.id)).all()
         return [ScaffoldRead.model_validate(row) for row in rows]
 
-    def get_scaffold(self, scaffold_id: str) -> Optional[ScaffoldRead]:
+    def get_scaffold(self, scaffold_id: int) -> Optional[ScaffoldRead]:
         row = self._session.get(Scaffold, scaffold_id)
         return ScaffoldRead.model_validate(row) if row else None
 
@@ -43,7 +43,12 @@ class CatalogRepository:
                 id=row.id,
                 name=row.name,
                 description=row.description,
-                assay_type=row.assay_type,
+                pegRNA_delivery_method=row.pegRNA_delivery_method,
+                pe_delivery_method=row.pe_delivery_method,
+                edit_scope=row.edit_scope,
+                experimental_method=row.experimental_method,
+                target_context=row.target_context,
+                standardizable=row.standardizable,
                 study_id=row.study_id,
                 study_name=row.study.name if row.study else None,
             )

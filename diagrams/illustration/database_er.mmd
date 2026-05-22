@@ -16,7 +16,12 @@ erDiagram
         int id PK
         string name
         string description
-        string assay_type
+        string pegRNA_delivery_method
+        string pe_delivery_method
+        string edit_scope
+        string experimental_method
+        string target_context
+        boolean standardizable
         int study_id FK
     }
 
@@ -26,12 +31,12 @@ erDiagram
         int dataset_id FK
         string cell_line
         string pe_system
-        string scaffold_id
+        int scaffold_id
         int num_samples
     }
 
     Scaffold {
-        string id PK
+        int id PK
         string sequence
         string name
         string description

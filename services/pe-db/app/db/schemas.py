@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 class ScaffoldRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: int
     name: str
     sequence: str
     description: Optional[str] = None
@@ -32,7 +32,12 @@ class DatasetRead(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    assay_type: Optional[str] = None
+    pegRNA_delivery_method: Optional[str] = None
+    pe_delivery_method: Optional[str] = None
+    edit_scope: Optional[str] = None
+    experimental_method: Optional[str] = None
+    target_context: Optional[str] = None
+    standardizable: bool = True
     study_id: int
     study_name: Optional[str] = None
 
@@ -45,7 +50,7 @@ class DatasheetRead(BaseModel):
     dataset_id: int
     cell_line: str
     pe_system: str
-    scaffold_id: str
+    scaffold_id: int
     num_samples: int
     updated_at: Optional[datetime] = None
     study_name: Optional[str] = None

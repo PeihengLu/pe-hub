@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -28,7 +28,12 @@ class Dataset(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    assay_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pegRNA_delivery_method: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pe_delivery_method: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    edit_scope: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    experimental_method: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    target_context: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    standardizable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     study_id: Mapped[int] = mapped_column(ForeignKey("study.id"), nullable=False)
 
     study: Mapped[Study] = relationship(back_populates="datasets")
@@ -38,7 +43,7 @@ class Dataset(Base):
 class Scaffold(Base):
     __tablename__ = "scaffold"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     sequence: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -60,7 +65,7 @@ class Datasheet(Base):
     dataset_id: Mapped[int] = mapped_column(ForeignKey("dataset.id"), nullable=False)
     cell_line: Mapped[str] = mapped_column(String(64), nullable=False)
     pe_system: Mapped[str] = mapped_column(String(64), nullable=False)
-    scaffold_id: Mapped[str] = mapped_column(ForeignKey("scaffold.id"), nullable=False)
+    scaffold_id: Mapped[int] = mapped_column(ForeignKey("scaffold.id"), nullable=False)
     num_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

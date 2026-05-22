@@ -20,24 +20,47 @@ class StudyRecord:
 
 @dataclass(frozen=True)
 class DatasetRecord:
+    """Catalog metadata for a dataset within a study.
+
+    Field semantics:
+      - ``pegRNA_delivery_method`` / ``pe_delivery_method``: how each component
+        reaches cells (often different, e.g. lentiviral pegRNA + transfected PE).
+      - ``edit_scope``: intended vs off-target editing readout (on_target / off_target).
+      - ``experimental_method``: where editing is measured (in_vitro / in_vivo).
+      - ``target_context``: where the edit is measured — ``endogenous`` (native
+        chromosomal locus) vs ``non_endogenous`` (synthetic target on plasmid or
+        lentiviral self-targeting cassette; not the patient's genomic allele).
+      - ``standardizable``: whether exported CSVs can be converted to the shared
+        on-target PE schema (``False`` for export-only or not-yet-implemented).
+    """
+
     study_key: str
     name: str
     description: str
-    assay_type: str
+    pegRNA_delivery_method: str
+    pe_delivery_method: str
+    edit_scope: str
+    experimental_method: str
+    target_context: str
+    standardizable: bool = True
+
+
+def _canonical_dataset_name(value: str) -> str:
+    return str(value).strip().lower().replace("_", "-")
 
 
 STUDY_REGISTRY: tuple[StudyRecord, ...] = (
     StudyRecord(
         key="deepprime",
         display_name="DeepPrime",
-        publication_date=date(2023, 5, 1),
+        publication_date=date(2023, 4, 20),
         authors="Yu et al.",
     ),
     StudyRecord(
         key="pridict1",
         display_name="PRIDICT1",
         publication_date=date(2023, 8, 1),
-        authors="Gerald et al.",
+        authors="Mathis et al.",
     ),
     StudyRecord(
         key="pridict2",
@@ -48,7 +71,7 @@ STUDY_REGISTRY: tuple[StudyRecord, ...] = (
     StudyRecord(
         key="minsepie",
         display_name="MinsePIE",
-        publication_date=date(2023, 10, 1),
+        publication_date=date(2023, 2, 16),
         authors="Koeppel et al.",
     ),
     StudyRecord(
@@ -63,55 +86,159 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
     DatasetRecord(
         study_key="deepprime",
         name="deepprime-clinvar",
-        description="DeepPrime ClinVar on-target library.",
-        assay_type="lentiviral_ontarget",
+        description=(
+            "ClinVar-variant pegRNA library (~259k pairs); efficiencies measured on "
+            "synthetic 74 bp target contexts (plasmid assay), not native genomic loci."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deepprime",
         name="deepprime-small",
-        description="DeepPrime small validation library (multi cell line / PE system).",
-        assay_type="lentiviral_ontarget",
+        description=(
+            "Multi cell line / PE-system fine-tuning subsets (DeepPrime-FT); "
+            "synthetic target contexts."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deepprime",
         name="deepprime-off",
-        description="DeepPrime off-target library.",
-        assay_type="offtarget",
+        description=(
+            "Off-target mismatch library (DeepPrime-Off); synthetic mismatch reporters."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="off_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=False,
     ),
     DatasetRecord(
         study_key="deepprime",
         name="deepprime-off-subpool",
-        description="DeepPrime off-target sub-pools.",
-        assay_type="offtarget",
+        description="Off-target library sub-pools; synthetic mismatch reporters.",
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="off_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=False,
     ),
     DatasetRecord(
         study_key="pridict1",
         name="library1",
-        description="PRIDICT1 high-throughput screening library (~92k pegRNAs).",
-        assay_type="lentiviral_ontarget",
+        description=(
+            "PRIDICT1 self-targeting lentiviral HTS (~92k pegRNAs): each construct "
+            "pairs pegRNA with a synthetic target cassette (not the endogenous pathogenic locus)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="pridict1",
+        name="endogenous",
+        description=(
+            "Arrayed pegRNA validation at ~45 native genomic loci in HEK293T and K562 "
+            "(supplementary endogenous table; PE2 plasmid transfection)."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=False,
     ),
     DatasetRecord(
         study_key="pridict2",
         name="library-diverse",
-        description="PRIDICT2 diverse lentiviral library (in vitro cell lines).",
-        assay_type="lentiviral_ontarget",
+        description=(
+            "PRIDICT2 diverse edit-type library (HEK293T, K562, K562 MLH1−/−); "
+            "same self-targeting lentiviral reporter format as PRIDICT1."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="pridict2",
         name="library-diverse-invivo",
-        description="PRIDICT2 diverse library measured in vivo (AdV).",
-        assay_type="in_vivo",
+        description=(
+            "Diverse-library pegRNAs validated at endogenous mouse liver loci "
+            "(PRIDICT2 supplementary AdV column; distinct from in vitro reporter HTS)."
+        ),
+        pegRNA_delivery_method="adenovirus",
+        pe_delivery_method="adenovirus",
+        edit_scope="on_target",
+        experimental_method="in_vivo",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="pridict2",
+        name="trip-analysis",
+        description=(
+            "TRIP library editing survey at endogenous genomic integrations in K562 "
+            "(supplementary table 12; Fig. 3 / Ext. Fig. 4–5; PE2)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=False,
     ),
     DatasetRecord(
         study_key="minsepie",
         name="library-insert",
-        description="MinSePIE insertion efficiency screens.",
-        assay_type="insertion_library",
+        description=(
+            "Pooled insertion-efficiency library at endogenous loci (HEK293T, rc): "
+            "lentiviral pegRNA library with PE2/PE3 or epegRNA by plasmid transfection."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="minsepie",
+        name="library-insert-piggybac",
+        description=(
+            "Same lentiviral pegRNA library in HAP1 and HAP1 ΔMLH1 with dox-inducible "
+            "PE2 integrated via PiggyBac (Koeppel et al. 2023)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="piggybac",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
     ),
 )
 
 _STUDY_BY_KEY = {study.key: study for study in STUDY_REGISTRY}
-_DATASET_BY_KEY = {(d.study_key, d.name): d for d in DATASET_REGISTRY}
+_DATASET_BY_KEY = {
+    (d.study_key, _canonical_dataset_name(d.name)): d for d in DATASET_REGISTRY
+}
 
 
 def get_study_record(study_key: str) -> Optional[StudyRecord]:
@@ -119,4 +246,6 @@ def get_study_record(study_key: str) -> Optional[StudyRecord]:
 
 
 def get_dataset_record(study_key: str, dataset_name: str) -> Optional[DatasetRecord]:
-    return _DATASET_BY_KEY.get((study_key.strip().lower(), dataset_name.strip().lower()))
+    return _DATASET_BY_KEY.get(
+        (study_key.strip().lower(), _canonical_dataset_name(dataset_name))
+    )

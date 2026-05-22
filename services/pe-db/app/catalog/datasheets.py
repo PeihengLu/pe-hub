@@ -15,6 +15,7 @@ from ..config import get_settings
 from ..db.models import Dataset, Datasheet
 from ..db.session import get_session
 from .scaffolds import (
+    SCAFFOLD_ID_OPTIMIZED,
     default_scaffold_for_pridict,
     scaffold_id_for_minsepie_sequence,
     scaffold_id_from_deepprime_label,
@@ -36,7 +37,7 @@ class DatasheetScaffoldAssignment:
     dataset: str
     cell_line: str
     pe_system: str
-    scaffold_id: str
+    scaffold_id: int
     scaffold_source: str
 
 
@@ -88,10 +89,13 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
     scaffold_id = default_scaffold_for_pridict()
     specs = [
         ("pridict1", "library1", "hek293t", "pe2"),
+        ("pridict1", "endogenous", "hek293t", "pe2"),
+        ("pridict1", "endogenous", "k562", "pe2"),
         ("pridict2", "library-diverse", "hek", "pe2"),
         ("pridict2", "library-diverse", "k562", "pe2"),
         ("pridict2", "library-diverse", "k562mlh1dn", "pe2"),
         ("pridict2", "library-diverse-invivo", "adv", "pe2"),
+        ("pridict2", "trip-analysis", "k562", "pe2"),
         # Legacy export path if AdV rows were written under library-diverse
         ("pridict2", "library-diverse", "adv", "pe2"),
     ]
@@ -110,41 +114,45 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
 
 def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
     from ..utils.standardize_data import (
-        _MINSEPIE_CELL_ABBR_TO_FULL,
         _MINSEPIE_EXPERIMENT_TO_PEGRNA,
         _load_minsepie_pegrna_table,
-        _parse_minsepie_experiment,
+        _minsepie_cell_line_from_raw,
+        _minsepie_dataset_for_experiment,
+        _minsepie_pe_system_for_experiment,
     )
 
     root = data_root or get_settings().data_root
     data_path = root / "raw" / "minsepie" / "41587_2023_1678_MOESM5_ESM.tsv"
     if not data_path.exists():
         return []
-    data = pd.read_csv(data_path, sep="\t", usecols=["experiment"])
+    data = pd.read_csv(data_path, sep="\t", usecols=["experiment", "cell_line"])
     pegrna_df = _load_minsepie_pegrna_table()
     pegrna_lookup = {
         (str(row["target"]), str(row["purpose"])): row
         for _, row in pegrna_df.iterrows()
     }
     rows: list[DatasheetScaffoldAssignment] = []
-    for experiment in data["experiment"].astype(str).unique():
-        key = _MINSEPIE_EXPERIMENT_TO_PEGRNA.get(experiment)
-        if key is None or key not in pegrna_lookup:
+    seen: set[tuple[str, str, str]] = set()
+    for experiment in sorted(_MINSEPIE_EXPERIMENT_TO_PEGRNA):
+        pegrna_row = pegrna_lookup[_MINSEPIE_EXPERIMENT_TO_PEGRNA[experiment]]
+        cell_line = _minsepie_cell_line_from_raw(
+            data.loc[data["experiment"] == experiment, "cell_line"].iloc[0]
+        )
+        pe_system = _normalize_datasheet_field(_minsepie_pe_system_for_experiment(experiment))
+        dataset = _minsepie_dataset_for_experiment(experiment)
+        datasheet_key = (dataset, cell_line, pe_system)
+        if datasheet_key in seen:
             continue
-        pegrna_row = pegrna_lookup[key]
-        scaffold_seq = pegrna_row.get("pegrna_scaffold_seq")
-        if pd.isna(scaffold_seq):
-            continue
-        target_variant, cell_abbr, pe_condition = _parse_minsepie_experiment(experiment)
-        cell_line = _MINSEPIE_CELL_ABBR_TO_FULL[cell_abbr]
-        pe_system = _normalize_datasheet_field(f"{target_variant}_{pe_condition}")
+        seen.add(datasheet_key)
         rows.append(
             DatasheetScaffoldAssignment(
                 study="minsepie",
-                dataset="library-insert",
+                dataset=dataset,
                 cell_line=cell_line,
                 pe_system=pe_system,
-                scaffold_id=scaffold_id_for_minsepie_sequence(str(scaffold_seq)),
+                scaffold_id=scaffold_id_for_minsepie_sequence(
+                    str(pegrna_row["pegrna_scaffold_seq"]).upper()
+                ),
                 scaffold_source="minsepie_st6",
             )
         )
@@ -162,10 +170,10 @@ def build_scaffold_assignments(data_root: Optional[Path] = None) -> list[Datashe
 
 def _scaffold_assignment_lookup(
     assignments: list[DatasheetScaffoldAssignment],
-) -> dict[tuple[str, str, str, str], str]:
+) -> dict[tuple[str, str, str, str], int]:
     return {
         (
-            row.study,
+            _normalize_study_key(row.study),
             _normalize_dataset_name(row.dataset),
             _normalize_datasheet_field(row.cell_line),
             _normalize_datasheet_field(row.pe_system),
@@ -198,7 +206,7 @@ def _relative_data_path(file_path: Path, data_root: Path) -> str:
 def _index_exported_datasheets(
     session: Session,
     dataset_index: dict[tuple[str, str], Dataset],
-    scaffold_by_datasheet: dict[tuple[str, str, str, str], str],
+    scaffold_by_datasheet: dict[tuple[str, str, str, str], int],
     *,
     data_root: Path,
     exported_dir: Path,
@@ -241,7 +249,7 @@ def _index_exported_datasheets(
                 cell_line,
                 pe_system,
             )
-            scaffold_id = "optimized"
+            scaffold_id = SCAFFOLD_ID_OPTIMIZED
 
         rel_path = _relative_data_path(data_file, data_root)
         num_samples = _count_samples(data_file)

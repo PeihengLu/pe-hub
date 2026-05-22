@@ -98,7 +98,7 @@ async def list_scaffolds():
 
 
 @app.get("/api/scaffolds/{scaffold_id}", response_model=ScaffoldRead)
-async def get_scaffold(scaffold_id: str):
+async def get_scaffold(scaffold_id: int):
     with get_session() as session:
         scaffold = CatalogRepository(session).get_scaffold(scaffold_id)
     if scaffold is None:

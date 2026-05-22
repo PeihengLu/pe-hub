@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-# Literature / vendor canonical gRNA scaffolds (5'→3', RNA written as DNA alphabet).
+# Stable catalog IDs (seeded into scaffold.id).
+SCAFFOLD_ID_CONVENTIONAL = 1
+SCAFFOLD_ID_OPTIMIZED = 2
+SCAFFOLD_ID_MINSEPIE_18NT = 3
+SCAFFOLD_ID_MINSEPIE_CODON_VARIANT = 4
+
+# Literature canonical gRNA scaffolds (5'→3', RNA written as DNA alphabet).
 SCAFFOLD_CONVENTIONAL = (
     "GTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAAAAGTGGCACCGAGTCGGTGC"
 )
@@ -23,7 +29,7 @@ SCAFFOLD_MINSEPIE_CODON_VARIANT = (
 
 @dataclass(frozen=True)
 class PegRNAScaffold:
-    scaffold_id: str
+    scaffold_id: int
     name: str
     sequence: str
     description: str = ""
@@ -31,57 +37,57 @@ class PegRNAScaffold:
 
 PEGRNA_SCAFFOLDS: tuple[PegRNAScaffold, ...] = (
     PegRNAScaffold(
-        scaffold_id="conventional",
+        scaffold_id=SCAFFOLD_ID_CONVENTIONAL,
         name="Conventional",
         sequence=SCAFFOLD_CONVENTIONAL,
         description="Original SpCas9 pegRNA scaffold (Anzalone et al. 2019).",
     ),
     PegRNAScaffold(
-        scaffold_id="optimized",
+        scaffold_id=SCAFFOLD_ID_OPTIMIZED,
         name="Optimized",
         sequence=SCAFFOLD_OPTIMIZED,
         description="Engineered scaffold (Chen et al. 2021); default in PRIDICT pegRNA design.",
     ),
     PegRNAScaffold(
-        scaffold_id="minsepie_18nt",
+        scaffold_id=SCAFFOLD_ID_MINSEPIE_18NT,
         name="MinSePIE 18nt insertion",
         sequence=SCAFFOLD_MINSEPIE_18NT,
         description="Custom scaffold for 18-nt insertion libraries (Koeppel et al. 2023 ST6).",
     ),
     PegRNAScaffold(
-        scaffold_id="minsepie_codon_variant",
+        scaffold_id=SCAFFOLD_ID_MINSEPIE_CODON_VARIANT,
         name="MinSePIE codon variant",
         sequence=SCAFFOLD_MINSEPIE_CODON_VARIANT,
         description="Custom scaffold for barnacle codon-variant libraries (Koeppel et al. 2023 ST6).",
     ),
 )
 
-_SCAFFOLD_BY_ID: dict[str, PegRNAScaffold] = {s.scaffold_id: s for s in PEGRNA_SCAFFOLDS}
-_SEQUENCE_TO_ID: dict[str, str] = {s.sequence.upper(): s.scaffold_id for s in PEGRNA_SCAFFOLDS}
+_SCAFFOLD_BY_ID: dict[int, PegRNAScaffold] = {s.scaffold_id: s for s in PEGRNA_SCAFFOLDS}
+_SEQUENCE_TO_ID: dict[str, int] = {s.sequence.upper(): s.scaffold_id for s in PEGRNA_SCAFFOLDS}
 
 
-def scaffold_id_from_sequence(sequence: str) -> Optional[str]:
+def scaffold_id_from_sequence(sequence: str) -> Optional[int]:
     """Map an explicit scaffold sequence to a known scaffold_id, if recognized."""
     normalized = str(sequence).strip().upper()
     return _SEQUENCE_TO_ID.get(normalized)
 
 
-def scaffold_id_from_deepprime_label(label: str) -> str:
+def scaffold_id_from_deepprime_label(label: str) -> int:
     """Map DeepPrime Summary 'Scaffold' column value to scaffold_id."""
     normalized = str(label).strip().lower()
     if normalized == "conventional":
-        return "conventional"
+        return SCAFFOLD_ID_CONVENTIONAL
     if normalized == "optimized":
-        return "optimized"
+        return SCAFFOLD_ID_OPTIMIZED
     raise ValueError(f"Unknown DeepPrime scaffold label: {label!r}")
 
 
-def default_scaffold_for_pridict() -> str:
+def default_scaffold_for_pridict() -> int:
     """PRIDICT pegRNA design uses the optimized scaffold for PE2-NGG libraries."""
-    return "optimized"
+    return SCAFFOLD_ID_OPTIMIZED
 
 
-def scaffold_id_for_minsepie_sequence(sequence: str) -> str:
+def scaffold_id_for_minsepie_sequence(sequence: str) -> int:
     """Resolve MinSePIE ST6 scaffold sequence to scaffold_id."""
     resolved = scaffold_id_from_sequence(sequence)
     if resolved is not None:
@@ -89,7 +95,7 @@ def scaffold_id_for_minsepie_sequence(sequence: str) -> str:
     raise ValueError(f"Unrecognized MinSePIE scaffold sequence: {sequence[:40]}...")
 
 
-def get_scaffold(scaffold_id: str) -> PegRNAScaffold:
+def get_scaffold(scaffold_id: int) -> PegRNAScaffold:
     if scaffold_id not in _SCAFFOLD_BY_ID:
         raise KeyError(f"Unknown scaffold_id: {scaffold_id}")
     return _SCAFFOLD_BY_ID[scaffold_id]
