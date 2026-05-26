@@ -1,0 +1,51 @@
+---
+config:
+  theme: 'neutral'
+  themeVariables:
+    fontSize: '18px'
+---
+
+erDiagram
+
+    direction LR
+    Study {
+        int id PK
+        string name
+        date publication_date
+        string authors
+    }
+
+    Dataset {
+        int id PK
+        string name
+        string description
+        string pegRNA_delivery_method
+        string pe_delivery_method
+        string edit_scope
+        string experimental_method
+        string target_context
+        boolean standardizable
+        int study_id FK
+    }
+
+    Scaffold {
+        int id PK
+        string sequence
+        string name
+        string description
+    }
+
+    Datasheet {
+        int id PK
+        string file_path
+        int dataset_id FK
+        string cell_line
+        string pe_system
+        int scaffold_id FK
+        int num_samples
+        datetime updated_at
+    }
+
+    Study ||--o{ Dataset : contains
+    Dataset ||--o{ Datasheet : includes
+    Scaffold ||--o{ Datasheet : references

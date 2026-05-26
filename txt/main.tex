@@ -1,0 +1,226 @@
+\documentclass{article}
+
+\title{PE Ensemble : Interactively Reviewing State of the art Prime Editing Guide RNA Design Models}
+\author{Peiheng Lu}
+% line number
+\usepackage{lineno}
+\linenumbers
+
+\usepackage{graphicx}
+\usepackage[sorting=none]{biblatex}
+\usepackage{hyperref}
+
+\addbibresource{references.bib}
+\graphicspath{diagrams/illustration/}
+
+% increase text width
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+
+(Your abstract here.)
+
+\end{abstract}
+
+\section{Introduction}
+
+(more reference)
+Prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome across numerous species, including humans. It surpasses base editing, which is limited to single base changes, and offers greater precision compared to CRISPR-Cas9, which often results in off-target effects due to the necessity of double strand breaks for editing.
+
+(Process of prime editing, describe pegRNA, \autoref{fig:pe-process})
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{diagrams/illustration/prime editing process.png}
+    \caption{Prime editing process, the reverse transcriptase and Cas9 modules were omitted for visual clarity}
+    \label{fig:pe-process}
+\end{figure}
+
+These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design
+
+\section{Methods}
+
+\subsection{Project Structure Overview}
+
+This project consists of two main services. The first service, PE Database, can be run as a stand-alone docker application that serves data from requested data source in desirable format. The second service is PE Ensemble, which as the name suggests provides an interface for users to play with current state of the art model architectures in prime editing efficiency prediction, and relies on PE Database to provide data formatted for the selected models to train or evaluate.
+
+
+
+\subsection{PE Database}
+% overview of the database operations
+
+With interest in prime editing guide RNA design steadily growing, the volume of big-data studies researching various aspects of prime editing guide RNA design and efficiency prediction has been increasing year by year. However, none of the studies have agreed upon a standardized format for their model inputs, and as the volume of studies involving prime editing grows, the challenge of comparing new deep learning system benchmarks becomes more pronounced. To streamline the reviewing process, I established a central database for storing prime editing experimental data. This database, called PE DB, is crafted to store and retrieve data from prime editing experiments, including guide RNA sequences, target DNA sequences, and the outcomes of editing. 
+
+\subsubsection{Data Source}
+
+We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Five studies are included - DeepPE from Kim et al\cite{kimPredictingEfficiencyPrime2021}; DeepPrime from yu et al\cite{yuPredictionEfficienciesDiverse2023}; MinsePIE from koeppel et al\cite{koeppelPredictionPrimeEditing2023}; PRIDICTv1 from schwank et al\cite{schwankgeraldPredictingPrimeEditing2023} and PRIDICTv2 from Mathis et al\cite{mathisMachineLearningPrediction2024}.
+
+(Add a diagram explaining the composition of the data from the studies)
+
+% A major difference among the datasets is how the editing efficiency is measured. The most straightforward definition uses the total read count of the successfully edited sequences divided by the total read count of the sequences\cite{schwankgeraldPredictingPrimeEditing2023}. However, the augmented measure, which deducts the background editing rate from the total editing rate, is more common in computational studies\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,mathisMachineLearningPrediction2024}. 
+
+\begin{enumerate}
+    \item \textbf{DeepPE}
+    
+    Kim et al.\cite{kimPredictingEfficiencyPrime2021} conducted one of the first big-data studies on prime editing efficiency, performing a high-throughput evaluation of PE2 activity using 54,836 pairs of pegRNAs and target sequences in HEK293T cells. The study identified factors affecting PE2 efficiency and developed three computational models (including the deep learning model DeepPE) to predict pegRNA efficiency. The data are organized into four datasets in the database.
+
+    The main library (deeppe-ht) contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus. The data are split into HT-training and HT-test subsets.
+
+    Library~2 is split into an edit-type subset (deeppe-type), which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset (deeppe-position), which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2.
+
+    A separate endogenous validation dataset (deeppe-endo) contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
+
+    \item \textbf{DeepPrime}
+    
+    Yu et al.\cite{yuPredictionEfficienciesDiverse2023} systematically evaluated prime editing efficiencies for 338,996 pegRNA--target pairs (including 3,979 epegRNAs) in an error-free manner across eight PE systems and seven cell types. The study developed DeepPrime, a deep learning model that predicts PE efficiencies for all possible edit types up to 3~bp, and DeepPrime-FT, a fine-tuning strategy that adapts predictions to specific PE systems and cell types.
+
+    The main ClinVar library (deepprime-clinvar) contains approximately 259,000 pegRNA--target pairs designed around ClinVar pathogenic variants. Efficiencies were measured on synthetic 74~bp target contexts via a plasmid-based assay, not at native genomic loci. Both pegRNAs and PE were delivered by plasmid transfection. This dataset spans multiple PE systems (PE2, PE2max, PE4max, NRCH-PE2, NRCH-PE2max, NRCH-PE4max, among others) and cell types (HEK293T, A549, DLD1, HeLa, MDA-MB-231, HCT116, and NIH3T3).
+
+    The fine-tuning subsets (deepprime-small) are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
+
+    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. These off-target datasets are stored in their original format and are not currently standardizable to the shared on-target schema.
+
+    \item \textbf{MinsePIE}
+    
+    Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} focused specifically on prime editing insertion efficiency, designing a library of 3,604 insertion sequences of various lengths (1--69~nt) and measuring their insertion frequencies at four endogenous genomic target sites (HEK3, EMX1, FANCF, and the safe-harbor CLYBL locus) in three human cell lines (HEK293T, HAP1, and HAP1 $\Delta$MLH1). The study identified that insertion length, nucleotide composition (particularly cytosine content), and secondary structure of the insert sequence all affect insertion rates, and discovered that the 3$'$ flap nucleases TREX1 and TREX2 suppress the insertion of longer sequences. These findings were combined into the MinsePIE machine learning model, which predicts relative insertion frequencies with $R = 0.70$.
+
+    The main library-insert dataset contains the pooled insertion screens in HEK293T cells, where pegRNAs were delivered via lentiviral transduction and PE2 (or PE3 / epegRNA variants) was delivered by plasmid transfection. The library-insert-piggybac dataset covers the same lentiviral pegRNA library screened in HAP1 and HAP1 $\Delta$MLH1 cells, where PE2 was stably integrated via PiggyBac transposase and induced by doxycycline rather than transiently transfected. Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located; the recorded data contain 40,436 data points.
+
+    \item \textbf{PRIDICTv1}
+    
+    Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} performed a high-throughput screen analyzing prime editing outcomes of 92,423 pegRNAs targeting a highly diverse set of 13,349 human pathogenic mutations, including base substitutions, insertions, and deletions. The study identified sequence context features that influence prime editing and trained PRIDICT (PRIme editing guide preDICTion), an attention-based bidirectional recurrent neural network that predicts both editing efficiency and product purity.
+
+    The main library (library1) uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection. A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection; this dataset is stored but not currently standardizable.
+
+    \item \textbf{PRIDICTv2}
+    
+    Mathis et al.\cite{mathisMachineLearningPrediction2024} extended the PRIDICT framework with PRIDICT2.0, a model that predicts PE efficiency for all edit types up to 15~bp in length, in both mismatch repair-deficient and mismatch repair-proficient cell lines, as well as in vivo. The study also developed ePRIDICT, a model that quantifies how local chromatin environments impact prime editing rates.
+
+    The library-diverse dataset extends the PRIDICT1 approach with a broader range of edit types, screened in HEK293T, K562, and K562 MLH1$^{-/-}$ (mismatch repair-deficient) cell lines using the same self-targeting lentiviral reporter system (non-endogenous targets). The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
+
+    The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
+
+    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. The pegRNAs were delivered by lentiviral transduction and PE2 by plasmid transfection; this dataset is stored but not currently standardizable due to its distinct experimental format.
+\end{enumerate}
+
+
+\subsubsection{Data Storage}
+
+Since the project is distributed using GitHub, we needed to work around the 100 MB per file limit to avoid using Git LFS(Large File Storage) and incurring substantial charges.
+Instead of a persistent DB object, the data are stored in their original tsv, csv or xlsx (Excel) format and are only transformed into standardized formats and loaded into a separate MySQL instance after it is deployed by users.
+
+
+\subsubsection{Data Formatting}
+
+Since only raw data directly acquired from the studies are stored in the repository, some preprocessing is required to convert the data into more uniformly usable format.
+
+The first step is data exportation, where the original data was broken down into individual experiments(a 'datasheet') corresponding to one PE system operating on one cell-line with minimum processing. The original columns are respected to as much as this hierarchical design allows, pending further operations.
+
+The exported data can be used to construct the MySQL database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
+
+As briefly mentioned above, a standardized format was devised as a mediator to simply conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
+
+
+\subsubsection{Database Design}
+
+For efficient filtering, scalable data retrieval, and improved conceptual clarity, the database is designed using a hierarchical schema based on column propagation. This approach allows shared metadata to be stored at the highest appropriate level while enabling fine-grained filtering at lower levels without data duplication.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{diagrams/illustration/database_er.png}
+    \caption{ER diagram for the database design}
+    \label{fig:database_er}
+\end{figure}
+
+As shown in \autoref{fig:database_er}, the database consists of three relational tables, each corresponding to a different level of experimental granularity.
+
+The \textbf{Study} table represents the top level of the hierarchy and stores metadata describing the original publication from which the data were derived. This includes basic bibliographic information such as study name, authorship, and publication date. Storing these attributes at the study level enables efficient filtering by publication-related criteria without repeated storage across downstream entities. Each study may be associated with multiple datasets.
+
+The \textbf{Dataset} table forms the intermediate layer and captures properties shared across a coherent group of experiments within a study. At this level, datasets are primarily differentiated by experimental design features, such as pegRNA delivery method, PE delivery method, edit scope, experimental method, target context.
+
+An additional `standardizable' column is added to the Dataset table to indicate whether the dataset can be converted to the standardized format with the current state of the database. This allows users to view and perform analysis on datasets that are not fully supported by PE-DB, without interfering with the functionality of the data handling pipeline. 
+
+The lowest level of the hierarchy is represented by the \textbf{Datasheet} table. Each datasheet often corresponds to a single worksheet within an original Excel file and represents one distinct experimental condition. Datasheets capture properties that vary at the experiment level, including the prime editing system used, the cell line, and the number of samples. This level of granularity reflects the smallest meaningful unit for data analysis while maintaining a clear relationship to higher-level experimental context through foreign keys.
+
+Because all metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required.
+
+
+
+
+\subsubsection{Data Retrieval and Interaction}
+
+A set of Python FastAPI endpoints were developed for accessing and filtering of data.
+
+Additionally, for easier benchmarking of new machine learning systems with existing state of the art models, the database also provides the options to export the data with features required by top performing models, such DeepPrime by Yu et al.\cite{yuPredictionEfficienciesDiverse2023}.
+
+\subsubsection{Database Usage}
+
+Docker was chosen for its exceptional portability and hassle free setup. 
+
+A number of Python FastAPI endpoints were exposed, the most important endpoint is GetData, can be used by PyTorch dataloaders during training and evaluation.
+
+\subsection{Models}
+
+We are only considering models with general prime editing efficiency prediction capability, so various models in DeepPE, as well as MinsePIE, who are only designed to work on specific editing types are not included in this study. Additionally, PRIDICTv1 and PRIDICTv2 has minimal changes in term of architecture, thus only the more up to date PRIDICTv2 model is studied. This leaves us with three current state of the art deep learning models - OPED\cite{liuDesignPrimeeditingGuide2023}, DeepPrime\cite{yuPredictionEfficienciesDiverse2023} and PRIDICTv2\cite{mathisMachineLearningPrediction2024}. 
+
+A small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
+
+\subsubsection{Synchronizing PyTorch Versions}
+
+Since the models were developed using different versions of PyTorch, it is necessary to synchronize the versions to ensure consistent behavior.
+
+% TODO: figure out synchronization process
+
+\subsubsection{Retraining Deep Learning Models}
+
+For a consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets. 
+
+\subsection{PE Ensemble}
+
+PE Ensemble also exposes APIs for model evaluation and training, which are mostly used by the frontend user interface, but can also be called directly for easier retraining or finetuning.
+
+\subsubsection{Software Architecture}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{diagrams/illustration/pe-ensemble-software-stack.png}
+    \caption{Software Stack of PE Ensemble}
+    \label{fig:pe-ensemble-architecture}
+\end{figure}
+
+While PE Ensemble consumes PE DB’s API endpoints for data preprocessing, it also exposes its own set of endpoints that interface directly with the frontend built in TypeScript and React. The frontend is styled using Tailwind CSS, with Vite serving as the project’s build tool.
+
+
+\section{Result}
+
+
+
+\subsection{Benchmarking}
+
+
+
+\subsection{PE Ensemble}
+
+(show findings after working with a couple of ensembles, if there is any)
+
+(Test ensemble performance)
+
+The retrained weights for all models on each dataset as well as script to train each model was also available in the study, so users also have the option to apply transfer learning, produce and upload custom weights to use in the ensemble. Make sure to choose the option to freeze the representation learning layers when using a pre-trained model.
+
+To showcase this transfer learning + ensemble learning ability, we reproduced the training process from PRIDICT 2.0 using the PE ensemble and PE DB tool. 
+
+(Do the experiment)
+
+\section{Discussion}
+
+(Your conclusion here.)
+
+
+\printbibliography
+
+\end{document}
