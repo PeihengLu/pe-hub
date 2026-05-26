@@ -169,17 +169,193 @@ def standardize_exported_data(
     logger.info("Standardized %s exported datasheet(s)", count)
     return count
 
-def _export_deeppe_on_target_datasheets() -> None:
+def _clean_deeppe_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Flatten multi-line Excel headers into single-line column labels."""
+    out = df.copy()
+    out.columns = [str(col).replace("\n", " ").strip() for col in out.columns]
+    return out
+
+
+def _deeppe_br_tr_replicate_columns(columns, prefix: str) -> list[str]:
     """
-    Export all sheets from the original DeepPE Excel file to CSV format.
+    Return BR1/BR2 × TR1/TR2 efficiency columns for a cell-line prefix (e.g. HCT, MDA, Endo).
     """
-    ht_position_type_data_path = DATA_ROOT / 'raw' / 'deeppe' / '41587_2020_677_MOESM4_ESM.xlsx'
-    ht_data_sheet_name = 'Library 1 (HT-training, test)'
-    position_type_data_sheet_name = 'Library 2 (Position, Type)'
-    # load the data from the sheets
-    ht_data = pd.read_excel(ht_position_type_data_path, sheet_name=ht_data_sheet_name)
-    position_type_data = pd.read_excel(ht_position_type_data_path, sheet_name=position_type_data_sheet_name)
-    
+    expected_order = [
+        f"{prefix}-BR1-TR1",
+        f"{prefix}-BR1-TR2",
+        f"{prefix}-BR2-TR1",
+        f"{prefix}-BR2-TR2",
+    ]
+    by_short: dict[str, str] = {}
+    for col in columns:
+        col_str = str(col).strip()
+        for key in expected_order:
+            if col_str.startswith(key):
+                by_short[key] = col
+                break
+    return [by_short[key] for key in expected_order if key in by_short]
+
+
+def _average_deeppe_replicates(df: pd.DataFrame, replicate_columns: list[str]) -> pd.Series:
+    """Mean editing efficiency across biological and technical replicates (skipna)."""
+    if not replicate_columns:
+        raise ValueError("No replicate columns provided for DeepPE averaging.")
+    numeric = df[replicate_columns].apply(pd.to_numeric, errors="coerce")
+    return numeric.mean(axis=1, skipna=True)
+
+
+def _save_deeppe_export(
+    df: pd.DataFrame,
+    *,
+    dataset: str,
+    cell_line: str,
+    pe_system: str = "pe2",
+) -> None:
+    output_path = (
+        DATA_ROOT / "exported" / "deeppe" / dataset / f"{cell_line}-{pe_system}.csv"
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+    logger.info("Saved DeepPE datasheet: %s (%s rows)", output_path, len(df))
+
+
+def _read_deeppe_moesm4_sheet(excel_path: Path, sheet_name: str) -> pd.DataFrame:
+    return _clean_deeppe_dataframe_columns(
+        pd.read_excel(excel_path, sheet_name=sheet_name, header=1)
+    )
+
+
+def _export_deeppe_moesm4_datasheets() -> None:
+    """
+    Export DeepPE high-throughput libraries from Kim et al. MOESM4 (Suppl. Tables 3–4).
+
+    Library 1 → ``deeppe-ht``; library 2 type/position splits → ``deeppe-type`` /
+    ``deeppe-position``. All measured in HEK293T with PE2 on lentiviral reporters.
+    """
+    excel_path = DATA_ROOT / "raw" / "deeppe" / "41587_2020_677_MOESM4_ESM.xlsx"
+    cell_line = _normalize_name("HEK293T")
+    pe_system = "pe2"
+
+    ht_data = _read_deeppe_moesm4_sheet(excel_path, "Library 1 (HT-training, test)")
+    ht_data = ht_data.rename(
+        columns={
+            "Datat set name": "dataset_split",
+            "Measured PE efficiency": "editing_efficiency",
+        }
+    )
+    _save_deeppe_export(
+        ht_data,
+        dataset="deeppe-ht",
+        cell_line=cell_line,
+        pe_system=pe_system,
+    )
+
+    position_type_data = _read_deeppe_moesm4_sheet(excel_path, "Library 2 (Position, Type)")
+    position_type_data = position_type_data.rename(
+        columns={
+            "Datat set name": "dataset_split",
+            "Measured PE efficiency": "editing_efficiency",
+        }
+    )
+    split_series = position_type_data["dataset_split"].astype(str)
+    type_data = position_type_data[split_series.str.contains("Type", case=False, na=False)]
+    position_data = position_type_data[split_series.str.contains("Position", case=False, na=False)]
+
+    _save_deeppe_export(
+        type_data,
+        dataset="deeppe-type",
+        cell_line=cell_line,
+        pe_system=pe_system,
+    )
+    _save_deeppe_export(
+        position_data,
+        dataset="deeppe-position",
+        cell_line=cell_line,
+        pe_system=pe_system,
+    )
+
+
+def _drop_deeppe_replicate_columns(df: pd.DataFrame, replicate_columns: list[str]) -> pd.DataFrame:
+    """Remove raw replicate efficiency columns after ``editing_efficiency`` is computed."""
+    return df.drop(columns=replicate_columns, errors="ignore")
+
+
+def _export_deeppe_endogenous_datasheets() -> None:
+    """
+    Export DeepPE endogenous validation sets with replicate-averaged efficiency.
+
+    Sources:
+      - ``deeppe_endogenous.xlsx`` (Suppl. Table 3): HEK293T, 33 sites
+      - ``41587_2020_677_MOESM5_ESM.xlsx`` (Suppl. Table 5): HCT116 and MDA-MB-231
+
+    ``editing_efficiency`` is the mean of BR1/BR2 × TR1/TR2 replicate columns per cell line.
+    """
+    pe_system = "pe2"
+    endogenous_exports = (
+        (
+            DATA_ROOT / "raw" / "deeppe" / "deeppe_endogenous.xlsx",
+            "Data set Endo",
+            "Endo",
+            _normalize_name("HEK293T"),
+        ),
+        (
+            DATA_ROOT / "raw" / "deeppe" / "41587_2020_677_MOESM5_ESM.xlsx",
+            "Data set HCT and MDA",
+            "HCT",
+            _normalize_name("HCT116"),
+        ),
+        (
+            DATA_ROOT / "raw" / "deeppe" / "41587_2020_677_MOESM5_ESM.xlsx",
+            "Data set HCT and MDA",
+            "MDA",
+            _normalize_name("MDA-MB-231"),
+        ),
+    )
+
+    for excel_path, sheet_name, replicate_prefix, cell_line in endogenous_exports:
+        df = _clean_deeppe_dataframe_columns(
+            pd.read_excel(excel_path, sheet_name=sheet_name, header=1)
+        )
+        replicate_columns = _deeppe_br_tr_replicate_columns(df.columns, replicate_prefix)
+        if len(replicate_columns) != 4:
+            raise ValueError(
+                f"Expected 4 replicate columns for prefix {replicate_prefix!r} in {excel_path}, "
+                f"found {len(replicate_columns)}: {replicate_columns}"
+            )
+        export_df = df.copy()
+        export_df["editing_efficiency"] = _average_deeppe_replicates(export_df, replicate_columns)
+        export_df = _drop_deeppe_replicate_columns(export_df, replicate_columns)
+        # MOESM5 contains both HCT and MDA columns; keep only the target line's replicates.
+        if replicate_prefix in {"HCT", "MDA"}:
+            other_prefix = "MDA" if replicate_prefix == "HCT" else "HCT"
+            other_cols = [
+                col
+                for col in export_df.columns
+                if str(col).strip().startswith(f"{other_prefix}-BR")
+            ]
+            export_df = export_df.drop(columns=other_cols, errors="ignore")
+        elif replicate_prefix == "Endo":
+            extra_endo_cols = [
+                col
+                for col in export_df.columns
+                if str(col).strip().startswith("Endo-BR")
+                and col not in replicate_columns
+            ]
+            export_df = export_df.drop(columns=extra_endo_cols, errors="ignore")
+        _save_deeppe_export(
+            export_df,
+            dataset="deeppe-endo",
+            cell_line=cell_line,
+            pe_system=pe_system,
+        )
+
+
+def _export_deeppe_datasheets() -> None:
+    """Export all DeepPE supplementary tables to ``datasets/exported/deeppe/``."""
+    _export_deeppe_moesm4_datasheets()
+    _export_deeppe_endogenous_datasheets()
+
+
 def _export_deepprime_datasheets() -> None:
     """
     Export all sheets from the original DeepPrime Excel file to CSV format.

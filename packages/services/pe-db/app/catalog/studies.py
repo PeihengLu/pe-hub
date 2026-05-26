@@ -82,6 +82,11 @@ STUDY_REGISTRY: tuple[StudyRecord, ...] = (
     ),
 )
 
+_DEEPPE_HT_DESCRIPTION = (
+    "High-throughput PE2 library 1 (G→C at RTT position +5); lentiviral pegRNA/target "
+    "reporters in HEK293T (~43k pegRNAs; HT-training and HT-test splits)."
+)
+
 DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
     DatasetRecord(
         study_key="deepprime",
@@ -218,6 +223,59 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         experimental_method="in_vitro",
         target_context="endogenous",
         standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="deeppe",
+        name="deeppe-ht",
+        description=_DEEPPE_HT_DESCRIPTION,
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=False,
+    ),
+    DatasetRecord(
+        study_key="deeppe",
+        name="deeppe-type",
+        description=(
+            "DeepPE library 2 edit-type subset (lentiviral reporters in HEK293T; "
+            "type-training and type-test splits)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=False,
+    ),
+    DatasetRecord(
+        study_key="deeppe",
+        name="deeppe-position",
+        description=(
+            "DeepPE library 2 edit-position subset (lentiviral reporters in HEK293T; "
+            "position-training and position-test splits)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=False,
+    ),
+    DatasetRecord(
+        study_key="deeppe",
+        name="deeppe-endo",
+        description=(
+            "Arrayed pegRNA validation at endogenous genomic loci (PE2 plasmid "
+            "transfection); editing_efficiency averaged over BR1–BR2 and TR1–TR2."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=False,
     ),
     DatasetRecord(
         study_key="minsepie",
