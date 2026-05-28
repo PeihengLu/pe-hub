@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +16,7 @@ from ..catalog.studies import get_dataset_record
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-SUPPORTED_STUDIES = {"deepprime", "pridict2", "pridict1", "minsepie"}
+SUPPORTED_STUDIES = {"deeppe", "deepprime", "pridict2", "pridict1", "minsepie"}
 
 DATASETS = {
     "deeppe": [
@@ -479,16 +480,25 @@ def _export_pridict1_endogenous_datasheets() -> None:
         ("k562", "pe2", "K562_averageedited"),
     )
     for cell_line, pe_system, efficiency_col in exports:
+        # Keep only the target cell line's primary endogenous efficiency column.
+        export_df = df.copy()
+        other_efficiency_cols = [
+            col
+            for col in export_df.columns
+            if col.endswith("_averageedited") and col != efficiency_col
+        ]
+        export_df = export_df.drop(columns=other_efficiency_cols, errors="ignore")
+
         out_dir = DATA_ROOT / "exported" / "pridict1" / "endogenous"
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"{cell_line}-{pe_system}.csv"
-        df.to_csv(output_path, index=False)
+        export_df.to_csv(output_path, index=False)
         logger.info(
-            "Saved PRIDICT1 endogenous data (%s, primary column %s): %s (%s rows)",
+            "Saved PRIDICT1 endogenous data (%s, kept primary column %s): %s (%s rows)",
             cell_line,
             efficiency_col,
             output_path,
-            len(df),
+            len(export_df),
         )
 
 
@@ -884,6 +894,216 @@ def _build_standardized_output_df(
 
     return output_df
 
+# DeepPE (Kim et al. 2021) uses 47 bp wide-target reporters with X-masked
+# prime-edited sequences (library 1) or pegRNA 3' extensions (libraries 2 / endo).
+_DEEPPE_WIDE_COLUMNS = (
+    "wt_sequence",
+    (
+        "Wide target sequence (Total 47 bps = 4 bp neighboring sequence + 20 bp "
+        "protospacer + 3 bp NGG PAM+ 20 bp neighboring sequence)"
+    ),
+)
+_DEEPPE_MUT_COLUMNS = (
+    "mut_sequence",
+    (
+        "Prime edited sequence (input for deep learning, A/C/G/T indicates 3' "
+        "extension (RT template-PBS) binding region)"
+    ),
+)
+_DEEPPE_EXT_COLUMNS = ("pegRNA_3extension", "3' extension sequence of pegRNA")
+_DEEPPE_PBSLEN_COLUMNS = ("pbslen", "PBS length", "PBS length (nt)")
+_DEEPPE_RTLEN_COLUMNS = ("rtlen", "RT length", "RT template length (nt)")
+_DEEPPE_RTPBSLEN_COLUMNS = ("rt-pbslen", "PBS-RT length")
+_DEEPPE_SPCAS9_COLUMNS = ("deepspcas9_score", "DeepSpCas9 score")
+_DEEPPE_EFF_COLUMNS = ("measured_pe_efficiency", "editing_efficiency", "Measured PE efficiency")
+_DEEPPE_SPLIT_COLUMNS = ("dataset_split", "Datat set name")
+
+
+def _deeppe_pick_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> str:
+    for name in candidates:
+        if name in df.columns:
+            return name
+    raise KeyError(f"DeepPE export is missing expected column (tried {candidates})")
+
+
+def _deeppe_mask_bounds(mut_sequence: str) -> tuple[int, int]:
+    """Return (left, right) indices of the non-masked binding region in mut_sequence."""
+    mut_upper = str(mut_sequence).upper()
+    non_masked = [index for index, base in enumerate(mut_upper) if base != "X"]
+    if not non_masked:
+        raise ValueError("DeepPE mut_sequence has no unmasked binding region.")
+    return non_masked[0], non_masked[-1] + 1
+
+
+def _deeppe_build_mut_sequence(
+    wt_sequence: str,
+    extension: str,
+    pbs_rt_len: int,
+    pbs_len: int,
+) -> str:
+    """
+    Build an X-masked prime-edited target sequence from the wide target and pegRNA 3' extension.
+
+    The extension is treated as RNA 5'→3' (PBS then RT template); its reverse complement
+    is aligned to the 47 bp wide target by maximizing PBS identity.
+    """
+    wt = str(wt_sequence).upper()
+    extension_dna = reverse_complement(
+        str(extension).upper().replace("U", "T")[:pbs_rt_len],
+        mode="rna_to_dna",
+    )
+    pbs = extension_dna[:pbs_len]
+    best_score, best_start = -1, 0
+    for start in range(0, len(wt) - pbs_rt_len + 1):
+        score = sum(
+            left == right for left, right in zip(wt[start : start + pbs_len], pbs)
+        )
+        if score > best_score:
+            best_score, best_start = score, start
+    return (
+        "X" * best_start
+        + extension_dna
+        + "X" * (len(wt) - best_start - pbs_rt_len)
+    )
+
+
+def _deeppe_split_to_fold(split_name: str) -> int:
+    """Map DeepPE supplementary split labels to fold ids (-1 for held-out test)."""
+    label = str(split_name).strip().lower()
+    if "test" in label:
+        return -1
+    if "ht" in label:
+        return 0
+    if "type" in label:
+        return 1
+    if "position" in label:
+        return 2
+    return 0
+
+
+def _deeppe_infer_rt_edit(
+    wt_sequence: str,
+    mut_sequence: str,
+    pbs_len: int,
+    pbs_rt_len: int,
+) -> tuple[str, int, int]:
+    """
+    Infer substitution/insertion/deletion type and size within the RT template region.
+
+    Returns:
+        edit kind ('sub', 'ins', or 'del'), edit length, and 0-based edit start in RT.
+    """
+    pbs_left, _ = _deeppe_mask_bounds(mut_sequence)
+    pbs_right = pbs_left + pbs_len
+    rtt_right = pbs_left + pbs_rt_len
+    wt_rt = str(wt_sequence)[pbs_right:rtt_right]
+    mut_rt = str(mut_sequence).upper()[pbs_right:rtt_right]
+    matcher = SequenceMatcher(None, wt_rt, mut_rt)
+    insertions = deletions = substitutions = 0
+    edit_start: Optional[int] = None
+    for tag, wt_start, wt_end, mut_start, mut_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if edit_start is None:
+            edit_start = wt_start
+        if tag == "insert":
+            insertions += mut_end - mut_start
+        elif tag == "delete":
+            deletions += wt_end - wt_start
+        elif tag == "replace":
+            substitutions += max(wt_end - wt_start, mut_end - mut_start)
+    if insertions and not deletions and not substitutions:
+        return "ins", insertions, edit_start or 0
+    if deletions and not insertions and not substitutions:
+        return "del", deletions, edit_start or 0
+    if substitutions and not insertions and not deletions:
+        return "sub", substitutions, edit_start or 0
+    dominant = max(insertions, deletions, substitutions)
+    if dominant == insertions:
+        return "ins", insertions, edit_start or 0
+    if dominant == deletions:
+        return "del", deletions, edit_start or 0
+    return "sub", substitutions, edit_start or 0
+
+
+def _prepare_deeppe_export_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize exported DeepPE columns to the DeepPrime-style schema for standardization."""
+    source = df.copy()
+    wide_col = _deeppe_pick_column(source, _DEEPPE_WIDE_COLUMNS)
+    pbs_col = _deeppe_pick_column(source, _DEEPPE_PBSLEN_COLUMNS)
+    rt_col = _deeppe_pick_column(source, _DEEPPE_RTLEN_COLUMNS)
+    rt_pbs_col = next((name for name in _DEEPPE_RTPBSLEN_COLUMNS if name in source.columns), None)
+    spcas9_col = next((name for name in _DEEPPE_SPCAS9_COLUMNS if name in source.columns), None)
+    eff_col = _deeppe_pick_column(source, _DEEPPE_EFF_COLUMNS)
+
+    prepared = pd.DataFrame()
+    prepared["wt_sequence"] = source[wide_col].astype(str).str.upper()
+    prepared["pbslen"] = pd.to_numeric(source[pbs_col], errors="raise").astype(int)
+    prepared["rtlen"] = pd.to_numeric(source[rt_col], errors="raise").astype(int)
+    if rt_pbs_col is not None:
+        rt_pbs_lengths = pd.to_numeric(source[rt_pbs_col], errors="raise").astype(int)
+    else:
+        rt_pbs_lengths = prepared["pbslen"] + prepared["rtlen"]
+    prepared["rt-pbslen"] = rt_pbs_lengths
+    if any(name in source.columns for name in _DEEPPE_MUT_COLUMNS):
+        mut_col = _deeppe_pick_column(source, _DEEPPE_MUT_COLUMNS)
+        prepared["mut_sequence"] = source[mut_col].astype(str)
+    else:
+        ext_col = _deeppe_pick_column(source, _DEEPPE_EXT_COLUMNS)
+        prepared["mut_sequence"] = [
+            _deeppe_build_mut_sequence(
+                wt,
+                ext,
+                int(pbs_rt_len),
+                int(pbs_len),
+            )
+            for wt, ext, pbs_rt_len, pbs_len in zip(
+                prepared["wt_sequence"],
+                source[ext_col],
+                rt_pbs_lengths,
+                prepared["pbslen"],
+            )
+        ]
+    if spcas9_col is not None:
+        prepared["deepspcas9_score"] = pd.to_numeric(source[spcas9_col], errors="coerce")
+    else:
+        prepared["deepspcas9_score"] = np.nan
+    prepared["measured_pe_efficiency"] = pd.to_numeric(source[eff_col], errors="coerce")
+
+    split_col = next((name for name in _DEEPPE_SPLIT_COLUMNS if name in source.columns), None)
+    if split_col is not None:
+        prepared["fold"] = source[split_col].map(_deeppe_split_to_fold).astype(int)
+    else:
+        prepared["fold"] = 0
+
+    mutation_rows = [
+        _deeppe_infer_rt_edit(
+            wt,
+            mut,
+            int(pbs_len),
+            int(pbs_rt_len),
+        )
+        for wt, mut, pbs_len, pbs_rt_len in zip(
+            prepared["wt_sequence"],
+            prepared["mut_sequence"],
+            prepared["pbslen"],
+            prepared["rt-pbslen"],
+        )
+    ]
+    prepared["type_sub"] = [kind == "sub" for kind, _, _ in mutation_rows]
+    prepared["type_ins"] = [kind == "ins" for kind, _, _ in mutation_rows]
+    prepared["type_del"] = [kind == "del" for kind, _, _ in mutation_rows]
+    prepared["edit_len"] = [edit_len for _, edit_len, _ in mutation_rows]
+    prepared["rha_len"] = [
+        max(int(rt_len) - int(edit_pos) - int(edit_len), 0)
+        for (_, edit_len, edit_pos), rt_len in zip(
+            mutation_rows,
+            prepared["rtlen"],
+        )
+    ]
+    return prepared
+
+
 def _parse_pridict_location_column(
     location_series: pd.Series, column_name: str
 ) -> tuple[pd.Series, pd.Series]:
@@ -899,20 +1119,31 @@ def _parse_pridict_location_column(
     return extracted[0].astype(int), extracted[1].astype(int)
 
 def _standardize_deepprime_ontarget(
-        data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
+    data: Optional[pd.DataFrame],
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+    *,
+    study_key: str = "deepprime",
+) -> None:
     """
-    Standardize DeepPrime on-target datasets to the shared PE schema.
+    Standardize DeepPrime-style on-target datasets to the shared PE schema.
+
+    Also used for DeepPE after ``_prepare_deeppe_export_df`` maps Kim et al. exports
+    into the same masked-sequence column layout.
     """
     dataset = _normalize_name(dataset)
     cell_line = _normalize_name(cell_line)
     pe_system = _normalize_name(pe_system)
+    study_key = _normalize_name(study_key)
     input_name = f"{cell_line}-{pe_system}.csv"
     output_name = f"{cell_line}-{pe_system}.parquet"
     if data is None:
         data = pd.read_csv(DATA_ROOT / 'exported' / 'deepprime' / dataset / input_name)
 
     logger.info(
-        "Standardizing DeepPrime dataset=%s cell_line=%s pe_system=%s rows=%s",
+        "Standardizing %s dataset=%s cell_line=%s pe_system=%s rows=%s",
+        study_key,
         dataset,
         cell_line,
         pe_system,
@@ -947,11 +1178,11 @@ def _standardize_deepprime_ontarget(
     df['group_id'] = df.groupby('protospacer').ngroup()
 
     # ---- Step 3: Compute PBS and LHA locations ----
-    # In DeepPrime's format, mut_sequence uses leading 'x' characters to mask
+    # In DeepPrime's format, mut_sequence uses leading 'x'/'X' characters to mask
     # positions upstream of the PBS that are not involved in the editing process.
-    # The PBS left boundary is therefore the index of the first non-'x' character.
+    # The PBS left boundary is therefore the index of the first non-mask character.
     mut_sequence = pd.Series(df['mut_sequence'], dtype='string').fillna('')
-    df['pbs_l'] = mut_sequence.map(lambda seq: len(seq) - len(seq.lstrip('x')))
+    df['pbs_l'] = mut_sequence.map(lambda seq: len(seq) - len(seq.lstrip('xX')))
     df['pbs_r'] = df['pbs_l'] + df['pbslen']
     df['lha_l'] = df['pbs_r']
     df['lha_r'] = np.where(
@@ -992,14 +1223,22 @@ def _standardize_deepprime_ontarget(
         type_ins = bool(row['type_ins'])
         type_del = bool(row['type_del'])
 
-        # Reconstruct the unmasked mutated sequence from the wild type
-        mut = wt[:lha_r]
-        if type_ins:  # insertion: trim trailing bases
-            mut += wt[rha_wt_r_val:len(wt) - edit_len]
-        elif type_del:  # deletion: trim leading bases
-            mut += wt[rha_wt_r_val + edit_len:]
-        else:  # substitution: trim leading and trailing bases
-            mut += wt[rha_wt_r_val:]
+        # Reconstruct the unmasked mutated sequence by injecting the observed
+        # RT-PBS segment from mut_sequence into WT context.
+        masked_mut = str(row['mut_sequence'])
+        pbs_l = int(row['pbs_l'])
+        rt_pbs_len = int(row['rt-pbslen'])
+        rt_pbs_right = pbs_l + rt_pbs_len
+        observed_rt_pbs = masked_mut[pbs_l:rt_pbs_right].upper().replace("U", "T")
+
+        if type_ins:
+            wt_window_len = max(rt_pbs_len - edit_len, 0)
+        elif type_del:
+            wt_window_len = rt_pbs_len + edit_len
+        else:
+            wt_window_len = rt_pbs_len
+        wt_suffix_start = min(max(pbs_l + wt_window_len, 0), len(wt))
+        mut = wt[:pbs_l] + observed_rt_pbs + wt[wt_suffix_start:]
 
         # Pad with N at the edit position to align wt/mut to the same length
         mut_type = row['mut_type']
@@ -1019,10 +1258,41 @@ def _standardize_deepprime_ontarget(
         df['deepspcas9_score'], df['measured_pe_efficiency'], df['original_fold'])
 
     # export the data to a parquet file
-    output_path = DATA_ROOT / 'standardized' / 'deepprime' / dataset / output_name
+    output_path = DATA_ROOT / "standardized" / study_key / dataset / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_df.to_parquet(output_path, index=False)
-    logger.info("Saved standardized DeepPrime data: %s", output_path)
+    logger.info("Saved standardized %s data: %s", study_key, output_path)
+
+
+def _standardize_deeppe_ontarget(
+    data: Optional[pd.DataFrame],
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+) -> None:
+    """
+    Standardize DeepPE on-target datasets to the shared PE schema.
+
+    DeepPE supplementary tables use 47 bp wide-target reporters. Library 1 includes
+    a masked prime-edited sequence; libraries 2 and endogenous validation rebuild
+    that sequence from the pegRNA 3' extension before applying the DeepPrime layout
+    rules (protospacer at positions 4–24).
+    """
+    dataset = _normalize_name(dataset)
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    input_name = f"{cell_line}-{pe_system}.csv"
+    if data is None:
+        data = pd.read_csv(DATA_ROOT / "exported" / "deeppe" / dataset / input_name)
+    prepared = _prepare_deeppe_export_df(data)
+    _standardize_deepprime_ontarget(
+        prepared,
+        cell_line,
+        pe_system,
+        dataset,
+        study_key="deeppe",
+    )
+
 
 def _standardize_pridict2_library_diverse(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
@@ -1474,7 +1744,9 @@ def standardize_pe_data(
         )
 
     data = pd.read_csv(input_path)
-    if study == "deepprime":
+    if study == "deeppe":
+        _standardize_deeppe_ontarget(data, cell_line, pe_system, normalized_dataset)
+    elif study == "deepprime":
         _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "pridict1":
         if normalized_dataset != "library1":

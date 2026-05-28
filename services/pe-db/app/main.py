@@ -209,25 +209,6 @@ async def get_data(
         raise HTTPException(status_code=500, detail=f"Error loading data: {exc}") from exc
 
 
-@app.get("/api/datasets/files")
-async def list_dataset_files():
-    """
-  List standardized files on disk (legacy view).
-
-  Prefer ``GET /api/datasheets`` for catalog-backed metadata including scaffolds.
-    """
-    try:
-        datasets = loader.list_available_datasets()
-        return {
-            "status": "success",
-            "count": len(datasets),
-            "datasets": datasets.to_dict(orient="records"),
-        }
-    except Exception as exc:
-        logger.error("Error listing datasets: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
 @app.post("/api/export")
 async def export_data(
     study: Optional[str] = Query(

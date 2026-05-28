@@ -233,7 +233,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="non_endogenous",
-        standardizable=False,
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deeppe",
@@ -247,7 +247,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="non_endogenous",
-        standardizable=False,
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deeppe",
@@ -261,7 +261,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="non_endogenous",
-        standardizable=False,
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deeppe",
@@ -275,7 +275,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="endogenous",
-        standardizable=False,
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="minsepie",
