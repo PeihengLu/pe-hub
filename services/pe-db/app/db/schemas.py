@@ -56,3 +56,44 @@ class DatasheetRead(BaseModel):
     study_name: Optional[str] = None
     dataset_name: Optional[str] = None
     scaffold: Optional[ScaffoldRead] = None
+
+
+class StatRow(BaseModel):
+    study: str
+    count: int
+
+
+class EditTypeStatRow(StatRow):
+    edit_type: str
+
+
+class EditLengthStatRow(StatRow):
+    edit_length: int
+
+
+class DeliveryMethodStatRow(StatRow):
+    delivery_method: str
+
+
+class EditScopeStatRow(StatRow):
+    edit_scope: str
+
+
+class ExperimentalMethodStatRow(StatRow):
+    experimental_method: str
+
+
+class TargetContextStatRow(StatRow):
+    target_context: str
+
+
+class StatisticsRead(BaseModel):
+    edit_type: list[EditTypeStatRow]
+    edit_length: list[EditLengthStatRow]
+    pegRNA_delivery_method: list[DeliveryMethodStatRow]
+    pe_delivery_method: list[DeliveryMethodStatRow]
+    edit_scope: list[EditScopeStatRow]
+    experimental_method: list[ExperimentalMethodStatRow]
+    target_context: list[TargetContextStatRow]
+    total_entries: int
+    total_studies: int

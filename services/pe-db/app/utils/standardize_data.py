@@ -17,32 +17,40 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 SUPPORTED_STUDIES = {"deeppe", "deepprime", "pridict2", "pridict1", "minsepie"}
+PARTIAL_STANDARDIZABLE_DATASETS: set[tuple[str, str]] = {
+    ("pridict1", "endogenous"),
+    ("pridict2", "trip_analysis"),
+    ("deepprime", "deepprime_off"),
+    ("deepprime", "deepprime_off_subpool"),
+}
 
 DATASETS = {
     "deeppe": [
-        "deeppe-ht",
-        "deeppe-position",
-        "deeppe-type",
-        "deeppe-endo",
+        "deeppe_ht",
+        "deeppe_position",
+        "deeppe_type",
+        "deeppe_endo",
     ],
     "deepprime": [
-        "deepprime-clinvar",
-        "deepprime-small",
-        "deepprime-off",
-        "deepprime-off-subpool",
+        "deepprime_clinvar",
+        "deepprime_small",
+        "deepprime_off",
+        "deepprime_off_subpool",
     ],
     "pridict2": [
-        "library-diverse",
-        "library-diverse-invivo",
-        "endogenous",
+        "library_diverse",
+        "library_diverse_invivo",
+        "trip_analysis",
     ],
     "pridict1": [
         "library1",
+        "library2",
+        "library2_invivo",
         "endogenous",
     ],
     "minsepie": [
-        "library-insert",
-        "library-insert-piggybac",
+        "library_insert",
+        "library_insert_piggybac",
     ],
 }
 
@@ -56,6 +64,11 @@ def is_standardizable(study: str, dataset: str) -> bool:
     """Return True when catalog marks the dataset as standardizable."""
     record = get_dataset_record(study, dataset)
     return bool(record and record.standardizable)
+
+
+def is_partially_standardizable(study: str, dataset: str) -> bool:
+    """Return True for datasets with minimal entry-level standardization support."""
+    return (_normalize_name(study), _normalize_name(dataset)) in PARTIAL_STANDARDIZABLE_DATASETS
 
 
 def export_original_data(study: Optional[str] = None, force_reexport: bool = False) -> None:
@@ -74,7 +87,11 @@ def export_original_data(study: Optional[str] = None, force_reexport: bool = Fal
     exporters = {
         "deeppe": [_export_deeppe_datasheets],
         "deepprime": [_export_deepprime_datasheets],
-        "pridict1": [_export_pridict1_datasheets, _export_pridict1_endogenous_datasheets],
+        "pridict1": [
+            _export_pridict1_datasheets,
+            _export_pridict1_library2_datasheets,
+            _export_pridict1_endogenous_datasheets,
+        ],
         "pridict2": [_export_pridict2_library_diverse_datasheets, _export_pridict2_endogenous_datasheets],
         "minsepie": [_export_minsepie_datasheets],
     }
@@ -132,7 +149,10 @@ def standardize_exported_data(
                 DATA_ROOT / "standardized" / study_key / normalized_dataset /
                 f"{_normalize_name(cell_line)}-{_normalize_name(pe_system)}.parquet"
             )
-            if not is_standardizable(study_key, dataset_name):
+            if not (
+                is_standardizable(study_key, dataset_name)
+                or is_partially_standardizable(study_key, dataset_name)
+            ):
                 logger.debug(
                     "Skipping standardization for %s/%s (export-only or unsupported schema)",
                     study_key,
@@ -463,6 +483,65 @@ def _export_pridict1_datasheets() -> None:
     logger.info(f"Saved restored PRIDICT1 library1 data to {output_path}")
 
 
+# (dataset folder, cell_line, pe_system, source efficiency column)
+_PRIDICT1_LIBRARY2_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
+    ("library2", "hek293t", "pe2", "HEKOpti-Scaffold_PE2_averageedited"),
+    ("library2", "hek293tmlh1dn", "pe2", "HEKOpti-Scaffold_PE2-dnMLH1_averageedited"),
+    ("library2", "u2os", "pe2", "U2OS_PE2_averageedited"),
+    ("library2", "u2osmlh1dn", "pe2", "U2OS_PE2-dnMLH1_averageedited"),
+    ("library2", "u2os", "pemax", "U2OS_Pemax_averageedited"),
+    ("library2", "u2osmlh1dn", "pemax", "U2OS_Pemax-dnMLH1_averageedited"),
+    ("library2", "k562", "pe2", "K562_PE2_averageedited"),
+    ("library2", "k562mlh1dn", "pe2", "K562_PE2-dnMLH1_averageedited"),
+    ("library2", "k562", "pemax", "K562_Pemax_averageedited"),
+    ("library2", "k562mlh1dn", "pemax", "K562_Pemax-dnMLH1_averageedited"),
+    ("library2-invivo", "liver_gfpplus", "pe2", "Liver-GFPplus_PE2Adeno_averageedited"),
+)
+
+
+def _export_pridict1_library2_datasheets() -> None:
+    """
+    Export PRIDICT1 disease-focused subscreen (``pridict_library2.csv``).
+
+    Source: supplementary disease-block subscreen (~1.9k pegRNAs) with editing
+    measured across HEK293T, U2OS, and K562 in vitro (PE2 / PEmax; MLH1−/− as
+    separate cell lines), plus GFP+ mouse liver in vivo (library2-invivo).
+    """
+    source_path = DATA_ROOT / "raw" / "pridict1" / "pridict_library2.csv"
+    df = pd.read_csv(source_path)
+    efficiency_columns = [col for col in df.columns if col.endswith("averageedited")]
+
+    for dataset_name, cell_line, pe_system, efficiency_col in _PRIDICT1_LIBRARY2_EXPORTS:
+        if efficiency_col not in df.columns:
+            logger.warning(
+                "PRIDICT1 library2 missing column %s; skipping export", efficiency_col
+            )
+            continue
+
+        export_df = df.dropna(subset=[efficiency_col]).copy()
+        other_efficiency_cols = [col for col in efficiency_columns if col != efficiency_col]
+        export_df = export_df.drop(columns=other_efficiency_cols, errors="ignore")
+        export_df = export_df.rename(columns={efficiency_col: "averageedited"})
+
+        output_path = (
+            DATA_ROOT
+            / "exported"
+            / "pridict1"
+            / dataset_name
+            / f"{cell_line}-{pe_system}.csv"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        export_df.to_csv(output_path, index=False)
+        logger.info(
+            "Saved PRIDICT1 %s data (%s-%s): %s (%s rows)",
+            dataset_name,
+            cell_line,
+            pe_system,
+            output_path,
+            len(export_df),
+        )
+
+
 def _export_pridict1_endogenous_datasheets() -> None:
     """
     Export PRIDICT1 endogenous-locus validation (Mathis et al., Nat. Biotechnol. 2023).
@@ -713,46 +792,19 @@ def _load_minsepie_pegrna_table() -> pd.DataFrame:
     return pegrna_df
 
 
-def _export_minsepie_datasheets() -> None:
-    """
-    Export the MinSePIE datasheets (Koeppel et al., Nat. Biotechnol. 2023).
-
-    MinSePIE is an insertion-only PE dataset that measures editing efficiency
-    for libraries of DNA insertions at specific genomic target sites across
-    different cell lines and PE system variants.
-
-    Raw data (under ``raw/minsepie/``):
-      - MOESM3 (Suppl. Table 3): Contains two sheets
-          * ``ST5_gene_fragments``: reference gene fragments (e.g. ``puroR``) used in the screen
-          * ``ST6_pegRNAs``: the pegRNA design for each screen (spacer / HA / PBS /
-            insertion position marker). This is what we need to reconstruct
-            WT/mutant target sequences and positional fields.
-      - MOESM4 (Suppl. Table 4): Insert library mapping ``name`` → ``insert_sequence``
-        plus a ``set`` column that identifies the library subset.
-      - MOESM5 (Suppl. Table 5): Experimental results (editing efficiency per
-        insert / target / condition).
-
-    Each row in MOESM5 belongs to exactly one ``experiment`` (32 total). We
-    enrich MOESM5 with pegRNA design info from ST6 and library metadata from
-    MOESM4, then merge rows sharing the same dataset, MOESM5 ``cell_line``, and
-    prime editor version into ``{cell_line}-{pe_system}.csv`` under
-    ``library-insert`` or ``library-insert-piggybac``.
-    """
-    raw_dir = DATA_ROOT / "raw" / "minsepie"
+def _prepare_minsepie_export_frame(data_root: Optional[Path] = None) -> pd.DataFrame:
+    """Load MinSePIE MOESM4/5 tables and attach pegRNA + grouping columns."""
+    root = data_root or DATA_ROOT
+    raw_dir = root / "raw" / "minsepie"
     data_path = raw_dir / "41587_2023_1678_MOESM5_ESM.tsv"
     library_path = raw_dir / "41587_2023_1678_MOESM4_ESM.tsv"
 
     data = pd.read_csv(data_path, sep="\t")
     library = pd.read_csv(library_path, sep="\t")
 
-    # ---- Merge library metadata (set) onto each experimental row ----
-    # MOESM4 lists forward/reverse complement pairs with the same ``name`` but
-    # different ``insert_sequence``. Only ``set`` is needed and is identical for
-    # both orientations, so deduplicate by name before merging.
     library_dedup = library.drop_duplicates(subset="name", keep="first")
     data = data.merge(library_dedup[["name", "set"]], on="name", how="left")
 
-    # ---- Attach pegRNA design (spacer, HA, PBS, insertion position) ----
     pegrna_df = _load_minsepie_pegrna_table()
     pegrna_lookup: dict[tuple[str, str], pd.Series] = {
         (str(row["target"]), str(row["purpose"])): row
@@ -789,6 +841,55 @@ def _export_minsepie_datasheets() -> None:
         _normalize_name
     )
     data["_dataset"] = data["experiment"].map(_minsepie_dataset_for_experiment)
+    return data
+
+
+def iter_minsepie_consolidated_datasheet_specs(
+    data_root: Optional[Path] = None,
+) -> list[tuple[str, str, str, str]]:
+    """Return consolidated MinSePIE export keys and dominant pegRNA scaffold sequence.
+
+    Each tuple is ``(dataset, cell_line, pe_system, scaffold_sequence)`` matching
+    one ``{cell_line}-{pe_system}.csv`` written under ``exported/minsepie/``.
+    """
+    data = _prepare_minsepie_export_frame(data_root)
+    specs: list[tuple[str, str, str, str]] = []
+    for (dataset_name, cell_line, pe_system), group_df in data.groupby(
+        ["_dataset", "_cell_line", "_pe_system"], sort=False
+    ):
+        scaffold_seq = (
+            group_df["pegrna_scaffold"].astype(str).str.upper().mode().iloc[0]
+        )
+        specs.append((dataset_name, cell_line, pe_system, scaffold_seq))
+    return specs
+
+
+def _export_minsepie_datasheets() -> None:
+    """
+    Export the MinSePIE datasheets (Koeppel et al., Nat. Biotechnol. 2023).
+
+    MinSePIE is an insertion-only PE dataset that measures editing efficiency
+    for libraries of DNA insertions at specific genomic target sites across
+    different cell lines and PE system variants.
+
+    Raw data (under ``raw/minsepie/``):
+      - MOESM3 (Suppl. Table 3): Contains two sheets
+          * ``ST5_gene_fragments``: reference gene fragments (e.g. ``puroR``) used in the screen
+          * ``ST6_pegRNAs``: the pegRNA design for each screen (spacer / HA / PBS /
+            insertion position marker). This is what we need to reconstruct
+            WT/mutant target sequences and positional fields.
+      - MOESM4 (Suppl. Table 4): Insert library mapping ``name`` → ``insert_sequence``
+        plus a ``set`` column that identifies the library subset.
+      - MOESM5 (Suppl. Table 5): Experimental results (editing efficiency per
+        insert / target / condition).
+
+    Each row in MOESM5 belongs to exactly one ``experiment`` (32 total). We
+    enrich MOESM5 with pegRNA design info from ST6 and library metadata from
+    MOESM4, then merge rows sharing the same dataset, MOESM5 ``cell_line``, and
+    prime editor version into ``{cell_line}-{pe_system}.csv`` under
+    ``library-insert`` or ``library-insert-piggybac``.
+    """
+    data = _prepare_minsepie_export_frame()
 
     for (dataset_name, cell_line, pe_system), group_df in data.groupby(
         ["_dataset", "_cell_line", "_pe_system"], sort=False
@@ -1412,10 +1513,11 @@ def _standardize_pridict2_library_diverse(
     output_df.to_parquet(output_path, index=False)
     logger.info("Saved standardized PRIDICT2 data: %s", output_path)
 
-def _standardize_pridict1_library1(
+def _standardize_pridict1(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
     """
-    Standardize PRIDICT1 library1 data to the shared PE schema.
+    Standardize PRIDICT1 library exports (library1, library2, library2-invivo)
+    to the shared PE schema.
     """
     dataset = _normalize_name(dataset)
     cell_line = _normalize_name(cell_line)
@@ -1704,7 +1806,7 @@ def standardize_pe_data(
     exported/{study}/{dataset}/{cell_line}-{pe_system}.csv
 
     Raises:
-        ValueError: If the dataset is not standardizable (e.g. DeepPrime off-target).
+        ValueError: If the dataset has no supported standardization path.
     """
     study = _normalize_name(study)
     cell_line = _normalize_name(cell_line)
@@ -1720,10 +1822,10 @@ def standardize_pe_data(
             )
     dataset = str(dataset).strip().lower()
     normalized_dataset = _normalize_name(dataset)
-    if not is_standardizable(study, dataset):
+    if not (is_standardizable(study, dataset) or is_partially_standardizable(study, dataset)):
         raise ValueError(
-            f"Dataset {study}/{dataset} is not standardizable to the shared on-target schema "
-            "(e.g. DeepPrime off-target exports). Use exported CSV directly."
+            f"Dataset {study}/{dataset} is not standardizable "
+            "(full or partial entry-level path unavailable)."
         )
     dataset_candidates = [dataset]
     if normalized_dataset not in dataset_candidates:
@@ -1747,20 +1849,30 @@ def standardize_pe_data(
     if study == "deeppe":
         _standardize_deeppe_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "deepprime":
-        _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
+        if normalized_dataset in {"deepprime_off", "deepprime_off_subpool"}:
+            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+        else:
+            _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "pridict1":
-        if normalized_dataset != "library1":
+        if normalized_dataset in {"library1", "library2", "library2_invivo"}:
+            _standardize_pridict1(data, cell_line, pe_system, normalized_dataset)
+        elif normalized_dataset == "endogenous":
+            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+        else:
             raise ValueError(
-                f"Unsupported dataset for study=pridict1: {dataset}. Supported: ['library1']"
+                f"Unsupported dataset for study=pridict1: {dataset}. "
+                "Supported: ['library1', 'library2', 'library2-invivo', 'endogenous(partial)']"
             )
-        _standardize_pridict1_library1(data, cell_line, pe_system, normalized_dataset)
     elif study == "pridict2":
-        if normalized_dataset not in {"library_diverse", "library_diverse_invivo"}:
+        if normalized_dataset in {"library_diverse", "library_diverse_invivo"}:
+            _standardize_pridict2_library_diverse(data, cell_line, pe_system, normalized_dataset)
+        elif normalized_dataset == "trip_analysis":
+            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+        else:
             raise ValueError(
                 "Unsupported dataset for study=pridict2: "
-                f"{dataset}. Supported: ['library-diverse', 'library-diverse-invivo']"
+                f"{dataset}. Supported: ['library-diverse', 'library-diverse-invivo', 'trip-analysis(partial)']"
             )
-        _standardize_pridict2_library_diverse(data, cell_line, pe_system, normalized_dataset)
     elif study == "minsepie":
         _standardize_minsepie(data, cell_line, pe_system, normalized_dataset)
     else:
@@ -1776,3 +1888,80 @@ def standardize_pe_data(
             f"{output_path}"
         )
     return pd.read_parquet(output_path)
+
+
+def _standardize_partial_entries(
+    data: pd.DataFrame,
+    cell_line: str,
+    pe_system: str,
+    study: str,
+    dataset: str,
+) -> None:
+    """Create a minimal standardized file for entry-level filtering only."""
+
+    def _pick_efficiency_column(df: pd.DataFrame, normalized_cell: str) -> Optional[str]:
+        preferred_by_cell = {
+            "k562": "K562_averageedited",
+            "hek293t": "HEK293T_averageedited",
+        }
+        if normalized_cell in preferred_by_cell and preferred_by_cell[normalized_cell] in df.columns:
+            return preferred_by_cell[normalized_cell]
+        for candidate in (
+            "editing_efficiency",
+            "PE_editing_efficiency",
+            "avg.on-target_efficiency",
+            "HEK293T_averageedited",
+            "K562_averageedited",
+        ):
+            if candidate in df.columns:
+                return candidate
+        return None
+
+    def _parse_edit_type_series(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
+        if {"type_sub", "type_ins", "type_del"}.issubset(df.columns):
+            return (
+                df["type_sub"].astype(bool),
+                df["type_ins"].astype(bool),
+                df["type_del"].astype(bool),
+            )
+
+        raw = df["edit_type"]
+        numeric = pd.to_numeric(raw, errors="coerce")
+        text = raw.astype(str).str.strip().str.lower()
+        type_sub = (numeric == 0) | text.isin({"0", "sub", "substitution", "replacement"})
+        type_ins = (numeric == 1) | text.isin({"1", "ins", "insertion"})
+        type_del = (numeric == 2) | text.isin({"2", "del", "deletion"})
+        return (type_sub.astype(bool), type_ins.astype(bool), type_del.astype(bool))
+
+    if "edit_len" in data.columns:
+        edit_len = pd.to_numeric(data["edit_len"], errors="coerce")
+    elif "edit_length" in data.columns:
+        edit_len = pd.to_numeric(data["edit_length"], errors="coerce")
+    elif "Correction_Length" in data.columns:
+        edit_len = pd.to_numeric(data["Correction_Length"], errors="coerce")
+
+    type_sub, type_ins, type_del = _parse_edit_type_series(data)
+    efficiency_col = _pick_efficiency_column(data, cell_line)
+    if efficiency_col is None:
+        editing_efficiency = pd.Series(0.0, index=data.index, dtype=float)
+    else:
+        editing_efficiency = pd.to_numeric(data[efficiency_col], errors="coerce").fillna(0.0)
+
+    partial_df = pd.DataFrame(
+        {
+            "type_sub": type_sub.astype(bool),
+            "type_ins": type_ins.astype(bool),
+            "type_del": type_del.astype(bool),
+            "edit_len": edit_len.fillna(1).astype(int),
+            "editing_efficiency": editing_efficiency.astype(float),
+        }
+    )
+
+    output_path = DATA_ROOT / "standardized" / study / dataset / f"{cell_line}-{pe_system}.parquet"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    partial_df.to_parquet(output_path, index=False)
+    logger.info(
+        "Saved partial standardized data for filter-only use: %s (%s rows)",
+        output_path,
+        len(partial_df),
+    )

@@ -83,7 +83,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The fine-tuning subsets (deepprime-small) are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
 
-    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. These off-target datasets are stored in their original format and are not currently standardizable to the shared on-target schema.
+    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. These off-target datasets currently have partial standardization support (entry-level fields only), rather than full conversion to the shared standardized format.
 
     \item \textbf{MinsePIE}
     
@@ -95,7 +95,11 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     
     Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} performed a high-throughput screen analyzing prime editing outcomes of 92,423 pegRNAs targeting a highly diverse set of 13,349 human pathogenic mutations, including base substitutions, insertions, and deletions. The study identified sequence context features that influence prime editing and trained PRIDICT (PRIme editing guide preDICTion), an attention-based bidirectional recurrent neural network that predicts both editing efficiency and product purity.
 
-    The main library (library1) uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection. A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection; this dataset is stored but not currently standardizable.
+    The main library (library1) uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
+
+    The library2 dataset is a disease-focused subscreen of the same lentiviral reporter format across HEK293T, U2OS, and K562 (including MLH1$^{-/-}$ lines as separate cell-line identifiers, matching PRIDICT2 naming). The library2-invivo dataset validates the same pegRNA set in GFP+ sorted mouse liver via adenoviral delivery of both pegRNAs and PE2 (endogenous liver loci).
+
+    A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection; this dataset currently has partial standardization support (entry-level fields only).
 
     \item \textbf{PRIDICTv2}
     
@@ -105,7 +109,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
 
-    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. The pegRNAs were delivered by lentiviral transduction and PE2 by plasmid transfection; this dataset is stored but not currently standardizable due to its distinct experimental format.
+    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. The pegRNAs were delivered by lentiviral transduction and PE2 by plasmid transfection; this dataset currently has partial standardization support (entry-level fields only) due to its distinct experimental format.
 \end{enumerate}
 
 
@@ -133,23 +137,21 @@ For efficient filtering, scalable data retrieval, and improved conceptual clarit
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.95\textwidth]{diagrams/illustration/database_er.png}
-    \caption{ER diagram for the database design}
+    \caption{ER diagram of the implemented PE-DB catalog schema (\texttt{study}, \texttt{dataset}, \texttt{scaffold}, \texttt{datasheet})}
     \label{fig:database_er}
 \end{figure}
 
-As shown in \autoref{fig:database_er}, the database consists of three relational tables, each corresponding to a different level of experimental granularity.
+As shown in \autoref{fig:database_er}, the implemented catalog schema consists of four relational tables: \textbf{Study}, \textbf{Dataset}, \textbf{Scaffold}, and \textbf{Datasheet}.
 
-The \textbf{Study} table represents the top level of the hierarchy and stores metadata describing the original publication from which the data were derived. This includes basic bibliographic information such as study name, authorship, and publication date. Storing these attributes at the study level enables efficient filtering by publication-related criteria without repeated storage across downstream entities. Each study may be associated with multiple datasets.
+The \textbf{Study} table represents the publication level of the hierarchy and stores one row per source study. In the current implementation it contains a unique study name, optional publication date, and optional author string. Each study is linked to one or more datasets through a one-to-many relation.
 
-The \textbf{Dataset} table forms the intermediate layer and captures properties shared across a coherent group of experiments within a study. At this level, datasets are primarily differentiated by experimental design features, such as pegRNA delivery method, PE delivery method, edit scope, experimental method, target context.
+The \textbf{Dataset} table forms the intermediate layer and stores dataset-level metadata shared across many experiments. Implemented fields include dataset name, optional textual description, pegRNA delivery method, PE delivery method, edit scope, experimental method, target context, and the \texttt{standardizable} flag. In this project, \texttt{standardizable=True} means full conversion support to the shared standardized format, while \texttt{standardizable=False} means partial support (entry-level fields only). A foreign key (\texttt{study\_id}) links each dataset to its parent study.
 
-An additional `standardizable' column is added to the Dataset table to indicate whether the dataset can be converted to the standardized format with the current state of the database. This allows users to view and perform analysis on datasets that are not fully supported by PE-DB, without interfering with the functionality of the data handling pipeline. 
+The \textbf{Scaffold} table stores pegRNA scaffold definitions as reusable reference records. Each scaffold has an explicit identifier, scaffold name, sequence, and optional description. This separates scaffold metadata from experiment-specific metadata and allows many datasheets to reuse the same scaffold entry.
 
-The lowest level of the hierarchy is represented by the \textbf{Datasheet} table. Each datasheet often corresponds to a single worksheet within an original Excel file and represents one distinct experimental condition. Datasheets capture properties that vary at the experiment level, including the prime editing system used, the cell line, and the number of samples. This level of granularity reflects the smallest meaningful unit for data analysis while maintaining a clear relationship to higher-level experimental context through foreign keys.
+The experiment level is represented by the \textbf{Datasheet} table. Each datasheet points to one exported CSV file and stores the condition-specific metadata required by the API: file path, cell line, PE system, scaffold, number of samples, and an \texttt{updated\_at} timestamp. Foreign keys (\texttt{dataset\_id} and \texttt{scaffold\_id}) connect each datasheet to both its parent dataset and scaffold record.
 
-Because all metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required.
-
-
+Because most metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required. When users requires to filter using fields not represented in the catalog schema, we then go through each datasheet that fulfills metadata requirements and retrieve the rows satisfying the datasheet-level filter criteria.
 
 
 \subsubsection{Data Retrieval and Interaction}

@@ -30,8 +30,9 @@ class DatasetRecord:
       - ``target_context``: where the edit is measured — ``endogenous`` (native
         chromosomal locus) vs ``non_endogenous`` (synthetic target on plasmid or
         lentiviral self-targeting cassette; not the patient's genomic allele).
-      - ``standardizable``: whether exported CSVs can be converted to the shared
-        on-target PE schema (``False`` for export-only or not-yet-implemented).
+      - ``standardizable``: standardization support level for this dataset.
+        ``True`` means full conversion to the shared standardized format.
+        ``False`` means partial-support conversion (entry-level fields only).
     """
 
     study_key: str
@@ -152,6 +153,35 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="non_endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="pridict1",
+        name="library2",
+        description=(
+            "PRIDICT1 disease-block subscreen (~1.9k pegRNAs): pathogenic-variant "
+            "pegRNAs in lentiviral self-targeting reporters across HEK293T, U2OS, "
+            "and K562 (PE2 / PEmax; MMR-proficient and K562/U2OS/HEK MLH1−/− lines)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="pridict1",
+        name="library2-invivo",
+        description=(
+            "Disease-block subscreen pegRNAs validated in GFP+ sorted mouse liver "
+            "(adenoviral pegRNA and PE2 delivery; endogenous liver loci)."
+        ),
+        pegRNA_delivery_method="adenovirus",
+        pe_delivery_method="adenovirus",
+        edit_scope="on_target",
+        experimental_method="in_vivo",
+        target_context="endogenous",
         standardizable=True,
     ),
     DatasetRecord(

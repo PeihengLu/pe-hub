@@ -47,7 +47,7 @@ class PEDataLoader:
         - model format: {format}/{study}/{dataset}/{cell_line}-{pe_system}.csv
         """
         study = _normalize_name(study)
-        dataset = _normalize_name(dataset, replace_hyphen=False)
+        dataset = _normalize_name(dataset)
         cell_line = _normalize_name(cell_line)
         pe_system = _normalize_name(pe_system)
 
@@ -101,6 +101,10 @@ class PEDataLoader:
         self, *, study: str, dataset: str, cell_line: str, pe_system: str
     ) -> Path:
         """Find standardized file (prefer parquet, fallback csv)."""
+        study = _normalize_name(study)
+        dataset = _normalize_name(dataset)
+        cell_line = _normalize_name(cell_line)
+        pe_system = _normalize_name(pe_system)
         stem = f"{cell_line}-{pe_system}"
         parquet_file = self.std_dir / study / dataset / f"{stem}.parquet"
         if parquet_file.exists():

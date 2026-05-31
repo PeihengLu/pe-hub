@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from collections import defaultdict
+from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
@@ -11,7 +13,19 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..loaders import PEDataLoader
 from .models import Dataset, Datasheet, Scaffold, Study
-from .schemas import DatasetRead, DatasheetRead, ScaffoldRead, StudyRead
+from .schemas import (
+    DatasetRead,
+    DatasheetRead,
+    DeliveryMethodStatRow,
+    EditLengthStatRow,
+    EditScopeStatRow,
+    EditTypeStatRow,
+    ExperimentalMethodStatRow,
+    ScaffoldRead,
+    StatisticsRead,
+    StudyRead,
+    TargetContextStatRow,
+)
 
 _EDIT_TYPE_CODES: dict[str, int] = {"sub": 0, "ins": 1, "del": 2}
 
@@ -171,6 +185,103 @@ class CatalogRepository:
             edit_efficiency_max=edit_efficiency_max,
         )
 
+    def compute_statistics(
+        self,
+        *,
+        edit_type: Optional[str] = None,
+        edit_length: Optional[int] = None,
+        edit_efficiency_min: Optional[float] = None,
+        edit_efficiency_max: Optional[float] = None,
+        edit_scope: Optional[str] = None,
+        experimental_method: Optional[str] = None,
+        target_context: Optional[str] = None,
+        scaffold_name: Optional[str] = None,
+    ) -> StatisticsRead:
+        """Descriptive statistics over edit rows, optionally narrowed by catalog/entry filters."""
+        rows = self._session.scalars(
+            self._apply_catalog_filters(
+                self._datasheet_base_stmt(),
+                edit_scope=edit_scope,
+                experimental_method=experimental_method,
+                target_context=target_context,
+                scaffold_name=scaffold_name,
+            )
+        ).unique().all()
+
+        loader = PEDataLoader(get_settings().data_root)
+        edit_type_code = self._parse_edit_type(edit_type) if edit_type is not None else None
+
+        entry_records: list[dict[str, Any]] = []
+        for row in rows:
+            if row.dataset is None or row.dataset.study is None:
+                continue
+            data = self._load_standardized_for_datasheet(row, loader)
+            if data is None or data.empty:
+                continue
+            filtered = self._filter_dataframe_entries(
+                data,
+                edit_type_code=edit_type_code,
+                edit_length=edit_length,
+                edit_efficiency_min=edit_efficiency_min,
+                edit_efficiency_max=edit_efficiency_max,
+            )
+            if filtered.empty:
+                continue
+
+            study_name = row.dataset.study.name
+            dataset = row.dataset
+            edit_types = self._extract_edit_type_series(filtered)
+            edit_lengths = self._extract_edit_length_series(filtered)
+            for idx in filtered.index:
+                entry_records.append(
+                    {
+                        "study": study_name,
+                        "edit_type": edit_types.loc[idx],
+                        "edit_length": edit_lengths.loc[idx],
+                        "pegRNA_delivery_method": dataset.pegRNA_delivery_method,
+                        "pe_delivery_method": dataset.pe_delivery_method,
+                        "edit_scope": dataset.edit_scope,
+                        "experimental_method": dataset.experimental_method,
+                        "target_context": dataset.target_context,
+                    }
+                )
+
+        all_studies = {record["study"] for record in entry_records}
+        return StatisticsRead(
+            edit_type=self._build_stat_rows(
+                entry_records, "edit_type", EditTypeStatRow, "edit_type"
+            ),
+            edit_length=self._build_stat_rows(
+                entry_records, "edit_length", EditLengthStatRow, "edit_length"
+            ),
+            pegRNA_delivery_method=self._build_stat_rows(
+                entry_records,
+                "pegRNA_delivery_method",
+                DeliveryMethodStatRow,
+                "delivery_method",
+            ),
+            pe_delivery_method=self._build_stat_rows(
+                entry_records,
+                "pe_delivery_method",
+                DeliveryMethodStatRow,
+                "delivery_method",
+            ),
+            edit_scope=self._build_stat_rows(
+                entry_records, "edit_scope", EditScopeStatRow, "edit_scope"
+            ),
+            experimental_method=self._build_stat_rows(
+                entry_records,
+                "experimental_method",
+                ExperimentalMethodStatRow,
+                "experimental_method",
+            ),
+            target_context=self._build_stat_rows(
+                entry_records, "target_context", TargetContextStatRow, "target_context"
+            ),
+            total_entries=len(entry_records),
+            total_studies=len(all_studies),
+        )
+
     def _datasheet_base_stmt(self) -> Select[tuple[Datasheet]]:
         return (
             select(Datasheet)
@@ -237,13 +348,14 @@ class CatalogRepository:
             data = self._load_standardized_for_datasheet(row, loader)
             if data is None:
                 continue
-            if self._dataframe_has_matching_entries(
+            filtered = self._filter_dataframe_entries(
                 data,
                 edit_type_code=edit_type_code,
                 edit_length=edit_length,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
-            ):
+            )
+            if not filtered.empty:
                 matched.append(self._datasheet_to_read(row))
         return matched
 
@@ -295,28 +407,28 @@ class CatalogRepository:
         return loader._read_dataframe(path)
 
     @staticmethod
-    def _dataframe_has_matching_entries(
+    def _filter_dataframe_entries(
         df: pd.DataFrame,
         *,
         edit_type_code: Optional[int] = None,
         edit_length: Optional[int] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
-    ) -> bool:
+    ) -> pd.DataFrame:
         if df.empty:
-            return False
+            return df
 
         mask = pd.Series(True, index=df.index)
         if edit_length is not None:
             length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
             if length_col not in df.columns:
-                return False
+                return df.iloc[0:0]
             mask &= pd.to_numeric(df[length_col], errors="coerce") == edit_length
 
         if edit_type_code is not None:
             type_columns = ("type_sub", "type_ins", "type_del")
             if not set(type_columns).issubset(df.columns):
-                return False
+                return df.iloc[0:0]
             type_masks = {
                 0: df["type_sub"].astype(bool),
                 1: df["type_ins"].astype(bool),
@@ -326,14 +438,71 @@ class CatalogRepository:
 
         if edit_efficiency_min is not None or edit_efficiency_max is not None:
             if "editing_efficiency" not in df.columns:
-                return False
+                return df.iloc[0:0]
             efficiency = pd.to_numeric(df["editing_efficiency"], errors="coerce")
             if edit_efficiency_min is not None:
                 mask &= efficiency >= edit_efficiency_min
             if edit_efficiency_max is not None:
                 mask &= efficiency <= edit_efficiency_max
 
-        return bool(mask.any())
+        return df.loc[mask]
+
+    @staticmethod
+    def _extract_edit_type_series(df: pd.DataFrame) -> pd.Series:
+        type_columns = ("type_sub", "type_ins", "type_del")
+        if not set(type_columns).issubset(df.columns):
+            return pd.Series([None] * len(df), index=df.index, dtype=object)
+        return pd.Series(
+            np.select(
+                [
+                    df["type_sub"].astype(bool),
+                    df["type_ins"].astype(bool),
+                    df["type_del"].astype(bool),
+                ],
+                ["sub", "ins", "del"],
+                default=None,
+            ),
+            index=df.index,
+            dtype=object,
+        )
+
+    @staticmethod
+    def _extract_edit_length_series(df: pd.DataFrame) -> pd.Series:
+        length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
+        if length_col not in df.columns:
+            return pd.Series([None] * len(df), index=df.index, dtype=object)
+        return pd.to_numeric(df[length_col], errors="coerce")
+
+    @staticmethod
+    def _build_stat_rows(
+        records: list[dict[str, Any]],
+        field: str,
+        row_model: type,
+        label_field: str,
+    ) -> list:
+        buckets: dict[tuple[Any, str], int] = defaultdict(int)
+        for record in records:
+            value = record.get(field)
+            if value is None or (isinstance(value, float) and np.isnan(value)):
+                continue
+            buckets[(value, record["study"])] += 1
+
+        rows = []
+        for (value, study) in sorted(
+            buckets,
+            key=lambda item: (str(type(item[0])), item[0], item[1]),
+        ):
+            normalized_value = int(value) if label_field == "edit_length" else value
+            rows.append(
+                row_model(
+                    **{
+                        label_field: normalized_value,
+                        "study": study,
+                        "count": buckets[(value, study)],
+                    }
+                )
+            )
+        return rows
 
     @staticmethod
     def _datasheet_to_read(row: Datasheet) -> DatasheetRead:

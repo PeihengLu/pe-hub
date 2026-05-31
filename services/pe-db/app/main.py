@@ -6,6 +6,7 @@ Serves prime editing efficiency data and exposes the catalog schema defined in
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
@@ -15,7 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .converter import DataConverter
 from .db.repository import CatalogRepository
-from .db.schemas import DatasetRead, DatasheetRead, ScaffoldRead, StudyRead
+from .db.schemas import (
+    DatasetRead,
+    DatasheetRead,
+    ScaffoldRead,
+    StatisticsRead,
+    StudyRead,
+)
 from .db.session import get_session
 from .loaders import DataLoader
 
@@ -26,11 +33,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from .catalog.initialize import initialize_database
 
-    initialize_database()
+    initialize_database(
+        force_export=_env_flag("PE_DB_FORCE_EXPORT"),
+        force_standardize=_env_flag("PE_DB_FORCE_STANDARDIZE"),
+    )
     yield
 
 
@@ -77,6 +91,7 @@ async def root():
             "datasheets": "/api/datasheets",
             "scaffolds": "/api/scaffolds",
             "data": "/api/data",
+            "statistics": "/api/statistics",
             "export": "POST /api/export",
             "health": "/health",
         },
@@ -207,6 +222,51 @@ async def get_data(
     except Exception as exc:
         logger.error("Error loading data: %s", exc)
         raise HTTPException(status_code=500, detail=f"Error loading data: {exc}") from exc
+
+
+@app.get("/api/statistics", response_model=StatisticsRead)
+async def get_statistics(
+    edit_type: Optional[str] = Query(
+        None, description="Filter entries by edit type (sub, ins, del)."
+    ),
+    edit_length: Optional[int] = Query(None, description="Filter entries by edit length."),
+    edit_efficiency_min: Optional[float] = Query(
+        None, description="Minimum editing efficiency (inclusive)."
+    ),
+    edit_efficiency_max: Optional[float] = Query(
+        None, description="Maximum editing efficiency (inclusive)."
+    ),
+    edit_scope: Optional[str] = Query(
+        None, description="Filter by dataset edit scope (on_target, off_target)."
+    ),
+    experimental_method: Optional[str] = Query(
+        None, description="Filter by experimental method (in_vitro, in_vivo)."
+    ),
+    target_context: Optional[str] = Query(
+        None, description="Filter by target context (endogenous, non_endogenous)."
+    ),
+    scaffold_name: Optional[str] = Query(None, description="Filter by pegRNA scaffold name."),
+):
+    """Descriptive statistics over edit rows, with optional catalog and entry filters."""
+    try:
+        with get_session() as session:
+            return CatalogRepository(session).compute_statistics(
+                edit_type=edit_type,
+                edit_length=edit_length,
+                edit_efficiency_min=edit_efficiency_min,
+                edit_efficiency_max=edit_efficiency_max,
+                edit_scope=edit_scope,
+                experimental_method=experimental_method,
+                target_context=target_context,
+                scaffold_name=scaffold_name,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Error computing statistics: %s", exc)
+        raise HTTPException(
+            status_code=500, detail=f"Error computing statistics: {exc}"
+        ) from exc
 
 
 @app.post("/api/export")

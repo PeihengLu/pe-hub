@@ -10,10 +10,18 @@ from sqlalchemy.orm import Session
 
 from ..db.models import Dataset, Scaffold, Study
 from ..db.session import get_engine, get_session, init_db
-from .scaffolds import PEGRNA_SCAFFOLDS
+from .scaffolds import PEGRNA_SCAFFOLDS, SCAFFOLD_ID_CONVENTIONAL, SCAFFOLD_ID_MINSEPIE_18NT, SCAFFOLD_ID_MINSEPIE_CODON_VARIANT, SCAFFOLD_ID_OPTIMIZED
 from .studies import DATASET_REGISTRY, STUDY_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+# Older catalog DBs used string primary keys for scaffolds; remap before delete.
+_LEGACY_SCAFFOLD_IDS: dict[str, int] = {
+    "conventional": SCAFFOLD_ID_CONVENTIONAL,
+    "optimized": SCAFFOLD_ID_OPTIMIZED,
+    "minsepie_18nt": SCAFFOLD_ID_MINSEPIE_18NT,
+    "minsepie_codon_variant": SCAFFOLD_ID_MINSEPIE_CODON_VARIANT,
+}
 
 
 def _migrate_dataset_catalog_columns(engine: Engine) -> None:
@@ -54,6 +62,33 @@ def _upsert_scaffolds(session: Session) -> None:
             existing.name = scaffold.name
             existing.sequence = scaffold.sequence
             existing.description = scaffold.description or None
+
+
+def _migrate_legacy_scaffolds(session: Session) -> None:
+    """Remap legacy string scaffold IDs and drop duplicate scaffold rows."""
+    for legacy_id, canonical_id in _LEGACY_SCAFFOLD_IDS.items():
+        session.execute(
+            text(
+                "UPDATE datasheet SET scaffold_id = :canonical_id "
+                "WHERE CAST(scaffold_id AS TEXT) = :legacy_id"
+            ),
+            {"canonical_id": canonical_id, "legacy_id": legacy_id},
+        )
+
+    canonical_ids = {scaffold.scaffold_id for scaffold in PEGRNA_SCAFFOLDS}
+    removed = 0
+    for row in list(session.scalars(select(Scaffold)).all()):
+        try:
+            row_id = int(row.id)
+        except (TypeError, ValueError):
+            session.delete(row)
+            removed += 1
+            continue
+        if row_id not in canonical_ids:
+            session.delete(row)
+            removed += 1
+    if removed:
+        logger.info("Removed %s legacy scaffold row(s)", removed)
 
 
 def _upsert_studies_and_datasets(session: Session) -> dict[tuple[str, str], Dataset]:
@@ -127,5 +162,6 @@ def init_catalog() -> None:
     _migrate_dataset_catalog_columns(get_engine())
     with get_session() as session:
         _upsert_scaffolds(session)
+        _migrate_legacy_scaffolds(session)
         _upsert_studies_and_datasets(session)
     logger.info("Catalog seed complete (studies, datasets, scaffolds)")

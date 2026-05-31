@@ -9,7 +9,7 @@ from typing import Optional
 
 import pandas as pd
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
 from ..db.models import Dataset, Datasheet
@@ -89,6 +89,17 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
     scaffold_id = default_scaffold_for_pridict()
     specs = [
         ("pridict1", "library1", "hek293t", "pe2"),
+        ("pridict1", "library2", "hek293t", "pe2"),
+        ("pridict1", "library2", "hek293tmlh1dn", "pe2"),
+        ("pridict1", "library2", "u2os", "pe2"),
+        ("pridict1", "library2", "u2osmlh1dn", "pe2"),
+        ("pridict1", "library2", "u2os", "pemax"),
+        ("pridict1", "library2", "u2osmlh1dn", "pemax"),
+        ("pridict1", "library2", "k562", "pe2"),
+        ("pridict1", "library2", "k562mlh1dn", "pe2"),
+        ("pridict1", "library2", "k562", "pemax"),
+        ("pridict1", "library2", "k562mlh1dn", "pemax"),
+        ("pridict1", "library2-invivo", "liver_gfpplus", "pe2"),
         ("pridict1", "endogenous", "hek293t", "pe2"),
         ("pridict1", "endogenous", "k562", "pe2"),
         ("pridict2", "library-diverse", "hek", "pe2"),
@@ -113,46 +124,24 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
 
 
 def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
-    from ..utils.standardize_data import (
-        _MINSEPIE_EXPERIMENT_TO_PEGRNA,
-        _load_minsepie_pegrna_table,
-        _minsepie_cell_line_from_raw,
-        _minsepie_dataset_for_experiment,
-        _minsepie_pe_system_for_experiment,
-    )
+    from ..utils.standardize_data import iter_minsepie_consolidated_datasheet_specs
 
     root = data_root or get_settings().data_root
-    data_path = root / "raw" / "minsepie" / "41587_2023_1678_MOESM5_ESM.tsv"
-    if not data_path.exists():
+    raw_path = root / "raw" / "minsepie" / "41587_2023_1678_MOESM5_ESM.tsv"
+    if not raw_path.exists():
         return []
-    data = pd.read_csv(data_path, sep="\t", usecols=["experiment", "cell_line"])
-    pegrna_df = _load_minsepie_pegrna_table()
-    pegrna_lookup = {
-        (str(row["target"]), str(row["purpose"])): row
-        for _, row in pegrna_df.iterrows()
-    }
+
     rows: list[DatasheetScaffoldAssignment] = []
-    seen: set[tuple[str, str, str]] = set()
-    for experiment in sorted(_MINSEPIE_EXPERIMENT_TO_PEGRNA):
-        pegrna_row = pegrna_lookup[_MINSEPIE_EXPERIMENT_TO_PEGRNA[experiment]]
-        cell_line = _minsepie_cell_line_from_raw(
-            data.loc[data["experiment"] == experiment, "cell_line"].iloc[0]
-        )
-        pe_system = _normalize_datasheet_field(_minsepie_pe_system_for_experiment(experiment))
-        dataset = _minsepie_dataset_for_experiment(experiment)
-        datasheet_key = (dataset, cell_line, pe_system)
-        if datasheet_key in seen:
-            continue
-        seen.add(datasheet_key)
+    for dataset, cell_line, pe_system, scaffold_seq in iter_minsepie_consolidated_datasheet_specs(
+        root
+    ):
         rows.append(
             DatasheetScaffoldAssignment(
                 study="minsepie",
                 dataset=dataset,
                 cell_line=cell_line,
                 pe_system=pe_system,
-                scaffold_id=scaffold_id_for_minsepie_sequence(
-                    str(pegrna_row["pegrna_scaffold_seq"]).upper()
-                ),
+                scaffold_id=scaffold_id_for_minsepie_sequence(scaffold_seq),
                 scaffold_source="minsepie_st6",
             )
         )
@@ -203,6 +192,88 @@ def _relative_data_path(file_path: Path, data_root: Path) -> str:
         return str(file_path)
 
 
+def _parse_exported_datasheet_key(
+    data_file: Path,
+    exported_dir: Path,
+) -> Optional[tuple[str, str, str, str]]:
+    if not data_file.is_file() or data_file.suffix.lower() != ".csv":
+        return None
+    rel_parts = data_file.relative_to(exported_dir).parts
+    if len(rel_parts) != 3 or "-" not in data_file.stem:
+        return None
+    study_key, dataset_name, _ = rel_parts
+    cell_line, pe_system = data_file.stem.rsplit("-", 1)
+    return (
+        _normalize_study_key(study_key),
+        _normalize_dataset_name(dataset_name),
+        _normalize_datasheet_field(cell_line),
+        _normalize_datasheet_field(pe_system),
+    )
+
+
+def _collect_exported_datasheet_keys(
+    exported_dir: Path,
+    dataset_index: dict[tuple[str, str], Dataset],
+) -> set[tuple[str, str, str, str]]:
+    keys: set[tuple[str, str, str, str]] = set()
+    if not exported_dir.exists():
+        return keys
+    for data_file in exported_dir.rglob("*.csv"):
+        parsed = _parse_exported_datasheet_key(data_file, exported_dir)
+        if parsed is None:
+            continue
+        study_key, dataset_name, cell_line, pe_system = parsed
+        if (study_key, dataset_name) not in dataset_index:
+            continue
+        keys.add(parsed)
+    return keys
+
+
+def _prune_unregistered_datasets(
+    session: Session,
+    dataset_index: dict[tuple[str, str], Dataset],
+) -> int:
+    """Remove Dataset rows (and their datasheets) that are no longer in the registry."""
+    registered_ids = {dataset.id for dataset in dataset_index.values()}
+    removed = 0
+    for dataset in session.scalars(select(Dataset)).all():
+        if dataset.id in registered_ids:
+            continue
+        for datasheet in list(dataset.datasheets):
+            session.delete(datasheet)
+        session.delete(dataset)
+        removed += 1
+    return removed
+
+
+def _prune_stale_datasheets(
+    session: Session,
+    valid_keys: set[tuple[str, str, str, str]],
+) -> int:
+    """Remove Datasheet rows that do not correspond to an exported CSV on disk."""
+    removed = 0
+    rows = session.scalars(
+        select(Datasheet).options(
+            joinedload(Datasheet.dataset).joinedload(Dataset.study)
+        )
+    ).unique().all()
+    for row in rows:
+        if row.dataset is None or row.dataset.study is None:
+            session.delete(row)
+            removed += 1
+            continue
+        key = (
+            _normalize_study_key(row.dataset.study.name),
+            _normalize_dataset_name(row.dataset.name),
+            row.cell_line,
+            row.pe_system,
+        )
+        if key not in valid_keys:
+            session.delete(row)
+            removed += 1
+    return removed
+
+
 def _index_exported_datasheets(
     session: Session,
     dataset_index: dict[tuple[str, str], Dataset],
@@ -217,18 +288,10 @@ def _index_exported_datasheets(
         return updated
 
     for data_file in exported_dir.rglob("*.csv"):
-        if not data_file.is_file():
+        parsed = _parse_exported_datasheet_key(data_file, exported_dir)
+        if parsed is None:
             continue
-        rel_parts = data_file.relative_to(exported_dir).parts
-        if len(rel_parts) != 3 or "-" not in data_file.stem:
-            continue
-
-        study_key, dataset_name, _ = rel_parts
-        cell_line, pe_system = data_file.stem.rsplit("-", 1)
-        study_key = _normalize_study_key(study_key)
-        dataset_name = _normalize_dataset_name(dataset_name)
-        cell_line = _normalize_datasheet_field(cell_line)
-        pe_system = _normalize_datasheet_field(pe_system)
+        study_key, dataset_name, cell_line, pe_system = parsed
 
         dataset = dataset_index.get((study_key, dataset_name))
         if dataset is None:
@@ -303,6 +366,8 @@ def index_exported_datasheets(
 
     with get_session() as session:
         dataset_index = _upsert_studies_and_datasets(session)
+        pruned_datasets = _prune_unregistered_datasets(session, dataset_index)
+        valid_keys = _collect_exported_datasheet_keys(exported_dir, dataset_index)
         count = _index_exported_datasheets(
             session,
             dataset_index,
@@ -310,5 +375,12 @@ def index_exported_datasheets(
             data_root=root,
             exported_dir=exported_dir,
         )
-    logger.info("Indexed %s exported datasheets into catalog", count)
+        pruned_datasheets = _prune_stale_datasheets(session, valid_keys)
+    logger.info(
+        "Indexed %s exported datasheets into catalog "
+        "(removed %s stale datasets, %s stale datasheets)",
+        count,
+        pruned_datasets,
+        pruned_datasheets,
+    )
     return count
