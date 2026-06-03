@@ -542,6 +542,77 @@ def _export_pridict1_library2_datasheets() -> None:
         )
 
 
+_PRIDICT1_ENDOGENOUS_METADATA_PATH = (
+    DATA_ROOT / "raw" / "pridict1" / "pridict1_endogenous_edit_metadata.csv"
+)
+
+
+def _assign_pridict1_endogenous_peg_roles(df: pd.DataFrame) -> pd.Series:
+    """Map seq_id order within locus to library best / endo / worst pegRNA roles."""
+    if not {"seq_id", "locus"}.issubset(df.columns):
+        return pd.Series(pd.NA, index=df.index, dtype="string")
+
+    seq_num = (
+        df["seq_id"]
+        .astype("string")
+        .str.extract(r"(\d+)", expand=False)
+        .astype("Int64")
+    )
+    rank_in_locus = seq_num.groupby(df["locus"]).rank(method="first")
+    return rank_in_locus.map({1: "best", 2: "endo", 3: "worst"}).astype("string")
+
+
+def _load_pridict1_endogenous_edit_metadata() -> pd.DataFrame:
+    """
+    Per-pegRNA correction metadata derived from PRIDICT supplementary CRISPResso
+    batch amplicons (uzh-dqbm-cmi/PRIDICT supplementary_files).
+    """
+    if not _PRIDICT1_ENDOGENOUS_METADATA_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing PRIDICT1 endogenous metadata: {_PRIDICT1_ENDOGENOUS_METADATA_PATH}"
+        )
+    meta = pd.read_csv(_PRIDICT1_ENDOGENOUS_METADATA_PATH, dtype={"locus": "string"})
+    meta["peg_role"] = meta["peg_role"].astype("string").str.strip().str.lower()
+    meta["correction_type"] = (
+        meta["correction_type"].astype("string").str.strip().str.lower()
+    )
+    return meta
+
+
+def _attach_pridict1_endogenous_correction_fields(df: pd.DataFrame) -> pd.DataFrame:
+    """Join Correction_Type / Correction_Length and boolean type flags onto export rows."""
+    out = df.copy()
+    out["peg_role"] = _assign_pridict1_endogenous_peg_roles(out)
+    meta = _load_pridict1_endogenous_edit_metadata()
+    out["locus_key"] = out["locus"].astype("string")
+    merged = out.merge(
+        meta,
+        left_on=["locus_key", "peg_role"],
+        right_on=["locus", "peg_role"],
+        how="left",
+        suffixes=("", "_meta"),
+    )
+    if merged["correction_type"].isna().any():
+        missing = merged.loc[merged["correction_type"].isna(), ["seq_id", "locus", "peg_role"]]
+        raise ValueError(
+            "PRIDICT1 endogenous rows missing correction metadata:\n"
+            f"{missing.head().to_string()}"
+        )
+
+    correction_type = merged["correction_type"]
+    merged["Correction_Type"] = correction_type.str.capitalize()
+    merged["Correction_Length"] = pd.to_numeric(
+        merged["correction_length"], errors="raise"
+    )
+    merged["type_sub"] = correction_type.eq("replacement")
+    merged["type_ins"] = correction_type.eq("insertion")
+    merged["type_del"] = correction_type.eq("deletion")
+    return merged.drop(
+        columns=["locus_key", "locus_meta", "correction_type", "correction_length"],
+        errors="ignore",
+    )
+
+
 def _export_pridict1_endogenous_datasheets() -> None:
     """
     Export PRIDICT1 endogenous-locus validation (Mathis et al., Nat. Biotechnol. 2023).
@@ -549,9 +620,14 @@ def _export_pridict1_endogenous_datasheets() -> None:
     Source: ``raw/pridict1/pridict_endogenous.csv`` — arrayed pegRNAs at native
     genomic loci with measured editing in HEK293T and K562 (PE2 conditions in the
     original study). Not part of the lentiviral self-targeting HTS library.
+
+    Edit types come from ``pridict1_endogenous_edit_metadata.csv`` (amplicon vs HDR
+    in the authors' endogenous CRISPResso batch). Rows are keyed by locus and peg
+    role (seq_id rank: best, endo, worst library pegRNA per site).
     """
     source_path = DATA_ROOT / "raw" / "pridict1" / "pridict_endogenous.csv"
     df = pd.read_csv(source_path)
+    base_df = _attach_pridict1_endogenous_correction_fields(df)
 
     # Mathis et al. 2023 endogenous validation: PE2 + plasmid transfection in each line.
     exports = (
@@ -560,7 +636,7 @@ def _export_pridict1_endogenous_datasheets() -> None:
     )
     for cell_line, pe_system, efficiency_col in exports:
         # Keep only the target cell line's primary endogenous efficiency column.
-        export_df = df.copy()
+        export_df = base_df.copy()
         other_efficiency_cols = [
             col
             for col in export_df.columns
@@ -632,7 +708,7 @@ def _export_pridict2_endogenous_datasheets() -> None:
 
     cell_line = "k562"
     pe_system = "pe2"
-    out_dir = DATA_ROOT / "exported" / "pridict2" / "trip-analysis"
+    out_dir = DATA_ROOT / "exported" / "pridict2" / "trip_analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{cell_line}-{pe_system}.csv"
     trip_df.to_csv(output_path, index=False)
@@ -1830,6 +1906,9 @@ def standardize_pe_data(
     dataset_candidates = [dataset]
     if normalized_dataset not in dataset_candidates:
         dataset_candidates.append(normalized_dataset)
+    hyphenated = normalized_dataset.replace("_", "-")
+    if hyphenated not in dataset_candidates:
+        dataset_candidates.append(hyphenated)
 
     input_path = None
     for dataset_candidate in dataset_candidates:
@@ -1850,14 +1929,14 @@ def standardize_pe_data(
         _standardize_deeppe_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "deepprime":
         if normalized_dataset in {"deepprime_off", "deepprime_off_subpool"}:
-            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+            _standardize_deepprime_off(data, cell_line, pe_system, normalized_dataset)
         else:
             _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "pridict1":
         if normalized_dataset in {"library1", "library2", "library2_invivo"}:
             _standardize_pridict1(data, cell_line, pe_system, normalized_dataset)
         elif normalized_dataset == "endogenous":
-            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+            _standardize_pridict1_endo(data, cell_line, pe_system, normalized_dataset)
         else:
             raise ValueError(
                 f"Unsupported dataset for study=pridict1: {dataset}. "
@@ -1867,7 +1946,7 @@ def standardize_pe_data(
         if normalized_dataset in {"library_diverse", "library_diverse_invivo"}:
             _standardize_pridict2_library_diverse(data, cell_line, pe_system, normalized_dataset)
         elif normalized_dataset == "trip_analysis":
-            _standardize_partial_entries(data, cell_line, pe_system, study, normalized_dataset)
+            _standardize_pridict2_trip(data, cell_line, pe_system, normalized_dataset)
         else:
             raise ValueError(
                 "Unsupported dataset for study=pridict2: "
@@ -1890,78 +1969,213 @@ def standardize_pe_data(
     return pd.read_parquet(output_path)
 
 
-def _standardize_partial_entries(
-    data: pd.DataFrame,
-    cell_line: str,
-    pe_system: str,
+def _write_partial_standardized_output(
+    partial_df: pd.DataFrame,
+    *,
     study: str,
     dataset: str,
+    cell_line: str,
+    pe_system: str,
 ) -> None:
-    """Create a minimal standardized file for entry-level filtering only."""
-
-    def _pick_efficiency_column(df: pd.DataFrame, normalized_cell: str) -> Optional[str]:
-        preferred_by_cell = {
-            "k562": "K562_averageedited",
-            "hek293t": "HEK293T_averageedited",
-        }
-        if normalized_cell in preferred_by_cell and preferred_by_cell[normalized_cell] in df.columns:
-            return preferred_by_cell[normalized_cell]
-        for candidate in (
-            "editing_efficiency",
-            "PE_editing_efficiency",
-            "avg.on-target_efficiency",
-            "HEK293T_averageedited",
-            "K562_averageedited",
-        ):
-            if candidate in df.columns:
-                return candidate
-        return None
-
-    def _parse_edit_type_series(df: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
-        if {"type_sub", "type_ins", "type_del"}.issubset(df.columns):
-            return (
-                df["type_sub"].astype(bool),
-                df["type_ins"].astype(bool),
-                df["type_del"].astype(bool),
-            )
-
-        raw = df["edit_type"]
-        numeric = pd.to_numeric(raw, errors="coerce")
-        text = raw.astype(str).str.strip().str.lower()
-        type_sub = (numeric == 0) | text.isin({"0", "sub", "substitution", "replacement"})
-        type_ins = (numeric == 1) | text.isin({"1", "ins", "insertion"})
-        type_del = (numeric == 2) | text.isin({"2", "del", "deletion"})
-        return (type_sub.astype(bool), type_ins.astype(bool), type_del.astype(bool))
-
-    if "edit_len" in data.columns:
-        edit_len = pd.to_numeric(data["edit_len"], errors="coerce")
-    elif "edit_length" in data.columns:
-        edit_len = pd.to_numeric(data["edit_length"], errors="coerce")
-    elif "Correction_Length" in data.columns:
-        edit_len = pd.to_numeric(data["Correction_Length"], errors="coerce")
-
-    type_sub, type_ins, type_del = _parse_edit_type_series(data)
-    efficiency_col = _pick_efficiency_column(data, cell_line)
-    if efficiency_col is None:
-        editing_efficiency = pd.Series(0.0, index=data.index, dtype=float)
-    else:
-        editing_efficiency = pd.to_numeric(data[efficiency_col], errors="coerce").fillna(0.0)
-
-    partial_df = pd.DataFrame(
-        {
-            "type_sub": type_sub.astype(bool),
-            "type_ins": type_ins.astype(bool),
-            "type_del": type_del.astype(bool),
-            "edit_len": edit_len.fillna(1).astype(int),
-            "editing_efficiency": editing_efficiency.astype(float),
-        }
+    """Persist a filter-only standardized parquet (not valid for model training)."""
+    output_path = (
+        DATA_ROOT / "standardized" / study / dataset / f"{cell_line}-{pe_system}.parquet"
     )
-
-    output_path = DATA_ROOT / "standardized" / study / dataset / f"{cell_line}-{pe_system}.parquet"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     partial_df.to_parquet(output_path, index=False)
     logger.info(
         "Saved partial standardized data for filter-only use: %s (%s rows)",
         output_path,
         len(partial_df),
+    )
+
+
+def _standardize_deepprime_off(
+    data: pd.DataFrame,
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+    *,
+    study_key: str = "deepprime",
+) -> None:
+    """Partial standardization for DeepPrime off-target mismatch libraries.
+
+    Supports ``deepprime-off`` and ``deepprime-off-subpool`` exports. Some sheets
+    (e.g. hek293t-pe2) are already in DeepPrime model layout with ``type_sub`` /
+    ``type_ins`` / ``type_del``; others use the supplementary ``edit_type`` column
+    (``transv``, ``transi``, ``transv2``, ``Ins``, ``Del``).
+    """
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    dataset = _normalize_name(dataset)
+
+    if {"type_sub", "type_ins", "type_del"}.issubset(data.columns):
+        type_sub = data["type_sub"].astype(bool)
+        type_ins = data["type_ins"].astype(bool)
+        type_del = data["type_del"].astype(bool)
+    elif "edit_type" in data.columns:
+        labels = data["edit_type"].astype("string").str.strip().str.lower()
+        # Mismatch-screen categories; mapped to PE-DB sub/ins/del for statistics only.
+        type_sub = labels.isin({"transv", "transi", "transv2"})
+        type_ins = labels.isin({"ins", "insertion"})
+        type_del = labels.isin({"del", "deletion"})
+    else:
+        raise ValueError(
+            f"DeepPrime off-target export for {dataset} {cell_line}-{pe_system} "
+            "must include type_sub/type_ins/type_del or edit_type."
+        )
+
+    if "edit_length" in data.columns:
+        edit_len = pd.to_numeric(data["edit_length"], errors="coerce")
+    elif "edit_len" in data.columns:
+        edit_len = pd.to_numeric(data["edit_len"], errors="coerce")
+    else:
+        edit_len = pd.Series(np.nan, index=data.index, dtype=float)
+
+    if "avg.on-target_efficiency" in data.columns:
+        efficiency_col = "avg.on-target_efficiency"
+    else:
+        efficiency_col = None
+        for candidate in ("editing_efficiency", "measured_pe_efficiency"):
+            if candidate in data.columns:
+                efficiency_col = candidate
+                break
+    if efficiency_col is None:
+        editing_efficiency = pd.Series(0.0, index=data.index, dtype=float)
+    else:
+        editing_efficiency = pd.to_numeric(data[efficiency_col], errors="coerce").fillna(0.0)
+
+    _write_partial_standardized_output(
+        pd.DataFrame(
+            {
+                "type_sub": type_sub,
+                "type_ins": type_ins,
+                "type_del": type_del,
+                "edit_len": edit_len,
+                "editing_efficiency": editing_efficiency.astype(float),
+            }
+        ),
+        study=study_key,
+        dataset=dataset,
+        cell_line=cell_line,
+        pe_system=pe_system,
+    )
+
+
+def _correction_type_to_flags(
+    correction_type: pd.Series,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    labels = correction_type.astype("string").str.strip().str.lower()
+    type_sub = labels.eq("replacement")
+    type_ins = labels.eq("insertion")
+    type_del = labels.eq("deletion")
+    unknown_mask = ~(type_sub | type_ins | type_del)
+    if unknown_mask.any():
+        unknown_values = labels.loc[unknown_mask].unique().tolist()[:5]
+        raise ValueError(f"Unsupported Correction_Type values: {unknown_values}")
+    return type_sub.astype(bool), type_ins.astype(bool), type_del.astype(bool)
+
+
+def _standardize_pridict1_endo(
+    data: pd.DataFrame,
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+) -> None:
+    """Partial standardization for PRIDICT1 endogenous validation pegRNAs."""
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    dataset = _normalize_name(dataset)
+
+    if {"type_sub", "type_ins", "type_del"}.issubset(data.columns):
+        type_sub = data["type_sub"].astype(bool)
+        type_ins = data["type_ins"].astype(bool)
+        type_del = data["type_del"].astype(bool)
+    elif "Correction_Type" in data.columns:
+        type_sub, type_ins, type_del = _correction_type_to_flags(data["Correction_Type"])
+    else:
+        enriched = _attach_pridict1_endogenous_correction_fields(data)
+        type_sub = enriched["type_sub"].astype(bool)
+        type_ins = enriched["type_ins"].astype(bool)
+        type_del = enriched["type_del"].astype(bool)
+
+    preferred_efficiency = {
+        "hek293t": "HEK293T_averageedited",
+        "k562": "K562_averageedited",
+    }
+    efficiency_col = preferred_efficiency.get(cell_line)
+    if efficiency_col is None or efficiency_col not in data.columns:
+        raise ValueError(
+            f"PRIDICT1 endogenous export for {cell_line}-{pe_system} "
+            f"is missing efficiency column {efficiency_col!r}."
+        )
+    editing_efficiency = pd.to_numeric(data[efficiency_col], errors="coerce").fillna(0.0)
+
+    if "Correction_Length" in data.columns:
+        edit_len = pd.to_numeric(data["Correction_Length"], errors="coerce")
+    else:
+        edit_len = pd.Series(np.nan, index=data.index, dtype=float)
+
+    _write_partial_standardized_output(
+        pd.DataFrame(
+            {
+                "type_sub": type_sub,
+                "type_ins": type_ins,
+                "type_del": type_del,
+                "edit_len": edit_len,
+                "editing_efficiency": editing_efficiency.astype(float),
+            }
+        ),
+        study="pridict1",
+        dataset=dataset,
+        cell_line=cell_line,
+        pe_system=pe_system,
+    )
+
+
+def _standardize_pridict2_trip(
+    data: pd.DataFrame,
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+) -> None:
+    """Partial standardization for PRIDICT2 TRIP endogenous chromatin survey.
+
+    TRIP supplementary table 12 reports barcode, genomic coordinates, and editing
+    efficiencies only. All integrations were edited with the same pegRNA
+    (``TRIP_pegRNA_GtoC`` in supplementary table 5): a uniform 1-bp G→C substitution
+    used to survey chromatin context (Mathis et al., Nat. Biotechnol. 2024).
+    """
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    dataset = _normalize_name(dataset)
+
+    if "PE_editing_efficiency" not in data.columns:
+        raise ValueError(
+            f"PRIDICT2 TRIP export for {cell_line}-{pe_system} "
+            "is missing PE_editing_efficiency."
+        )
+    editing_efficiency = pd.to_numeric(
+        data["PE_editing_efficiency"], errors="coerce"
+    ).fillna(0.0)
+
+    type_sub = pd.Series(True, index=data.index, dtype=bool)
+    type_ins = pd.Series(False, index=data.index, dtype=bool)
+    type_del = pd.Series(False, index=data.index, dtype=bool)
+    edit_len = pd.Series(1.0, index=data.index, dtype=float)
+
+    _write_partial_standardized_output(
+        pd.DataFrame(
+            {
+                "type_sub": type_sub,
+                "type_ins": type_ins,
+                "type_del": type_del,
+                "edit_len": edit_len,
+                "editing_efficiency": editing_efficiency.astype(float),
+            }
+        ),
+        study="pridict2",
+        dataset=dataset,
+        cell_line=cell_line,
+        pe_system=pe_system,
     )

@@ -99,7 +99,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The library2 dataset is a disease-focused subscreen of the same lentiviral reporter format across HEK293T, U2OS, and K562 (including MLH1$^{-/-}$ lines as separate cell-line identifiers, matching PRIDICT2 naming). The library2-invivo dataset validates the same pegRNA set in GFP+ sorted mouse liver via adenoviral delivery of both pegRNAs and PE2 (endogenous liver loci).
 
-    A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. The publication did not explicitly state the edit type for the endogenous validation dataset, . This dataset currently has partial standardization support (entry-level fields only). 
+    A separate endogenous validation dataset contains arrayed pegRNA experiments at 15 genomic loci in HEK293T and K562 (three pegRNAs per locus from library~1: the endogenous-target pegRNA, \emph{endo}, plus the highest- and lowest-PRIDICT-scoring candidates, \emph{best} and \emph{worst}). Edit types are taken from the authors' endogenous CRISPResso batch amplicons (PRIDICT supplementary files): 44 pegRNAs install a 1-bp substitution and locus~3 uses a 10-bp deletion; there are no insertion edits in this validation set.
 
     \item \textbf{PRIDICTv2}
     
@@ -109,7 +109,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
 
-    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. The pegRNAs were delivered by lentiviral transduction and PE2 by plasmid transfection; this dataset currently has partial standardization support (entry-level fields only) due to its distinct experimental format.
+    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at 1,202 endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. Every integration was edited with the same prime-editing pegRNA (\texttt{TRIP\_pegRNA\_GtoC}, supplementary table~5), a uniform 1-bp G$\to$C substitution. Similarly, due to the lack of support for chromatin coordinate translation, this dataset currently has partial standardization support (entry-level fields only).
 \end{enumerate}
 
 \begin{figure}[ht]
