@@ -1,12 +1,13 @@
 \documentclass{article}
 
-\title{PE Ensemble : Interactively Reviewing State of the art Prime Editing Guide RNA Design Models}
+\title{Interactively Reviewing State of the Art Prime Editing Guide RNA Design Models}
 \author{Peiheng Lu}
 % line number
 \usepackage{lineno}
 \linenumbers
 
 \usepackage{graphicx}
+\usepackage{amsmath}
 \usepackage[sorting=none]{biblatex}
 \usepackage{hyperref}
 
@@ -16,6 +17,7 @@
 % increase text width
 \usepackage{geometry}
 \geometry{a4paper, margin=1in}
+
 
 \begin{document}
 
@@ -30,13 +32,16 @@
 \section{Introduction}
 
 (more reference)
-Prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome across numerous species, including humans. It surpasses base editing, which is limited to single base changes, and offers greater precision compared to CRISPR-Cas9, which often results in off-target effects due to the necessity of double strand breaks for editing.
+Prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome across numerous species, including humans. 
+
+While CRISPR-Cas9 disrupts the genome with double strand breaks, and base editing accurately targets single base changes, prime editing is a more flexible 'genomic word processor' that can perform all possible edit types, including substitutions, insertions and deletions\cite{koeppelPredictionPrimeEditing2023}.
 
 (Process of prime editing, describe pegRNA, \autoref{fig:pe-process})
 
-\begin{figure}[h]
+
+\begin{figure}[ht]
     \centering
-    \includegraphics[width=0.8\linewidth]{diagrams/illustration/prime editing process.png}
+    \includegraphics[width=0.75\linewidth]{diagrams/illustration/prime editing process.png}
     \caption{Prime editing process, the reverse transcriptase and Cas9 modules were omitted for visual clarity}
     \label{fig:pe-process}
 \end{figure}
@@ -49,8 +54,6 @@ These applications generally work in two stages. First, a number of pegRNAs are 
 
 This project consists of two main services. The first service, PE Database, can be run as a stand-alone docker application that serves data from requested data source in desirable format. The second service is PE Ensemble, which as the name suggests provides an interface for users to play with current state of the art model architectures in prime editing efficiency prediction, and relies on PE Database to provide data formatted for the selected models to train or evaluate.
 
-
-
 \subsection{PE Database}
 % overview of the database operations
 
@@ -60,10 +63,6 @@ With interest in prime editing guide RNA design steadily growing, the volume of 
 
 We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Five studies are included - DeepPE from Kim et al\cite{kimPredictingEfficiencyPrime2021}; DeepPrime from yu et al\cite{yuPredictionEfficienciesDiverse2023}; MinsePIE from koeppel et al\cite{koeppelPredictionPrimeEditing2023}; PRIDICTv1 from schwank et al\cite{schwankgeraldPredictingPrimeEditing2023} and PRIDICTv2 from Mathis et al\cite{mathisMachineLearningPrediction2024}.
 
-(Add a diagram explaining the composition of the data from the studies)
-
-% A major difference among the datasets is how the editing efficiency is measured. The most straightforward definition uses the total read count of the successfully edited sequences divided by the total read count of the sequences\cite{schwankgeraldPredictingPrimeEditing2023}. However, the augmented measure, which deducts the background editing rate from the total editing rate, is more common in computational studies\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,mathisMachineLearningPrediction2024}. 
-
 \begin{enumerate}
     \item \textbf{DeepPE}
     
@@ -71,7 +70,8 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The main library (deeppe-ht) contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus. The data are split into HT-training and HT-test subsets.
 
-    Library~2 is split into an edit-type subset (deeppe-type), which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset (deeppe-position), which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2.
+    Library~2 is split into an edit-type subset (deeppe-type), which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset (deeppe-position), which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2. 
+    % TODO: add detailed number of counts for each subset
 
     A separate endogenous validation dataset (deeppe-endo) contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
 
@@ -99,7 +99,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The library2 dataset is a disease-focused subscreen of the same lentiviral reporter format across HEK293T, U2OS, and K562 (including MLH1$^{-/-}$ lines as separate cell-line identifiers, matching PRIDICT2 naming). The library2-invivo dataset validates the same pegRNA set in GFP+ sorted mouse liver via adenoviral delivery of both pegRNAs and PE2 (endogenous liver loci).
 
-    A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection; this dataset currently has partial standardization support (entry-level fields only).
+    A separate endogenous validation dataset contains arrayed pegRNA experiments at approximately 45 native genomic loci in HEK293T and K562 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. The publication did not explicitly state the edit type for the endogenous validation dataset, . This dataset currently has partial standardization support (entry-level fields only). 
 
     \item \textbf{PRIDICTv2}
     
@@ -112,11 +112,29 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. The pegRNAs were delivered by lentiviral transduction and PE2 by plasmid transfection; this dataset currently has partial standardization support (entry-level fields only) due to its distinct experimental format.
 \end{enumerate}
 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{diagrams/data_composition.png}
+    \caption{Composition of the data from the studies. \textbf{A.} Edit length distribution. \textbf{B.} Edit type distribution, `sub' for substitutions, `ins' for insertions, `del' for deletions. \textbf{C.} Edit scope distribution, `off target' uses pegRNA targeting a non-matching target sequence, while `on target' targets a fully matching target sequence. }
+    \label{fig:data_composition}
+\end{figure}
+
+\autoref{fig:data_composition} summarizes the composition of data from the studies. In total, there are 715,055 pegRNA-target pairs from 5 studies. 
+
+DeepPrime and PRIDICTv2 has good coverage of all editing types, with PRIDICTv2 having a larger range of edit length, from 1 to 15bp compared to DeepPrime's 1-3bp in the main library and up to 6bp in the fine-tuning subsets. 
+
+Note that on top of the difference in delivery method, target context and experiment methods, the processing of editing efficiency also varies among the studies. PRIDICTv1 generously provided the raw counts of editing outcomes(successful edits, unintended edits and no edits) for each pegRNA, while other studies only provides a one-value measurement of editing efficiency. Kim et al. set the standard of using the augmented editing efficiency measurement, which deducts the background editing rate from the total editing rate, for all of their datasets\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023}. The background editing rate is the editing rate of the pegRNA in the absence of the target sequence, measured in 0-100 scale, thus the $\div 100$ in \autoref{eq:augmented-editing-efficiency}. This measurement method is also followed by the PRIDICT studies\cite{schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}. Koeppel et al. however, used the ratio of successful insertions over total insertions as the editing efficiency measurement. The background editing rate was not provided in the study and thus currently impossible to recover, just bear in mind that during training of custom models this can be the source of potential discrepancy in models' performances across the datasets.
+
+\begin{equation}
+    \text{Editing efficiency} = 100 \times \frac{\text{\# successful edits} - \text{\# total read count} \times \text{background editing rate} \div 100}{\text{\# total read count} - \text{\# total read count} \times \text{background editing rate} \div 100}
+    \label{eq:augmented-editing-efficiency}
+\end{equation}
+
 
 \subsubsection{Data Storage}
 
 Since the project is distributed using GitHub, we needed to work around the 100 MB per file limit to avoid using Git LFS(Large File Storage) and incurring substantial charges.
-Instead of a persistent DB object, the data are stored in their original tsv, csv or xlsx (Excel) format and are only transformed into standardized formats and loaded into a separate MySQL instance after it is deployed by users.
+Instead of a persistent DB object, the data are stored in their original tsv, csv or xlsx (Excel) format and are only transformed into standardized formats and indexed by a SQLite database after it is deployed by users.
 
 
 \subsubsection{Data Formatting}
@@ -162,7 +180,7 @@ Additionally, for easier benchmarking of new machine learning systems with exist
 
 \subsubsection{Database Usage}
 
-Docker was chosen for its exceptional portability and hassle free setup. 
+Docker was chosen for its exceptiIntrinsically disordered proteinsonal portability and hassle free setup. 
 
 A number of Python FastAPI endpoints were exposed, the most important endpoint is GetData, can be used by PyTorch dataloaders during training and evaluation.
 
