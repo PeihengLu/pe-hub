@@ -83,13 +83,13 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The fine-tuning subsets (deepprime-small) are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
 
-    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. These off-target datasets currently have partial standardization support (entry-level fields only), rather than full conversion to the shared standardized format.
+    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. 
 
     \item \textbf{MinsePIE}
     
     Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} focused specifically on prime editing insertion efficiency, designing a library of 3,604 insertion sequences of various lengths (1--69~nt) and measuring their insertion frequencies at four endogenous genomic target sites (HEK3, EMX1, FANCF, and the safe-harbor CLYBL locus) in three human cell lines (HEK293T, HAP1, and HAP1 $\Delta$MLH1). The study identified that insertion length, nucleotide composition (particularly cytosine content), and secondary structure of the insert sequence all affect insertion rates, and discovered that the 3$'$ flap nucleases TREX1 and TREX2 suppress the insertion of longer sequences. These findings were combined into the MinsePIE machine learning model, which predicts relative insertion frequencies with $R = 0.70$.
 
-    The main library-insert dataset contains the pooled insertion screens in HEK293T cells, where pegRNAs were delivered via lentiviral transduction and PE2 (or PE3 / epegRNA variants) was delivered by plasmid transfection. The library-insert-piggybac dataset covers the same lentiviral pegRNA library screened in HAP1 and HAP1 $\Delta$MLH1 cells, where PE2 was stably integrated via PiggyBac transposase and induced by doxycycline rather than transiently transfected. Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located; the recorded data contain 40,436 data points.
+    MinSePIE data are split into five catalog datasets by library design and delivery: \texttt{library-insert-set12} (Set~1/2 pooled screens), \texttt{library-insert-18nt}, \texttt{library-insert-codon-variant} (endogenous barnacle tagging), \texttt{library-insert-codon-hek3} (codon validation at HEK3), and \texttt{library-insert-piggybac} (Set~1 screens in HAP1 with PiggyBac-integrated PE2). Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located.
 
     \item \textbf{PRIDICTv1}
     
@@ -146,6 +146,8 @@ The first step is data exportation, where the original data was broken down into
 The exported data can be used to construct the MySQL database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
 
 As briefly mentioned above, a standardized format was devised as a mediator to simply conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
+
+The standardization process for most datasets are straightforward, as they provides all necessary information in either the publication or supplementary files. 
 
 
 \subsubsection{Database Design}

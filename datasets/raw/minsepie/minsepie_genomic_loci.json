@@ -1,0 +1,177 @@
+{
+  "_comment": "GRCh38/hg38 loci for MinsePIE ST6 pegRNA targets (Koeppel et al. 2023 Nat Biotechnol). spacer_start is 1-based on the listed assembly_strand (+1 = forward on chrom, -1 = reverse-complement of fetched forward segment). reference_window is oriented so [spacer_offset:spacer_offset+20] equals the ST6 spacer; when the reference protospacer differs by <=2 bp from ST6, the window is patched to the ST6 spacer (match *_patched_*bp). HEK3 is LINC01509 chr9 (not chr11 folklore). HEK3-S2..S6 are nearby sites within ~1 kb for the 18-nt library. Codon-variant targets include forward/reverse-strand pegRNAs at ACTB, LMNB1, TP53.",
+  "flank_bp": 100,
+  "loci": {
+    "HEK3": {
+      "chrom": "9",
+      "spacer_start": 107422339,
+      "assembly_strand": 1,
+      "match": "direct",
+      "window_start": 107422239,
+      "window_end": 107422458,
+      "reference_window": "CGCCCATGCAATTAGTCTATTTCTGCTGCAAGTAAGCATGCATTTGTAGGCTTGATGCTTTTTTTCTGCTTCTCCAGCCCTGGCCTGGGTCAATCCTTGGGGCCCAGACTGAGCACGTGATGGCAGAGGAAAGGAAGCCCTGCTTCCTCCAGAGGGCGTCGCAGGACAGCTTTTCCTAGACAGGGGCTAGTATGTGCAGCTCCTGCACCGGGATACTGGT",
+      "spacer_offset": 100
+    },
+    "HEK3-S2": {
+      "chrom": "9",
+      "spacer_start": 107422669,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 107422569,
+      "window_end": 107422788,
+      "reference_window": "GACCACTGCGATATGACCACCCACCTAATTAAAGGAGGGCAAGTGCTGGGACAGAGCTGTCCTCTGGTTCTGGCCTGCCTCTAACACCCTCTGGGGTCCTGGGCAAGCTCCATCACTTTCTGGCCTCAGTTTTCTCTTGGGCAATATGGGGTAATCTGGTTGATCTCTGATTTTCATGCAGGTGCTGAAAGCCACTGGGCTCTGGGTGCCCTGAGATCTT",
+      "spacer_offset": 100
+    },
+    "HEK3-S4": {
+      "chrom": "9",
+      "spacer_start": 107423009,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 107422909,
+      "window_end": 107423128,
+      "reference_window": "CTCTAGAAGGCCACTTCACTGAACAAAATTCTCATTCTTAGAAAGTATTATAAGGTGGCATTGTTATTTCCCTCCCAAAATTAAAACTGAGCACACAGGGGCTGAGTCAGAGGGACCCTTTGGGGTTTTCCAGCTGTTAAGCACAGCTGTGTAACTTTAGGCAAGGCATGGCTTTAACCCTCCAGTGTATCCATTGTCTTATGTAGGACATGGGGGAGAT",
+      "spacer_offset": 100
+    },
+    "EMX1": {
+      "chrom": "2",
+      "spacer_start": 72933853,
+      "assembly_strand": 1,
+      "match": "direct",
+      "window_start": 72933753,
+      "window_end": 72933972,
+      "reference_window": "GTTTCTCATCTGTGCCCCTCCCTCCCTGGCCCAGGTGAAGGTGTGGTTCCAGAACCGGAGGACAAAGTACAAACGGCAGAAGCTGGAGGAGGAAGGGCCTGAGTCCGAGCAGAAGAAGAAGGGCTCCCATCACATCAACCGGTGGCGCATTGCCACGAAGCAGGCCAATGGGGAGGACATCGATGTCACCTCCAATGACTAGGGTGGGCAACCACAAACC",
+      "spacer_offset": 100
+    },
+    "FANCF": {
+      "chrom": "11",
+      "spacer_start": 22625789,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 22625689,
+      "window_end": 22625908,
+      "reference_window": "CATTGCAGAGAGGCGTATCATTTCGCGGATGTTCCAATCAGTACGCAGAGAGTCGCCGTCTCCAAGGTGAAAGCGGAAGTAGGGCCTTCGCGCACCTCATGGAATCCCTTCTGCAGCACCTGGATCGCTTTTCCGAGCTTCTGGCGGTCTCAAGCACTACCTACGTCAGCACCTGGGACCCCGCCACCGTGCGCCGGGCCTTGCAGTGGGCGCGCTACCT",
+      "spacer_offset": 100
+    },
+    "CLYBL": {
+      "chrom": "13",
+      "spacer_start": 99822034,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 99821934,
+      "window_end": 99822153,
+      "reference_window": "CTCCTGCTGGTCTCGCCAGGGGTCACTTATGTGGGTACAGTTATCTGGTGGCTTGACTAGGGCTGGATGATCTAAGATGGCCCTACTGACTTGTCTGAATGGTGGTGCAGACTGTCACTAAGGACCTGTGTCTCCAGTAGGAGAGTCTGGGATCCTAAATTAGGTGGCAGAGTTCCAGACGTGCAAGCCTGCATGTGTTCCACTGGCCAAGCCATGTGGC",
+      "spacer_offset": 100
+    },
+    "LMNB1": {
+      "chrom": "5",
+      "spacer_start": 126777490,
+      "assembly_strand": 1,
+      "match": "direct",
+      "window_start": 126777390,
+      "window_end": 126777609,
+      "reference_window": "TCTGGACGTGAGCGCAGGTCGCCGGTTTGTGCCTTCGGTCCCCGCTTCGCCCCCTGCCGTCCCCTCCTTATCACGGTCCCGCTCGCGGCCTCGCCGCCCCGCTGTCTCCGCCGCCCGCCATGGCGACTGCGACCCCCGTGCCGCCGCGGATGGGCAGCCGCGCTGGCGGCCCCACCACGCCGCTGAGCCCCACGCGCCTGTCGCGGCTCCAGGAGAAGGA",
+      "spacer_offset": 100
+    },
+    "ACTB": {
+      "chrom": "7",
+      "spacer_start": 5529657,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 5529557,
+      "window_end": 5529776,
+      "reference_window": "GTCCCCAATCTGGGCGCGCGCCGGCGCCCCCTGGCGGCCTAAGGACTCGGCGCGCCGGAAGTGGCCAGGGCGGGGGCGACCTCGGCTCACAGCGCGCCCGGCTATTCTCGCAGCTCACCATGGATGATGATATCGCCGCGCTCGTCGTCGACAACGGCTCCGGCATGTGCAAGGCCGGCTTCGCGGGCGACGATGCCCCCCGGGCCGTCTTCCCCTCCAT",
+      "spacer_offset": 100
+    },
+    "NOLC1": {
+      "chrom": "10",
+      "spacer_start": 102152395,
+      "assembly_strand": 1,
+      "match": "direct",
+      "window_start": 102152295,
+      "window_end": 102152514,
+      "reference_window": "CCTTTCCGTTATGCGCCCGCGCGGCGCAATGACGTAACACAGGCCCGCCCACTGCCCCTGTTGGGTTCCTGAGTCGTGCTGCGTCGACAACGGTAGTGACGCGTATTGCCTGGAGGATGGCGGACGCCGGCATTCGCCGCGTGGTTCCCAGCGACCTGTATCCCCTCGTGCTCGGCTTCCTGCGCGATAACCAACTCTCAGAGGTGGCCAATAAGTTCGC",
+      "spacer_offset": 100
+    },
+    "RNF2": {
+      "chrom": "1",
+      "spacer_start": 185087638,
+      "assembly_strand": -1,
+      "match": "rc",
+      "window_start": 185087538,
+      "window_end": 185087757,
+      "reference_window": "GGAATGCTTGAATATAAATTTATTATTACTCTATGTTCTATTTAAGTTTTCATGTTCTAAAAATGTATCCCAGTTTACACGTCTCATATGCCCCTTGGCAGTCATCTTAGTCATTACCTGAGGTGTTCGTTGTAACTCATATAAACTGAGTTCCCATGTTTTGCTTAATGGTTGAGTTCCGTTTGTCTGCACAGCCTGAGACATTGCTGGAAATAAAGAA",
+      "spacer_offset": 100
+    },
+    "HEK3-S3": {
+      "spacer_start": 107422875,
+      "assembly_strand": -1,
+      "match": "rc_patched_1bp",
+      "window_start": 107422775,
+      "window_end": 107422994,
+      "reference_window": "TGTTAAGCACAGCTGTGTAACTTTAGGCAAGGCATGGCTTTAACCCTCCAGTGTATCCATTGTCTTATGTAGGACATGGGGGAGATATTACTCCACTTCCGGAGAAGTTGCTAGGATGAAAGGACATAACAAATACAAGGTGCTTAGCATAGTGCCCTGCGTGTAACAAGTGCTCAATATTTATTATTATTGTTTGCAATGTCTCTGACCACTGCGATAT",
+      "spacer_offset": 100,
+      "chrom": "9"
+    },
+    "HEK3-S5": {
+      "spacer_start": 107423258,
+      "assembly_strand": 1,
+      "match": "direct_patched_1bp",
+      "window_start": 107423158,
+      "window_end": 107423377,
+      "reference_window": "TTTTTAACAAGGATGTCGTAGTTAATTGATCCGTAGCCAGGAAGTTAGATTAACCAGGACACTTCTGGCCCCAAGCACTCTAGCTAGTTGATTAATGGAGGCATTGCCATGCCAGCTAAGTGGCTTTGGAGTGCAAAATAGGATGAATTGCTCTTAGCAGAGACCTAAATCCTAAACTCAAATCCTCACATTTGGGCAGGTGATCAATGCTTAGGGAGCA",
+      "spacer_offset": 100,
+      "chrom": "9"
+    },
+    "HEK3-S6": {
+      "spacer_start": 107423388,
+      "assembly_strand": -1,
+      "match": "rc_patched_1bp",
+      "window_start": 107423288,
+      "window_end": 107423507,
+      "reference_window": "TTTGCTACTGAGCTTCAAGATTAAGGGTTTGGGCTTCGGATACAAGAGGACTCGTCTTGGTCCTGCCAGTCAGTTCTGTGAACCTGTATAGGCGACTGTCGCTCTCAAATCCTCGCATTTGGGCAGGAGATGCTCCCTAAGCATTGATCACCTGCCCAAATGTGAGGATTTGAGTTTAGGATTTAGGTCTCTGCTAAGAGCAATTCATCCTATTTTGCAC",
+      "spacer_offset": 100,
+      "chrom": "9"
+    },
+    "TP53": {
+      "chrom": "17",
+      "spacer_start": 7676591,
+      "assembly_strand": -1,
+      "match": "rc_patched_1bp",
+      "window_start": 7676491,
+      "window_end": 7676710,
+      "reference_window": "TGTTGGGGGAGGGGGTTCCTTCTCTGCAGGCCCAGGTGACCCAGGGTTGGAAGTGTCTCATGCTGGATCCCCACTTTTCCTCTTGCAGCAGCCAGACTGCGTTCCGGGTCACTGCCATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTGTGAGTGGATCCATTGGAAGGGCAGGCCCA",
+      "spacer_offset": 100
+    },
+    "TP53_rc": {
+      "chrom": "17",
+      "spacer_start": 7676574,
+      "assembly_strand": 1,
+      "match": "direct_patched_1bp",
+      "window_start": 7676474,
+      "window_end": 7676693,
+      "reference_window": "GGTTGGGGTGGGGGTGGTGGGCCTGCCCTTCCAATGGATCCACTCACAGTTTCCATAGGTCTGAAAATGTTTCCTGACTCAGAGGGGGCTCGACGCTAGGGTCTGACTGCGGCTCCTCCATGGCAGTGACCCGGAAGGCAGTCTGGCTGCTGCAAGAGGAAAAGTGGGGATCCAGCATGAGACACTTCCAACCCTGGGTCACCTGGGCCTGCAGAGAAGG",
+      "spacer_offset": 100
+    },
+    "ACTB_rc": {
+      "spacer_start": 5529637,
+      "assembly_strand": 1,
+      "match": "direct_patched_1bp",
+      "window_start": 5529537,
+      "window_end": 5529756,
+      "reference_window": "GGTGCCTGGGGCGCCCCACGATGGAGGGGAAGACGGCCCGGGGGGCATCGTCGCCCGCGAAGCCGGCCTTGCACATGCCGGAGCCGTTGTCGACGACGAGGGCGGCGATATCATCATCCATGGTGAGCTGCGAGAATAGCCGGGCGCGCTGTGAGCCGAGGTCGCCCCCGCCCTGGCCACTTCCGGCGCGCCGAGTCCTTAGGCCGCCAGGGGGCGCCGG",
+      "spacer_offset": 100,
+      "chrom": "7"
+    },
+    "LMNB1_rc": {
+      "spacer_start": 126777510,
+      "assembly_strand": -1,
+      "match": "rc_patched_1bp",
+      "window_start": 126777410,
+      "window_end": 126777629,
+      "reference_window": "CATTGAGCTCGCGCAGCTCCTCCTTCTCCTGGAGCCGCGACAGGCGCGTGGGGCTCAGCGGCGTGGTGGGGCCGCCAGCGCGGCTGCCCATCCGCGGCGGGACGGGGGTCGCAGTCGCCATGGCGGGCGGCGGAGACAGCGGGGCGGCGAGGCCGCGAGCGGGACCGTGATAAGGAGGGGACGGCAGGGGGCGAAGCGGGGACCGAAGGCACAAACCGGC",
+      "spacer_offset": 100,
+      "chrom": "5"
+    }
+  },
+  "unmapped_targets": []
+}
