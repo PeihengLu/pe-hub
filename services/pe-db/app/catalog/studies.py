@@ -242,10 +242,53 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
     ),
     DatasetRecord(
         study_key="minsepie",
-        name="library-insert",
+        name="library-insert-set12",
         description=(
-            "Pooled insertion-efficiency library at endogenous loci (HEK293T, rc): "
-            "lentiviral pegRNA library with PE2/PE3 or epegRNA by plasmid transfection."
+            "Set 1 and Set 2 pooled insertion screens (Koeppel et al. 2023): "
+            "lentiviral pegRNA with conventional scaffold, 13-nt PBS and 34-nt HA; "
+            "PE2/PE3 or epegRNA by plasmid transfection in HEK293T (and rc)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="minsepie",
+        name="library-insert-18nt",
+        description=(
+            "18-nt insertion libraries at HEK3 and five nearby sites (HEK3-S2–S6); "
+            "custom MinSePIE improved scaffold, 13-nt PBS and 15-nt HA."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="minsepie",
+        name="library-insert-codon-variant",
+        description=(
+            "Codon-variant (barnacle) library tagging ACTB, LMNB1, NOLC1, RNF2 and TP53; "
+            "custom MinSePIE codon-optimization scaffold with in-frame +6 insertions."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="minsepie",
+        name="library-insert-codon-hek3",
+        description=(
+            "Codon-variant library inserts at the HEK3 validation locus (barnacle screen); "
+            "same codon-optimization scaffold as other codon-variant oligos, HEK3 spacer/PBS/HA."
         ),
         pegRNA_delivery_method="lentiviral",
         pe_delivery_method="plasmid_transfection",
@@ -311,7 +354,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         study_key="minsepie",
         name="library-insert-piggybac",
         description=(
-            "Same lentiviral pegRNA library in HAP1 and HAP1 ΔMLH1 with dox-inducible "
+            "Set 1 pooled insertion screen in HAP1 and HAP1 ΔMLH1 with dox-inducible "
             "PE2 integrated via PiggyBac (Koeppel et al. 2023)."
         ),
         pegRNA_delivery_method="lentiviral",

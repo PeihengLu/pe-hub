@@ -15,9 +15,10 @@ from ..config import get_settings
 from ..db.models import Dataset, Datasheet
 from ..db.session import get_session
 from .scaffolds import (
+    MINSEPIE_DATASET_SCAFFOLD_ID,
+    SCAFFOLD_ID_CONVENTIONAL,
     SCAFFOLD_ID_OPTIMIZED,
     default_scaffold_for_pridict,
-    scaffold_id_for_minsepie_sequence,
     scaffold_id_from_deepprime_label,
 )
 from .seed import _upsert_studies_and_datasets
@@ -123,6 +124,35 @@ def build_pridict_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
     ]
 
 
+def build_deeppe_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
+    """
+    Kim et al. 2021 used the sgRNA scaffold from pRG2 (Addgene 104174) for all libraries.
+
+    That is the original Anzalone et al. 2019 pegRNA scaffold (catalog: conventional), not
+    the Chen et al. 2021 optimized scaffold.
+    """
+    scaffold_id = SCAFFOLD_ID_CONVENTIONAL
+    specs = [
+        ("deeppe", "deeppe-ht", "hek293t", "pe2"),
+        ("deeppe", "deeppe-type", "hek293t", "pe2"),
+        ("deeppe", "deeppe-position", "hek293t", "pe2"),
+        ("deeppe", "deeppe-endo", "hek293t", "pe2"),
+        ("deeppe", "deeppe-endo", "hct116", "pe2"),
+        ("deeppe", "deeppe-endo", "mda_mb_231", "pe2"),
+    ]
+    return [
+        DatasheetScaffoldAssignment(
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            scaffold_id=scaffold_id,
+            scaffold_source="deeppe_pgr2_scaffold",
+        )
+        for study, dataset, cell_line, pe_system in specs
+    ]
+
+
 def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
     from ..utils.standardize_data import iter_minsepie_consolidated_datasheet_specs
 
@@ -132,17 +162,21 @@ def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> lis
         return []
 
     rows: list[DatasheetScaffoldAssignment] = []
-    for dataset, cell_line, pe_system, scaffold_seq in iter_minsepie_consolidated_datasheet_specs(
-        root
-    ):
+    for dataset, cell_line, pe_system in iter_minsepie_consolidated_datasheet_specs(root):
+        scaffold_id = MINSEPIE_DATASET_SCAFFOLD_ID.get(dataset)
+        if scaffold_id is None:
+            logger.warning(
+                "No scaffold mapping for minsepie dataset %s; skipping", dataset
+            )
+            continue
         rows.append(
             DatasheetScaffoldAssignment(
                 study="minsepie",
                 dataset=dataset,
                 cell_line=cell_line,
                 pe_system=pe_system,
-                scaffold_id=scaffold_id_for_minsepie_sequence(scaffold_seq),
-                scaffold_source="minsepie_st6",
+                scaffold_id=scaffold_id,
+                scaffold_source="minsepie_library_type",
             )
         )
     return rows
@@ -152,6 +186,7 @@ def build_scaffold_assignments(data_root: Optional[Path] = None) -> list[Datashe
     """Infer scaffold_id for every known exported datasheet from raw study metadata."""
     return (
         build_deepprime_scaffold_assignments(data_root)
+        + build_deeppe_scaffold_assignments()
         + build_pridict_scaffold_assignments()
         + build_minsepie_scaffold_assignments(data_root)
     )

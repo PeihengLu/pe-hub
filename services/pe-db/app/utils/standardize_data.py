@@ -786,21 +786,6 @@ _MINSEPIE_PIGGYBAC_EXPERIMENTS: frozenset[str] = frozenset({
     "HEK3_HAP1dMLH1_PBPE_7",
 })
 
-# Library-name → integer fold id. Used as ``original_fold`` in the standardized
-# schema so CV splits can be reproduced downstream.
-_MINSEPIE_SET_TO_FOLD: dict[str, int] = {
-    "set1": 0,
-    "set2": 1,
-    "codon_validation": 2,
-    "epegRNAs": 3,
-    "18nt_inserts_HEK3": 4,
-    "18nt_inserts_HEK3-S2": 5,
-    "18nt_inserts_HEK3-S3": 6,
-    "18nt_inserts_HEK3-S4": 7,
-    "18nt_inserts_HEK3-S5": 8,
-    "18nt_inserts_HEK3-S6": 9,
-}
-
 _MINSEPIE_GENOMIC_LOCI_PATH = DATA_ROOT / "raw" / "minsepie" / "minsepie_genomic_loci.json"
 _MINSEPIE_WIDE_FLANK_BP = 100
 
@@ -1105,6 +1090,20 @@ standard_pe_data_columns = [
         'lha_location_l', 'lha_location_r', 'rha_location_l', 'rha_location_r', 
         'spcas9_score', 'editing_efficiency', 'original_fold']
 
+
+def _coerce_original_fold(
+    original_fold: Optional[pd.Series | np.ndarray],
+    *,
+    length: int,
+) -> pd.Series:
+    """Return nullable float fold ids; all-NaN when the source has no split metadata."""
+    if original_fold is None:
+        return pd.Series(np.nan, index=range(length), dtype="Float64")
+    return pd.to_numeric(pd.Series(original_fold, copy=False), errors="coerce").astype(
+        "Float64"
+    )
+
+
 def _build_standardized_output_df(
     group_id: pd.Series | np.ndarray, 
     type_sub: pd.Series | np.ndarray, type_ins: pd.Series | np.ndarray, type_del: pd.Series | np.ndarray, edit_len: pd.Series | np.ndarray, 
@@ -1139,10 +1138,11 @@ def _build_standardized_output_df(
         rha_location_r: Series of RHA location right
         spcas9_score: Series of spcas9 scores
         editing_efficiency: Series of editing efficiencies
-        original_fold: Series of original fold values
+        original_fold: Series of author-provided fold ids (NaN when unknown)
     Returns:
         DataFrame with correct types
     """
+    n_rows = len(group_id)
     output_df = pd.DataFrame({
         'group_id': group_id,
         'type_sub': type_sub,
@@ -1163,7 +1163,7 @@ def _build_standardized_output_df(
         'rha_location_r': rha_location_r,
         'spcas9_score': spcas9_score,
         'editing_efficiency': editing_efficiency,
-        'original_fold': original_fold.astype(int) if original_fold is not None else np.nan,
+        'original_fold': _coerce_original_fold(original_fold, length=n_rows),
     })
 
     # String transformations
@@ -1180,7 +1180,7 @@ def _build_standardized_output_df(
         'lha_location_l', 'lha_location_r',
         'rha_location_l', 'rha_location_r',
     ]
-    float_columns = ['spcas9_score', 'editing_efficiency']
+    float_columns = ['spcas9_score', 'editing_efficiency', 'original_fold']
 
     output_df[bool_columns] = output_df[bool_columns].astype(bool)
     output_df[int_columns] = output_df[int_columns].astype(int)
@@ -1366,9 +1366,9 @@ def _prepare_deeppe_export_df(df: pd.DataFrame) -> pd.DataFrame:
 
     split_col = next((name for name in _DEEPPE_SPLIT_COLUMNS if name in source.columns), None)
     if split_col is not None:
-        prepared["fold"] = source[split_col].map(_deeppe_split_to_fold).astype(int)
+        prepared["fold"] = source[split_col].map(_deeppe_split_to_fold)
     else:
-        prepared["fold"] = 0
+        prepared["fold"] = np.nan
 
     mutation_rows = [
         _deeppe_infer_rt_edit(
@@ -1543,13 +1543,18 @@ def _standardize_deepprime_ontarget(
     aligned.columns = ['wt_aligned', 'mut_aligned']
 
     # ---- Step 6: Build output DataFrame ----
-    # replace 'Test' in original_fold with -1
-    df['original_fold'] = df['fold'].replace('Test', -1)
+    if "fold" in df.columns:
+        original_fold = pd.to_numeric(
+            df["fold"].replace("Test", -1),
+            errors="coerce",
+        )
+    else:
+        original_fold = None
     output_df = _build_standardized_output_df(
         df['group_id'], df['type_sub'], df['type_ins'], df['type_del'], df['edit_len'], 
         aligned['wt_aligned'], aligned['mut_aligned'], PROTOSPACER_L, PROTOSPACER_R, 
         df['pbs_l'], df['pbs_r'], df['rtt_l'], df['rtt_r'], df['lha_l'], df['lha_r'], df['rha_l'], df['rha_r'], 
-        df['deepspcas9_score'], df['measured_pe_efficiency'], df['original_fold'])
+        df['deepspcas9_score'], df['measured_pe_efficiency'], original_fold)
 
     # export the data to a parquet file
     output_path = DATA_ROOT / "standardized" / study_key / dataset / output_name
@@ -1691,7 +1696,10 @@ def _standardize_pridict2_library_diverse(
     if efficiency_column is None:
         raise ValueError("Could not find cell-line specific averageedited column in PRIDICT2 data.")
     editing_efficiency = pd.Series(pd.to_numeric(df[efficiency_column], errors='coerce'), index=df.index)
-    original_fold = pd.Series(pd.to_numeric(df['testset_fold'], errors='coerce'), index=df.index).fillna(-1).astype(int)
+    if "testset_fold" in df.columns:
+        original_fold = pd.to_numeric(df["testset_fold"], errors="coerce")
+    else:
+        original_fold = None
 
     # ---- Step 6: build and save standardized output ----
     output_df = _build_standardized_output_df(
@@ -1968,8 +1976,7 @@ def _standardize_minsepie(
     # schema's ``float`` cast succeeds. Downstream can recompute if needed.
     spcas9_score = pd.Series(np.nan, index=df.index, dtype=float).fillna(0.0)
 
-    set_series = df.get("set", pd.Series("", index=df.index)).astype(str).fillna("")
-    original_fold = set_series.map(_MINSEPIE_SET_TO_FOLD).fillna(-1).astype(int)
+    # MinSePIE MOESM4 ``set`` labels library batches, not author train/test folds.
 
     # ---- Step 6: build and persist the standardized output ----
     type_ins = pd.Series(True, index=df.index)
@@ -1982,7 +1989,7 @@ def _standardize_minsepie(
         protospacer_l, protospacer_r,
         pbs_l, pbs_r, rtt_l, rtt_r,
         lha_l, lha_r, rha_l, rha_r,
-        spcas9_score, editing_efficiency, original_fold,
+        spcas9_score, editing_efficiency,
     )
 
     output_path = DATA_ROOT / "standardized" / "minsepie" / dataset / output_name

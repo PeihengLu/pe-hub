@@ -26,6 +26,15 @@ SCAFFOLD_MINSEPIE_CODON_VARIANT = (
     "GTTTAAGAGCTAAGCTGGAAACAGCATAGCAAGTTTAAATAAGGCTAGTCCGTTATCAACTCGAAAGAGTGGCACCGAGTCGGTGC"
 )
 
+# Catalog scaffold_id per MinSePIE exported dataset (Koeppel et al. 2023 library types).
+MINSEPIE_DATASET_SCAFFOLD_ID: dict[str, int] = {
+    "library-insert-set12": SCAFFOLD_ID_CONVENTIONAL,
+    "library-insert-18nt": SCAFFOLD_ID_MINSEPIE_18NT,
+    "library-insert-codon-variant": SCAFFOLD_ID_MINSEPIE_CODON_VARIANT,
+    "library-insert-codon-hek3": SCAFFOLD_ID_MINSEPIE_CODON_VARIANT,
+    "library-insert-piggybac": SCAFFOLD_ID_CONVENTIONAL,
+}
+
 
 @dataclass(frozen=True)
 class PegRNAScaffold:

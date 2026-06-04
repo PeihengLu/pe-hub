@@ -10,6 +10,8 @@
 \usepackage{amsmath}
 \usepackage[sorting=none]{biblatex}
 \usepackage{hyperref}
+\usepackage{xurl}
+\urlstyle{tt}
 
 \addbibresource{references.bib}
 \graphicspath{diagrams/illustration/}
@@ -17,6 +19,8 @@
 % increase text width
 \usepackage{geometry}
 \geometry{a4paper, margin=1in}
+\usepackage{longtable}
+\usepackage{array}
 
 
 \begin{document}
@@ -68,38 +72,44 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     
     Kim et al.\cite{kimPredictingEfficiencyPrime2021} conducted one of the first big-data studies on prime editing efficiency, performing a high-throughput evaluation of PE2 activity using 54,836 pairs of pegRNAs and target sequences in HEK293T cells. The study identified factors affecting PE2 efficiency and developed three computational models (including the deep learning model DeepPE) to predict pegRNA efficiency. The data are organized into four datasets in the database.
 
-    The main library (deeppe-ht) contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus. The data are split into HT-training and HT-test subsets.
+    The main library \nolinkurl{deeppe-ht} contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus. The data are split into HT-training and HT-test subsets.
 
-    Library~2 is split into an edit-type subset (deeppe-type), which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset (deeppe-position), which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2. 
+    Library~2 is split into an edit-type subset \nolinkurl{deeppe-type}, which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset \nolinkurl{deeppe-position}, which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2. 
     % TODO: add detailed number of counts for each subset
 
-    A separate endogenous validation dataset (deeppe-endo) contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
+    A separate endogenous validation dataset \nolinkurl{deeppe-endo} contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
 
     \item \textbf{DeepPrime}
     
     Yu et al.\cite{yuPredictionEfficienciesDiverse2023} systematically evaluated prime editing efficiencies for 338,996 pegRNA--target pairs (including 3,979 epegRNAs) in an error-free manner across eight PE systems and seven cell types. The study developed DeepPrime, a deep learning model that predicts PE efficiencies for all possible edit types up to 3~bp, and DeepPrime-FT, a fine-tuning strategy that adapts predictions to specific PE systems and cell types.
 
-    The main ClinVar library (deepprime-clinvar) contains approximately 259,000 pegRNA--target pairs designed around ClinVar pathogenic variants. Efficiencies were measured on synthetic 74~bp target contexts via a plasmid-based assay, not at native genomic loci. Both pegRNAs and PE were delivered by plasmid transfection. This dataset spans multiple PE systems (PE2, PE2max, PE4max, NRCH-PE2, NRCH-PE2max, NRCH-PE4max, among others) and cell types (HEK293T, A549, DLD1, HeLa, MDA-MB-231, HCT116, and NIH3T3).
+    The main ClinVar library \nolinkurl{deepprime-clinvar} contains approximately 259,000 pegRNA--target pairs designed around ClinVar pathogenic variants. Efficiencies were measured on synthetic 74~bp target contexts via a plasmid-based assay, not at native genomic loci. Both pegRNAs and PE were delivered by plasmid transfection. This dataset spans multiple PE systems (PE2, PE2max, PE4max, NRCH-PE2, NRCH-PE2max, NRCH-PE4max, among others) and cell types (HEK293T, A549, DLD1, HeLa, MDA-MB-231, HCT116, and NIH3T3).
 
-    The fine-tuning subsets (deepprime-small) are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
+    The fine-tuning subsets \nolinkurl{deepprime-small} are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
 
-    Two off-target datasets are also stored in the database: a mismatch library (deepprime-off) and its sub-pools (deepprime-off-subpool), which profile PE editing efficiencies at mismatched target sites. 
+    Two off-target datasets are also stored in the database: a mismatch library \nolinkurl{deepprime-off} and its sub-pools \nolinkurl{deepprime-off-subpool}, which profile PE editing efficiencies at mismatched target sites. 
 
     \item \textbf{MinsePIE}
     
     Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} focused specifically on prime editing insertion efficiency, designing a library of 3,604 insertion sequences of various lengths (1--69~nt) and measuring their insertion frequencies at four endogenous genomic target sites (HEK3, EMX1, FANCF, and the safe-harbor CLYBL locus) in three human cell lines (HEK293T, HAP1, and HAP1 $\Delta$MLH1). The study identified that insertion length, nucleotide composition (particularly cytosine content), and secondary structure of the insert sequence all affect insertion rates, and discovered that the 3$'$ flap nucleases TREX1 and TREX2 suppress the insertion of longer sequences. These findings were combined into the MinsePIE machine learning model, which predicts relative insertion frequencies with $R = 0.70$.
 
-    MinSePIE data are split into five catalog datasets by library design and delivery: \texttt{library-insert-set12} (Set~1/2 pooled screens), \texttt{library-insert-18nt}, \texttt{library-insert-codon-variant} (endogenous barnacle tagging), \texttt{library-insert-codon-hek3} (codon validation at HEK3), and \texttt{library-insert-piggybac} (Set~1 screens in HAP1 with PiggyBac-integrated PE2). Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located.
+    MinSePIE data are split into five catalog datasets by library design and delivery:
+    \nolinkurl{library-insert-set12} (Set~1/2 pooled screens),
+    \nolinkurl{library-insert-18nt},
+    \nolinkurl{library-insert-codon-variant} (endogenous barnacle tagging),
+    \nolinkurl{library-insert-codon-hek3} (codon validation at HEK3), and
+    \nolinkurl{library-insert-piggybac} (Set~1 screens in HAP1 with PiggyBac-integrated PE2).
+    Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located.
 
     \item \textbf{PRIDICTv1}
     
     Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} performed a high-throughput screen analyzing prime editing outcomes of 92,423 pegRNAs targeting a highly diverse set of 13,349 human pathogenic mutations, including base substitutions, insertions, and deletions. The study identified sequence context features that influence prime editing and trained PRIDICT (PRIme editing guide preDICTion), an attention-based bidirectional recurrent neural network that predicts both editing efficiency and product purity.
 
-    The main library (library1) uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
+    The main library \nolinkurl{library1} uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
 
-    The library2 dataset is a disease-focused subscreen of the same lentiviral reporter format across HEK293T, U2OS, and K562 (including MLH1$^{-/-}$ lines as separate cell-line identifiers, matching PRIDICT2 naming). The library2-invivo dataset validates the same pegRNA set in GFP+ sorted mouse liver via adenoviral delivery of both pegRNAs and PE2 (endogenous liver loci).
+    The library2 dataset \nolinkurl{library2} is a disease-focused subscreen of the same lentiviral reporter format across HEK293T, U2OS, and K562 (including MLH1$^{-/-}$ lines as separate cell-line identifiers, matching PRIDICT2 naming). The library2-invivo dataset validates the same pegRNA set in GFP+ sorted mouse liver via adenoviral delivery of both pegRNAs and PE2 (endogenous liver loci).
 
-    A separate endogenous validation dataset contains arrayed pegRNA experiments at 15 genomic loci in HEK293T and K562 (three pegRNAs per locus from library~1: the endogenous-target pegRNA, \emph{endo}, plus the highest- and lowest-PRIDICT-scoring candidates, \emph{best} and \emph{worst}). Edit types are taken from the authors' endogenous CRISPResso batch amplicons (PRIDICT supplementary files): 44 pegRNAs install a 1-bp substitution and locus~3 uses a 10-bp deletion; there are no insertion edits in this validation set.
+    A separate endogenous validation dataset \nolinkurl{pridict1-endo} contains arrayed pegRNA experiments at 15 genomic loci in HEK293T and K562 (three pegRNAs per locus from library~1: the endogenous-target pegRNA, \emph{endo}, plus the highest- and lowest-PRIDICT-scoring candidates, \emph{best} and \emph{worst}). Edit types are taken from the authors' endogenous CRISPResso batch amplicons (PRIDICT supplementary files): 44 pegRNAs install a 1-bp substitution and locus~3 uses a 10-bp deletion; there are no insertion edits in this validation set.
 
     \item \textbf{PRIDICTv2}
     
@@ -242,7 +252,145 @@ To showcase this transfer learning + ensemble learning ability, we reproduced th
 
 (Your conclusion here.)
 
-
 \printbibliography
+
+\clearpage
+\appendix
+
+\section{PE Database catalog: studies}
+\label{app:studies}
+
+The following five studies are registered in PE DB (\texttt{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{@{}llll@{}}
+        \hline
+        Key & Display name & Publication date & Authors \\
+        \hline
+        \nolinkurl{deeppe}     & DeepPE    & 2021-02-01 & Kim et al. \\
+        \nolinkurl{minsepie}   & MinsePIE  & 2023-02-16 & Koeppel et al. \\
+        \nolinkurl{deepprime}  & DeepPrime & 2023-04-20 & Yu et al. \\
+        \nolinkurl{pridict1}   & PRIDICT1  & 2023-08-01 & Mathis et al. \\
+        \nolinkurl{pridict2}   & PRIDICT2  & 2024-06-01 & Mathis et al. \\
+        \hline
+    \end{tabular}
+    \caption{Study catalog entries in PE DB.}
+    \label{tab:app-studies}
+\end{table}
+
+\section{PE Database catalog: datasets}
+\label{app:datasets}
+
+Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \texttt{on\_target} or \texttt{off\_target}; \emph{experimental method} is \texttt{in\_vitro} or \texttt{in\_vivo}; \emph{target context} is \texttt{endogenous} (native chromosomal locus) or \texttt{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \texttt{True} for full conversion to the shared standardized format and \texttt{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 20 datasets; subsections below repeat the catalog descriptions verbatim.
+
+\begin{longtable}{@{}p{0.17\textwidth}p{0.09\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.08\textwidth}p{0.08\textwidth}p{0.10\textwidth}p{0.08\textwidth}@{}}
+    \caption{Dataset catalog attributes in PE DB (summary).} \label{tab:app-datasets-summary} \\
+    \hline
+    Name & Study & pegRNA del. & PE del. & Edit scope & Method & Target & Std. \\
+    \hline
+    \endfirsthead
+    \multicolumn{8}{l}{\textit{(continued from previous page)}} \\
+    \hline
+    Name & Study & pegRNA del. & PE del. & Edit scope & Method & Target & Std. \\
+    \hline
+    \endhead
+    \hline
+    \multicolumn{8}{r}{\textit{continued on next page}} \\
+    \endfoot
+    \hline
+    \endlastfoot
+    \nolinkurl{deepprime-clinvar} & deepprime & plasmid & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deepprime-small} & deepprime & plasmid & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deepprime-off} & deepprime & plasmid & plasmid & off\_target & in\_vitro & non\_endo. & partial \\
+    \nolinkurl{deepprime-off-subpool} & deepprime & plasmid & plasmid & off\_target & in\_vitro & non\_endo. & partial \\
+    \nolinkurl{library1} & pridict1 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{library2} & pridict1 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{library2-invivo} & pridict1 & adenovirus & adenovirus & on\_target & in\_vivo & endogenous & yes \\
+    \nolinkurl{endogenous} & pridict1 & plasmid & plasmid & on\_target & in\_vitro & endogenous & partial \\
+    \nolinkurl{library-diverse} & pridict2 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{library-diverse-invivo} & pridict2 & adenovirus & adenovirus & on\_target & in\_vivo & endogenous & yes \\
+    \nolinkurl{trip-analysis} & pridict2 & lentiviral & plasmid & on\_target & in\_vitro & endogenous & partial \\
+    \nolinkurl{library-insert-set12} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{library-insert-18nt} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{library-insert-codon-variant} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{library-insert-codon-hek3} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{library-insert-piggybac} & minsepie & lentiviral & piggybac & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{deeppe-ht} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deeppe-type} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deeppe-position} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deeppe-endo} & deeppe & plasmid & plasmid & on\_target & in\_vitro & endogenous & yes \\
+\end{longtable}
+
+\subsection{DeepPE (\texorpdfstring{\nolinkurl{deeppe}}{deeppe})}
+
+\paragraph{\nolinkurl{deeppe-ht}.}
+High-throughput PE2 library 1 (G$\to$C at RTT position +5); lentiviral pegRNA/target reporters in HEK293T (${\sim}$43k pegRNAs; HT-training and HT-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{deeppe-type}.}
+DeepPE library 2 edit-type subset (lentiviral reporters in HEK293T; type-training and type-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{deeppe-position}.}
+DeepPE library 2 edit-position subset (lentiviral reporters in HEK293T; position-training and position-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{deeppe-endo}.}
+Arrayed pegRNA validation at endogenous genomic loci (PE2 plasmid transfection); editing\_efficiency averaged over BR1--BR2 and TR1--TR2. Delivery: plasmid pegRNA and PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\subsection{MinsePIE (\texorpdfstring{\nolinkurl{minsepie}}{minsepie})}
+
+\paragraph{\nolinkurl{library-insert-set12}.}
+Set 1 and Set 2 pooled insertion screens (Koeppel et al.\ 2023): lentiviral pegRNA with conventional scaffold, 13-nt PBS and 34-nt HA; PE2/PE3 or epegRNA by plasmid transfection in HEK293T (and rc). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library-insert-18nt}.}
+18-nt insertion libraries at HEK3 and five nearby sites (HEK3-S2--S6); custom MinSePIE improved scaffold, 13-nt PBS and 15-nt HA. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library-insert-codon-variant}.}
+Codon-variant (barnacle) library tagging ACTB, LMNB1, NOLC1, RNF2 and TP53; custom MinSePIE codon-optimization scaffold with in-frame +6 insertions. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library-insert-codon-hek3}.}
+Codon-variant library inserts at the HEK3 validation locus (barnacle screen); same codon-optimization scaffold as other codon-variant oligos, HEK3 spacer/PBS/HA. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library-insert-piggybac}.}
+Set 1 pooled insertion screen in HAP1 and HAP1 $\Delta$MLH1 with dox-inducible PE2 integrated via PiggyBac (Koeppel et al.\ 2023). Delivery: lentiviral pegRNA, PiggyBac PE; on-target; in vitro; endogenous target; fully standardizable.
+
+\subsection{DeepPrime (\texorpdfstring{\nolinkurl{deepprime}}{deepprime})}
+
+\paragraph{\nolinkurl{deepprime-clinvar}.}
+ClinVar-variant pegRNA library (${\sim}$259k pairs); efficiencies measured on synthetic 74~bp target contexts (plasmid assay), not native genomic loci. Delivery: plasmid pegRNA and PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{deepprime-small}.}
+Multi cell line / PE-system fine-tuning subsets (DeepPrime-FT); synthetic target contexts. Delivery: plasmid pegRNA and PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{deepprime-off}.}
+Off-target mismatch library (DeepPrime-Off); synthetic mismatch reporters. Delivery: plasmid pegRNA and PE; off-target; in vitro; non-endogenous target; partial standardization.
+
+\paragraph{\nolinkurl{deepprime-off-subpool}.}
+Off-target library sub-pools; synthetic mismatch reporters. Delivery: plasmid pegRNA and PE; off-target; in vitro; non-endogenous target; partial standardization.
+
+\subsection{PRIDICT1 (\texorpdfstring{\nolinkurl{pridict1}}{pridict1})}
+
+\paragraph{\nolinkurl{library1}.}
+PRIDICT1 self-targeting lentiviral HTS (${\sim}$92k pegRNAs): each construct pairs pegRNA with a synthetic target cassette (not the endogenous pathogenic locus). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library2}.}
+PRIDICT1 disease-block subscreen (${\sim}$1.9k pegRNAs): pathogenic-variant pegRNAs in lentiviral self-targeting reporters across HEK293T, U2OS, and K562 (PE2 / PEmax; MMR-proficient and K562/U2OS/HEK MLH1$^{-/-}$ lines). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library2-invivo}.}
+Disease-block subscreen pegRNAs validated in GFP+ sorted mouse liver (adenoviral pegRNA and PE2 delivery; endogenous liver loci). Delivery: adenoviral pegRNA and PE; on-target; in vivo; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{endogenous}.}
+Arrayed pegRNA validation at ${\sim}$45 native genomic loci in HEK293T and K562 (supplementary endogenous table; PE2 plasmid transfection). Delivery: plasmid pegRNA and PE; on-target; in vitro; endogenous target; partial standardization.
+
+\subsection{PRIDICT2 (\texorpdfstring{\nolinkurl{pridict2}}{pridict2})}
+
+\paragraph{\nolinkurl{library-diverse}.}
+PRIDICT2 diverse edit-type library (HEK293T, K562, K562 MLH1$^{-/-}$); same self-targeting lentiviral reporter format as PRIDICT1. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{library-diverse-invivo}.}
+Diverse-library pegRNAs validated at endogenous mouse liver loci (PRIDICT2 supplementary AdV column; distinct from in vitro reporter HTS). Delivery: adenoviral pegRNA and PE; on-target; in vivo; endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{trip-analysis}.}
+TRIP library editing survey at endogenous genomic integrations in K562 (supplementary table 12; Fig.~3 / Ext. Fig.~4--5; PE2). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; partial standardization.
 
 \end{document}
