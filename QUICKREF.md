@@ -11,8 +11,16 @@ bash setup.sh
 
 | Service | URL | Docs |
 |---------|-----|------|
+| PE Hub (UI) | http://localhost:5173 | — |
 | PE Database | http://localhost:8000 | /docs |
 | PE Ensemble | http://localhost:8001 | /docs |
+
+## Start all services
+
+```bash
+./start-all.sh --install   # first time
+./start-all.sh
+```
 
 ## Common Commands
 

@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from models.model_factory import ModelFactory
+from .models.model_factory import ModelFactory
 from pe_common.constants import DEVICE
 
 logger = logging.getLogger(__name__)

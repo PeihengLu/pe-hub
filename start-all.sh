@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+#
+# Start PE Database, PE Ensemble API, and PE Hub (unified frontend) together.
+#
+# Usage:
+#   ./start-all.sh              # dev servers with reload (default)
+#   ./start-all.sh --install    # install deps for all three, then start
+#   ./start-all.sh --no-reload  # backends without uvicorn auto-reload
+#   ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${SCRIPT_DIR}"
+PE_DB_DIR="${REPO_ROOT}/services/pe-db"
+PE_ENSEMBLE_DIR="${REPO_ROOT}/services/pe-ensemble"
+FRONTEND_DIR="${REPO_ROOT}/pe-hub"
+
+INSTALL_DEPS=false
+RELOAD=true
+PE_DB_HOST="${PE_DB_HOST:-0.0.0.0}"
+PE_ENSEMBLE_HOST="${PE_ENSEMBLE_HOST:-0.0.0.0}"
+# Set via CLI, environment, .env, or defaults (in that precedence).
+PE_DB_PORT_CLI=""
+PE_ENSEMBLE_PORT_CLI=""
+FRONTEND_PORT_CLI=""
+
+PIDS=()
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Start PE Database, PE Ensemble API, and PE Hub (Vite frontend).
+
+Options:
+  --install                 Install Python and npm dependencies before starting
+  --no-reload               Disable uvicorn auto-reload on both backends
+  --pe-db-port PORT         PE Database listen port (default: \$PE_DB_PORT or 8000)
+  --ensemble-port PORT      PE Ensemble API listen port (default: \$PE_ENSEMBLE_PORT or 8001)
+  --frontend-port PORT      PE Hub dev server port (default: \$FRONTEND_PORT or 5173)
+  -h, --help                Show this help message
+
+Environment:
+  Loads \${REPO_ROOT}/.env when present.
+  PE_DB_URL defaults to http://localhost:<pe-db-port>
+  VITE_ENSEMBLE_API_URL defaults to http://localhost:<ensemble-port>
+
+Press Ctrl+C to stop all services.
+
+Examples:
+  ./start-all.sh
+  ./start-all.sh --install
+  ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --install)
+            INSTALL_DEPS=true
+            shift
+            ;;
+        --no-reload)
+            RELOAD=false
+            shift
+            ;;
+        --pe-db-port)
+            PE_DB_PORT_CLI="${2:?--pe-db-port requires a value}"
+            shift 2
+            ;;
+        --ensemble-port)
+            PE_ENSEMBLE_PORT_CLI="${2:?--ensemble-port requires a value}"
+            shift 2
+            ;;
+        --frontend-port)
+            FRONTEND_PORT_CLI="${2:?--frontend-port requires a value}"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -f "${REPO_ROOT}/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${REPO_ROOT}/.env"
+    set +a
+fi
+
+PE_DB_PORT="${PE_DB_PORT_CLI:-${PE_DB_PORT:-8000}}"
+PE_ENSEMBLE_PORT="${PE_ENSEMBLE_PORT_CLI:-${PE_ENSEMBLE_PORT:-8001}}"
+FRONTEND_PORT="${FRONTEND_PORT_CLI:-${FRONTEND_PORT:-5173}}"
+
+export PE_PROJECT_ROOT="${PE_PROJECT_ROOT:-${REPO_ROOT}}"
+export DATA_ROOT="${DATA_ROOT:-${PE_DATA_ROOT:-${REPO_ROOT}/datasets}}"
+export PE_DB_URL="${PE_DB_URL:-http://localhost:${PE_DB_PORT}}"
+export VITE_PE_DB_URL="${VITE_PE_DB_URL:-http://localhost:${PE_DB_PORT}}"
+export VITE_ENSEMBLE_API_URL="${VITE_ENSEMBLE_API_URL:-${VITE_API_URL:-http://localhost:${PE_ENSEMBLE_PORT}}}"
+
+# CLI port flags override baked-in URLs from .env when ports were not customized there.
+if [[ -n "${PE_DB_PORT_CLI}" ]]; then
+    export PE_DB_URL="http://localhost:${PE_DB_PORT}"
+    export VITE_PE_DB_URL="http://localhost:${PE_DB_PORT}"
+fi
+if [[ -n "${PE_ENSEMBLE_PORT_CLI}" ]]; then
+    export VITE_ENSEMBLE_API_URL="http://localhost:${PE_ENSEMBLE_PORT}"
+fi
+
+if [[ -z "${CONDA_PREFIX:-}" && -z "${VIRTUAL_ENV:-}" ]]; then
+    if [[ -d "${REPO_ROOT}/venv/bin" ]]; then
+        # shellcheck disable=SC1091
+        source "${REPO_ROOT}/venv/bin/activate"
+    elif [[ -d "${REPO_ROOT}/.venv/bin" ]]; then
+        # shellcheck disable=SC1091
+        source "${REPO_ROOT}/.venv/bin/activate"
+    fi
+fi
+
+resolve_python() {
+    if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
+        echo "${CONDA_PREFIX}/bin/python"
+    elif [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
+        echo "${VIRTUAL_ENV}/bin/python"
+    elif command -v python >/dev/null 2>&1; then
+        command -v python
+    elif command -v python3 >/dev/null 2>&1; then
+        command -v python3
+    else
+        return 1
+    fi
+}
+
+if ! PYTHON="$(resolve_python)"; then
+    echo "Error: no Python interpreter found on PATH" >&2
+    exit 1
+fi
+
+resolve_npm() {
+    if command -v npm >/dev/null 2>&1; then
+        command -v npm
+        return 0
+    fi
+    return 1
+}
+
+wait_for_health() {
+    local url="$1"
+    local label="$2"
+    local timeout="${3:-90}"
+    local elapsed=0
+
+    echo "Waiting for ${label} at ${url} ..."
+    while (( elapsed < timeout )); do
+        if curl -sf "${url}" >/dev/null 2>&1; then
+            echo "${label} is up."
+            return 0
+        fi
+        sleep 1
+        (( elapsed += 1 )) || true
+    done
+
+    echo "Error: timed out waiting for ${label} (${url})" >&2
+    return 1
+}
+
+cleanup() {
+    local pid
+    echo ""
+    echo "Stopping services ..."
+    for pid in "${PIDS[@]}"; do
+        if kill -0 "${pid}" 2>/dev/null; then
+            kill "${pid}" 2>/dev/null || true
+        fi
+    done
+    wait 2>/dev/null || true
+}
+
+trap cleanup EXIT INT TERM
+
+start_pe_db() {
+    local -a uvicorn_args=(app.main:app --host "${PE_DB_HOST}" --port "${PE_DB_PORT}")
+    if [[ "${RELOAD}" == true ]]; then
+        uvicorn_args+=(--reload)
+    fi
+
+    (
+        cd "${PE_DB_DIR}"
+        exec "${PYTHON}" -m uvicorn "${uvicorn_args[@]}"
+    ) &
+    PIDS+=("$!")
+}
+
+start_pe_ensemble() {
+    local -a uvicorn_args=(app.main:app --host "${PE_ENSEMBLE_HOST}" --port "${PE_ENSEMBLE_PORT}")
+    if [[ "${RELOAD}" == true ]]; then
+        uvicorn_args+=(--reload)
+    fi
+
+    (
+        cd "${PE_ENSEMBLE_DIR}"
+        export PE_DB_URL
+        exec "${PYTHON}" -m uvicorn "${uvicorn_args[@]}"
+    ) &
+    PIDS+=("$!")
+}
+
+start_frontend() {
+    if ! NPM="$(resolve_npm)"; then
+        echo "Error: npm is not installed (required for the frontend)" >&2
+        exit 1
+    fi
+
+    (
+        cd "${FRONTEND_DIR}"
+        export VITE_PE_DB_URL
+        export VITE_ENSEMBLE_API_URL
+        exec "${NPM}" run dev -- --host 0.0.0.0 --port "${FRONTEND_PORT}"
+    ) &
+    PIDS+=("$!")
+}
+
+if [[ "${INSTALL_DEPS}" == true ]]; then
+    echo "Installing PE Database dependencies ..."
+    "${PYTHON}" -m pip install -r "${PE_DB_DIR}/requirements.txt"
+    "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common" --no-deps
+
+    echo "Installing PE Ensemble dependencies ..."
+    "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common"
+    "${PYTHON}" -m pip install -e "${PE_ENSEMBLE_DIR}"
+
+    echo "Installing frontend dependencies ..."
+    (cd "${FRONTEND_DIR}" && npm install)
+    echo "Dependencies installed."
+fi
+
+if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, app.main"); then
+    echo "Error: PE Database dependencies missing. Run: $(basename "$0") --install" >&2
+    exit 1
+fi
+
+if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn"); then
+    echo "Error: PE Ensemble dependencies missing. Run: $(basename "$0") --install" >&2
+    exit 1
+fi
+
+if [[ ! -d "${FRONTEND_DIR}/node_modules" ]]; then
+    if ! resolve_npm >/dev/null; then
+        echo "Error: frontend node_modules missing and npm is not installed." >&2
+        echo "Run: $(basename "$0") --install" >&2
+        exit 1
+    fi
+    echo "Frontend node_modules not found; run: $(basename "$0") --install" >&2
+    exit 1
+fi
+
+echo "======================================"
+echo "PE Platform (all services)"
+echo "======================================"
+echo "Python:         ${PYTHON}"
+echo "Data root:      ${DATA_ROOT}"
+echo "PE Database:    http://localhost:${PE_DB_PORT}  (docs: /docs)"
+echo "PE Ensemble:    http://localhost:${PE_ENSEMBLE_PORT}  (docs: /docs)"
+echo "PE Hub:         http://localhost:${FRONTEND_PORT}"
+echo "PE_DB_URL:      ${PE_DB_URL}"
+echo "VITE_PE_DB_URL: ${VITE_PE_DB_URL}"
+echo "VITE_ENSEMBLE:  ${VITE_ENSEMBLE_API_URL}"
+echo "Reload:         ${RELOAD}"
+echo "======================================"
+echo ""
+
+start_pe_db
+wait_for_health "http://127.0.0.1:${PE_DB_PORT}/health" "PE Database"
+
+start_pe_ensemble
+wait_for_health "http://127.0.0.1:${PE_ENSEMBLE_PORT}/health" "PE Ensemble API"
+
+start_frontend
+
+echo ""
+echo "All services started. Press Ctrl+C to stop."
+echo ""
+
+wait

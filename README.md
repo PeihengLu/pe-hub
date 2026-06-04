@@ -35,13 +35,14 @@ pe-db/
 │       │   ├── sequence_utils.py  # Sequence manipulation
 │       │   └── features.py     # Feature calculations
 │       └── setup.py
+├── pe-hub/                     # Unified web UI (Database + Ensemble)
 ├── services/
 │   ├── pe-db/                  # PE Database service
 │   │   ├── app/
 │   │   │   ├── main.py         # FastAPI application
 │   │   │   └── data_prep/      # Data conversion modules
 │   │   └── requirements.txt
-│   └── pe-ensemble/            # PE Ensemble service (TBD)
+│   └── pe-ensemble/            # PE Ensemble API service
 ├── datasets/                    # Data directory
 │   ├── raw/                    # Original datasets
 │   └── standardized/           # Converted standardized data
@@ -71,6 +72,21 @@ uvicorn app.main:app --reload
 
 Access the API at: http://localhost:8000
 API documentation: http://localhost:8000/docs
+
+### PE Hub (web UI)
+
+From the repository root:
+
+```bash
+./start-all.sh --install   # first time
+./start-all.sh
+```
+
+Open http://localhost:5173 for the unified UI, or run only the frontend with:
+
+```bash
+cd pe-hub && npm install && npm run dev
+```
 
 ## PE Database API Usage
 
