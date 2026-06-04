@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import pandas as pd
 
@@ -37,61 +37,28 @@ class PEDataLoader:
         dataset: str,
         cell_line: str,
         pe_system: str,
-        target_format: Literal["std", "oped", "deepprime", "pridict", "pridict2"] = "std",
     ) -> pd.DataFrame:
-        """
-        Load data from standardized or model-specific format.
+        """Load one datasheet's standardized rows.
 
-        Naming hierarchy:
-        - standardized: standardized/{study}/{dataset}/{cell_line}-{pe_system}.parquet
-        - model format: {format}/{study}/{dataset}/{cell_line}-{pe_system}.csv
+        Standardized layout: standardized/{study}/{dataset}/{cell_line}-{pe_system}.parquet
+
+        Conversion into model-specific formats is handled exclusively by the
+        filter API (``CatalogRepository.filter_all`` / ``GET /api/filter``), which
+        is the single owner of standardized -> model-format conversion.
         """
         study = _normalize_name(study)
         dataset = _normalize_name(dataset)
         cell_line = _normalize_name(cell_line)
         pe_system = _normalize_name(pe_system)
 
-        if target_format == "std":
-            file_path = self._find_standardized_file(
-                study=study, dataset=dataset, cell_line=cell_line, pe_system=pe_system
-            )
-        else:
-            file_path = self._find_model_format_file(
-                target_format=target_format,
-                study=study,
-                dataset=dataset,
-                cell_line=cell_line,
-                pe_system=pe_system,
-            )
-
+        file_path = self._find_standardized_file(
+            study=study, dataset=dataset, cell_line=cell_line, pe_system=pe_system
+        )
         if not file_path.exists():
-            if target_format != "std":
-                std_file = self._find_standardized_file(
-                    study=study, dataset=dataset, cell_line=cell_line, pe_system=pe_system
-                )
-                if std_file.exists():
-                    from .converter import DataConverter
-
-                    converter = DataConverter(self.datasets_dir)
-                    logger.info(
-                        "Model-format file missing; generating %s from standardized file %s",
-                        target_format,
-                        std_file,
-                    )
-                    return converter.convert_from_standardized(
-                        std_file,
-                        study=study,
-                        dataset=dataset,
-                        cell_line=cell_line,
-                        pe_system=pe_system,
-                        target_format=target_format,
-                        output_file=file_path,
-                    )
-
             raise FileNotFoundError(
-                f"Data file not found: {file_path}\n"
+                f"Standardized data file not found: {file_path}\n"
                 f"Parameters: study={study}, dataset={dataset}, cell_line={cell_line}, "
-                f"pe_system={pe_system}, format={target_format}"
+                f"pe_system={pe_system}"
             )
 
         logger.info("Loading data from %s", file_path)
@@ -110,18 +77,6 @@ class PEDataLoader:
         if parquet_file.exists():
             return parquet_file
         return self.std_dir / study / dataset / f"{stem}.csv"
-
-    def _find_model_format_file(
-        self,
-        *,
-        target_format: str,
-        study: str,
-        dataset: str,
-        cell_line: str,
-        pe_system: str,
-    ) -> Path:
-        stem = f"{cell_line}-{pe_system}"
-        return self.datasets_dir / target_format / study / dataset / f"{stem}.csv"
 
     @staticmethod
     def _read_dataframe(file_path: Path) -> pd.DataFrame:

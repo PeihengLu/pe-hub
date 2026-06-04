@@ -105,10 +105,105 @@ class _OPEDLightningRegressor(pl.LightningModule):
 
 class OPEDModelWrapper(BasePEModel):
     """Wrapper for OPED (Order-based Prediction of Editing outcomes and Deletion) model"""
-    
+
+    # OPED ships its trained weights inside the vendor submodule. We load the
+    # state_dict variant (decoupled from the PyTorch version), never the legacy
+    # full-pickle artifacts which embed the original module paths.
+    DEFAULT_WEIGHTS_RELPATH = (
+        "oped",
+        "pegRNA_PredictingCodes",
+        "Model_Trained",
+        "pegRNA_Model_Merged_saved.order3_decoder_weights.pt",
+    )
+    # Per-order k-mer vocab sizes (order1/2/3). The trained embeddings have
+    # ntokens+1 rows (the +1 is the padding index), i.e. [5, 17, 65].
+    MODEL_NTOKENS = [4, 16, 64]
+
     def __init__(self, device: torch.device = torch.device(DEVICE)):
         super().__init__('OPED', device)
         self.model_dir = None
+
+    @staticmethod
+    def list_available_weights() -> List[str]:
+        """List the names of pre-trained OPED weight sets bundled in vendor/models.
+
+        OPED ships a single portable state_dict; each name is the file stem of a
+        ``*_weights.pt`` checkpoint in ``Model_Trained``. Pass one of these names
+        to :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
+        """
+        model_root = resolve_vendor_models_path(
+            "oped", "pegRNA_PredictingCodes", "Model_Trained"
+        )
+        return sorted(p.stem for p in model_root.glob("*_weights.pt"))
+
+    def load_weights_by_name(self, name: str) -> None:
+        """Load a named pre-trained OPED weight set (or a path to a state_dict).
+
+        Args:
+            name: A weight set name from :meth:`list_available_weights`, or a
+                path to an OPED state_dict file.
+        """
+        candidate = Path(name).expanduser()
+        if candidate.is_file():
+            self.load_model(str(candidate))
+            return
+
+        model_root = resolve_vendor_models_path(
+            "oped", "pegRNA_PredictingCodes", "Model_Trained"
+        )
+        target = model_root / (name if name.endswith(".pt") else f"{name}.pt")
+        if not target.is_file():
+            raise ValueError(
+                f"Unknown OPED weights '{name}'. "
+                f"Available: {self.list_available_weights()}"
+            )
+        self.load_model(str(target))
+
+    def _resolve_weights_path(self, model_path: Optional[str]) -> str:
+        """Resolve a usable OPED state_dict path.
+
+        Accepts an explicit file, a directory (searched for the weights file),
+        or None (uses the bundled default inside vendor/models).
+        """
+        if model_path is None:
+            return str(resolve_vendor_models_path(*self.DEFAULT_WEIGHTS_RELPATH))
+
+        candidate = Path(model_path).expanduser()
+        if candidate.is_dir():
+            # Prefer the canonical state_dict file name if present, else the
+            # first *_weights.pt in the directory.
+            preferred = candidate / self.DEFAULT_WEIGHTS_RELPATH[-1]
+            if preferred.is_file():
+                return str(preferred)
+            weight_files = sorted(candidate.glob("*_weights.pt"))
+            if weight_files:
+                return str(weight_files[0])
+            raise FileNotFoundError(
+                f"No OPED state_dict (*_weights.pt) found in directory {candidate}."
+            )
+        return str(candidate)
+
+    def _load_state_dict(self, weights_path: str) -> Dict[str, torch.Tensor]:
+        """Load an OPED state_dict, rejecting legacy full-pickle artifacts."""
+        try:
+            obj = torch.load(weights_path, map_location=self.device, weights_only=True)
+        except Exception as exc:  # noqa: BLE001 - surface a clear, actionable error
+            raise ValueError(
+                f"Failed to load OPED weights as a state_dict from '{weights_path}'. "
+                "OPED's legacy full-pickle files (e.g. '*.order3_decoder.pt' and "
+                "'*_torch2.pt') are not compatible across PyTorch versions and must "
+                "not be loaded directly. Convert them once with "
+                "`python -m app.models.convert_oped_weights <pickle> <out_weights.pt>` "
+                "and load the resulting state_dict instead."
+            ) from exc
+
+        if not isinstance(obj, dict) or not all(torch.is_tensor(v) for v in obj.values()):
+            raise ValueError(
+                f"File '{weights_path}' is not an OPED state_dict. Expected a dict of "
+                "tensors; got a full pickled model. Convert it with "
+                "`python -m app.models.convert_oped_weights` first."
+            )
+        return obj
 
     @staticmethod
     def _build_kmer_vocab(k: int) -> Dict[str, int]:
@@ -222,82 +317,6 @@ class OPEDModelWrapper(BasePEModel):
         return pd.DataFrame(records)
 
 
-    def _standardized_to_oped_sequence_df(
-        self,
-        df: pd.DataFrame,
-        target_len: int = 47,
-        protospacer_upstream_bases: int = 4,
-    ) -> pd.DataFrame:
-        seq_records = []
-        efficiency = df["editing_efficiency"].astype(float).to_numpy()
-        wt_series = df["wt_sequence"].astype(str).str.upper().to_numpy()
-        mut_series = df["mut_sequence"].astype(str).str.upper().to_numpy()
-        pbs_l = df["pbs_location_l"].astype(int).to_numpy()
-        pbs_r = df["pbs_location_r"].astype(int).to_numpy()
-        rtt_l = df["rtt_location_l"].astype(int).to_numpy()
-        rtt_r = df["rtt_location_r"].astype(int).to_numpy()
-        prot_l = df["protospacer_location_l"].astype(int).to_numpy()
-        index_values = df.index.to_numpy()
-
-        for row_pos, (idx, wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i) in enumerate(
-            zip(
-            index_values, wt_series, mut_series, pbs_l, pbs_r, rtt_l, rtt_r, prot_l
-            )
-        ):
-
-            # Use WT base, and fill masked/alignment chars from MUT.
-            ref_chars = []
-            for i in range(min(len(wt), len(mut))):
-                wt_base = wt[i]
-                mut_base = mut[i]
-                if wt_base in {"A", "C", "G", "T"}:
-                    ref_chars.append(wt_base)
-                elif mut_base in {"A", "C", "G", "T"}:
-                    ref_chars.append(mut_base)
-                else:
-                    ref_chars.append("A")
-            if len(wt) > len(mut):
-                for base in wt[len(mut) :]:
-                    ref_chars.append(base if base in {"A", "C", "G", "T"} else "A")
-            elif len(mut) > len(wt):
-                for base in mut[len(wt) :]:
-                    ref_chars.append(base if base in {"A", "C", "G", "T"} else "A")
-            ref_seq = "".join(ref_chars)
-
-            # Build OPED's Target(47bp) as a protospacer-anchored window:
-            # keep a fixed number of upstream bases before protospacer start.
-            target_start = max(0, int(prot_l_i) - int(protospacer_upstream_bases))
-            target_end = target_start + target_len
-            if target_end > len(ref_seq):
-                target_start = max(0, len(ref_seq) - target_len)
-                target_end = len(ref_seq)
-
-            target = ref_seq[target_start:target_end]
-            pbs_l_i = max(0, int(pbs_l_i))
-            pbs_r_i = min(len(ref_seq), int(pbs_r_i))
-            rtt_l_i = max(0, int(rtt_l_i))
-            rtt_r_i = min(len(ref_seq), int(rtt_r_i))
-            pbs = ref_seq[pbs_l_i:pbs_r_i]
-            rt = ref_seq[rtt_l_i:rtt_r_i]
-
-            target = sanitize_dna_sequence(target)
-            pbs = sanitize_dna_sequence(pbs)
-            rt = sanitize_dna_sequence(rt)
-
-            if len(target) < target_len:
-                target = target + ("A" * (target_len - len(target)))
-
-            record = {"Target(47bp)": target, "PBS": pbs, "RT": rt, "_source_index": idx}
-            record["Efficiency"] = float(efficiency[row_pos])
-            seq_records.append(record)
-
-        if not seq_records:
-            return pd.DataFrame(
-                columns=pd.Index(["Target(47bp)", "PBS", "RT", "Efficiency"])
-            )
-        out_df = pd.DataFrame(seq_records).set_index("_source_index")
-        return out_df
-
     def _split_train_test_by_fold_or_group(
         self,
         df: pd.DataFrame,
@@ -307,8 +326,13 @@ class OPEDModelWrapper(BasePEModel):
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         fold_col = "original_fold"
 
-        test_mask = df[fold_col] == test_fold_value
-        if bool(test_mask.any()) and bool((~test_mask).any()):
+        fold_numeric = pd.to_numeric(df[fold_col], errors="coerce")
+        test_mask = fold_numeric.eq(test_fold_value)
+        if (
+            bool(fold_numeric.notna().any())
+            and bool(test_mask.any())
+            and bool((~test_mask).any())
+        ):
             return df.loc[~test_mask].copy(), df.loc[test_mask].copy()
 
         # fallback split by standardized group id when fold split is unavailable
@@ -351,21 +375,30 @@ class OPEDModelWrapper(BasePEModel):
         stem = hashlib.sha256(payload).hexdigest()
         return cache_dir / f"{stem}.pkl"
     
-    def load_model(self, model_path: str) -> None:
+    def load_model(self, model_path: Optional[str] = None) -> None:
         """
-        Load pre-trained OPED model
-        
+        Load pre-trained OPED model from a state_dict.
+
         Args:
-            model_path: Path to the saved OPED model file (.pt or .pkl)
+            model_path: Path to an OPED state_dict file (``*_weights.pt``) or a
+                directory containing one. When ``None``, the weights bundled in
+                ``vendor/models`` are used.
+
+        Notes:
+            Only state_dict files are supported. OPED's legacy full-pickle
+            artifacts are version-fragile and are explicitly rejected; convert
+            them once with ``app.models.convert_oped_weights``.
         """
         from oped.pegRNA_PredictingCodes.train_model import TransformerEncoderModelOrder3
-        
-        self.model_dir = os.path.dirname(model_path)
-        
-        # Initialize model architecture (these should match the trained model)
-        # Default parameters - adjust based on your trained model
+
+        weights_path = self._resolve_weights_path(model_path)
+        self.model_dir = os.path.dirname(weights_path)
+
+        # Architecture must match the trained checkpoint. ntokens is a per-order
+        # list ([4, 16, 64]); the embeddings are sized ntokens+1 to reserve the
+        # padding index 0.
         self.model = TransformerEncoderModelOrder3(
-            ntokens=4,
+            ntokens=self.MODEL_NTOKENS,
             embedding_size=64,
             hidden_size=[2048, 2048, 2048],
             hidden_size_fully=None,
@@ -375,36 +408,42 @@ class OPEDModelWrapper(BasePEModel):
             dropout=0.1,
             other_size=0
         )
-        
-        # Load state dict
-        state_dict = torch.load(model_path, map_location=self.device)
+
+        state_dict = self._load_state_dict(weights_path)
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
-        
+
         self.is_trained = True
     
+    # OPED native sequence columns (output of PE-DB's oped converter).
+    OPED_REQUIRED_COLUMNS = {"Target(47bp)", "PBS", "RT"}
+
     # model handles data loading and batching
     def prepare_data(self, df: pd.DataFrame, **kwargs) -> Any:
         """
-        Prepare data for OPED model input.
-        
+        Prepare data for OPED model input by tokenizing native OPED sequences.
+
         Args:
-            df: Standardized PE dataframe (canonical standardized columns).
+            df: Native OPED dataframe with columns ``Target(47bp)``, ``PBS``,
+                ``RT`` (and optionally ``Efficiency``). Standardized -> OPED
+                conversion is owned by PE-DB; fetch model-format data from
+                ``GET /api/filter?...&format=oped``. Optional ``original_fold`` /
+                ``group_id`` columns, when present, are preserved for splitting.
             **kwargs:
                 - split_data (bool): when True, return (train_df, test_df)
                 - test_size (float): group split ratio when fold is unavailable
                 - random_state (int): random seed for group split
                 - holdout_fold_value (int): fold value treated as test split
-                - use_cache (bool): if True, reuse converted data from cache
-            
+                - use_cache (bool): if True, reuse encoded data from cache
+
         Returns:
             Encoded OPED dataframe, or (train_df, test_df) if split_data=True
 
         Examples:
-            >>> prepared = model.prepare_data(df_standardized)
+            >>> prepared = model.prepare_data(df_oped_native)
             >>> train_df, test_df = model.prepare_data(
-            ...     df_standardized, split_data=True, test_size=0.2, random_state=42
+            ...     df_oped_native, split_data=True, test_size=0.2, random_state=42
             ... )
         """
         split_data = kwargs.get("split_data", False)
@@ -412,7 +451,6 @@ class OPEDModelWrapper(BasePEModel):
         random_state = int(kwargs.get("random_state", 42))
         holdout_fold_value = int(kwargs.get("holdout_fold_value", -1))
         target_len = int(kwargs.get("target_len", 47))
-        protospacer_upstream_bases = int(kwargs.get("protospacer_upstream_bases", 4))
         use_cache = bool(kwargs.get("use_cache", False))
 
         cache_path = self._build_cache_path(
@@ -427,27 +465,32 @@ class OPEDModelWrapper(BasePEModel):
                 )
             encoded_full = cached_obj
         else:
-            sequence_df = self._standardized_to_oped_sequence_df(
-                df,
-                target_len=target_len,
-                protospacer_upstream_bases=protospacer_upstream_bases,
-            )
-            if sequence_df.empty:
+            if not self.OPED_REQUIRED_COLUMNS.issubset(df.columns):
+                missing = sorted(self.OPED_REQUIRED_COLUMNS.difference(df.columns))
+                raise ValueError(
+                    "OPED expects native sequence columns; missing: "
+                    f"{missing}. Fetch model-format data from PE-DB "
+                    "(GET /api/filter?...&format=oped)."
+                )
+            if df.empty:
                 raise ValueError("No valid rows after OPED data preparation.")
 
-            encoded_full = self._to_oped_numeric_df(sequence_df)
-            encoded_full["Efficiency"] = sequence_df["Efficiency"].astype(float).to_numpy()
-            # Preserve split metadata in cache so we can split later without reconversion.
-            metadata_df = df.reindex(sequence_df.index)
-            # Keep missing split metadata as NaN (e.g. datasets with unknown original split).
-            encoded_full["original_fold"] = pd.to_numeric(
-                metadata_df.get("original_fold", pd.Series(np.nan, index=metadata_df.index)),
-                errors="coerce",
-            )
-            encoded_full["group_id"] = pd.to_numeric(
-                metadata_df.get("group_id", pd.Series(np.nan, index=metadata_df.index)),
-                errors="coerce",
-            )
+            # Tokenize the native OPED sequences. _to_oped_numeric_df returns a
+            # fresh RangeIndex frame, so all attached columns use positional
+            # alignment via to_numpy().
+            encoded_full = self._to_oped_numeric_df(df)
+            if "Efficiency" in df.columns:
+                encoded_full["Efficiency"] = (
+                    pd.to_numeric(df["Efficiency"], errors="coerce").fillna(0.0).to_numpy()
+                )
+            else:
+                encoded_full["Efficiency"] = np.zeros(len(df), dtype=float)
+            # Preserve optional split metadata (NaN when absent, e.g. inference).
+            for meta_col in ("original_fold", "group_id"):
+                if meta_col in df.columns:
+                    encoded_full[meta_col] = pd.to_numeric(df[meta_col], errors="coerce").to_numpy()
+                else:
+                    encoded_full[meta_col] = np.nan
             if use_cache:
                 pd.to_pickle(encoded_full, cache_path)
 
@@ -746,18 +789,27 @@ class OPEDModelWrapper(BasePEModel):
             }
         return result
     
-    def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
         """
         Evaluate OPED model
-        
+
         Args:
             test_data: Test DataFrame with features and 'Efficiency' label
-            
+            weights: Optional name of a bundled pre-trained weight set to load
+                before evaluating (see :meth:`list_available_weights`). When
+                ``None``, the currently trained/loaded model is used.
+
         Returns:
             Dictionary with evaluation metrics
         """
+        if weights is not None:
+            self.load_weights_by_name(weights)
+
         if not self.is_trained:
-            raise ValueError("Model not loaded. Call load_model() first.")
+            raise ValueError(
+                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
+                "or call load_model()/train() first."
+            )
         
         from oped.pegRNA_PredictingCodes.evaluate_model import evaluate_transformer_order3
         

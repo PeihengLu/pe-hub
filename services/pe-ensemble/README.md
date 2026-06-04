@@ -44,6 +44,62 @@ pip install -e .
 PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
 ```
 
+## Data format and conversion
+
+Standardized → model-format conversion is owned by the **PE-DB** service
+(`GET /api/filter?study=...&dataset=...&cell_line=...&pe_system=...&format=deepprime`).
+The model wrappers here expect data already in each model's **native** format and
+do not convert standardized data themselves. The `/evaluate` endpoint fetches
+native model-format rows from PE-DB's `/api/filter` automatically. This keeps
+`pe-common` free of model-specific conversion logic.
+
+## Selecting pre-trained weights
+
+DeepPrime and PRIDICT2 each ship **multiple** pre-trained weight sets. You can
+evaluate against a specific one by passing its name to `evaluate(...)`, or omit
+the argument to use the model you trained/loaded yourself.
+
+```python
+from app.models.model_factory import ModelFactory
+
+# DeepPrime: weight sets are named after the model variant directory.
+dp = ModelFactory.create_model("deepprime", pe_system="PE2max", cell_type="HEK293T")
+print(dp.list_available_weights())          # ['DeepPrime_base', 'DP_variant_293T_PE4max_Opti_220728', ...]
+metrics = dp.evaluate(test_df, weights="DeepPrime_base")
+
+# PRIDICT2: weight sets are named '<model_id>/<experiment>/run_<n>'.
+pr = ModelFactory.create_model("pridict2")
+print(pr.list_available_weights())          # ['pridict1_1/exp_2023-08-25_20-55-53/run_2', ...]
+metrics = pr.evaluate(test_df, weights="pridict1_1/exp_2023-08-25_20-55-53/run_2")
+
+# Omit `weights` to evaluate the currently trained/loaded model.
+metrics = dp.evaluate(test_df)
+```
+
+When `weights` is provided, `evaluate` loads that set first (overriding any
+previously loaded model). When it is omitted and no model has been
+trained/loaded, `evaluate` raises a `ValueError` listing how to proceed.
+
+## PyTorch environment
+
+DeepPrime, OPED, and PRIDICT2 were originally built against different PyTorch
+versions, but they run together here in **one environment** pinned to
+`torch>=2.0,<2.9`. The key enabler is that every model loads its weights as a
+`state_dict` rather than a full pickled module, so the weights are independent
+of the PyTorch version. PRIDICT2 sets the practical floor (it requires
+`torch>=2.0`); DeepPrime and OPED state_dicts load on any modern 2.x.
+
+OPED's legacy full-pickle checkpoints are version-fragile and are **not** loaded
+at runtime — the wrapper defaults to `pegRNA_Model_Merged_saved.order3_decoder_weights.pt`
+and rejects full pickles. Use `python -m app.models.convert_oped_weights` to
+regenerate the state_dict if needed. See `vendor/models/README.md` for details.
+
+Verify the unified environment with:
+
+```bash
+pytest tests/test_weights_loading.py
+```
+
 ## Dependencies
 
 This service depends on:

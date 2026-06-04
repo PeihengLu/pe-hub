@@ -159,6 +159,57 @@ class TestDeepPrimeWrapper:
                 pass
 
 
+VENDOR_MODELS = Path(__file__).resolve().parents[3] / "vendor" / "models"
+
+
+class TestWeightSelection:
+    """Test selecting bundled pre-trained weights by name in evaluate()."""
+
+    @pytest.mark.skipif(
+        not VENDOR_MODELS.joinpath("deepprime", "models", "DeepPrime").is_dir(),
+        reason="DeepPrime weights not available",
+    )
+    def test_deepprime_list_available_weights(self):
+        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
+
+        names = DeepPrimeModelWrapper.list_available_weights()
+        assert isinstance(names, list) and len(names) > 0
+        assert "DeepPrime_base" in names
+
+    @pytest.mark.skipif(
+        not VENDOR_MODELS.joinpath("deepprime", "models", "DeepPrime").is_dir(),
+        reason="DeepPrime weights not available",
+    )
+    def test_deepprime_evaluate_unknown_weights_raises(self):
+        model = ModelFactory.create_model(
+            "deepprime", device=torch.device("cpu"),
+            pe_system="PE2max", cell_type="HEK293T",
+        )
+        with pytest.raises(ValueError):
+            model.evaluate(pd.DataFrame({"Efficiency": [0.1, 0.2]}), weights="does_not_exist")
+
+    @pytest.mark.skipif(
+        not VENDOR_MODELS.joinpath("pridict2", "trained_models").is_dir(),
+        reason="PRIDICT2 weights not available",
+    )
+    def test_pridict2_list_available_weights(self):
+        from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+
+        names = PRIDICT2ModelWrapper.list_available_weights()
+        assert isinstance(names, list) and len(names) > 0
+        # Names use the compact '<model_id>/<experiment>/run_<n>' form.
+        assert all("/train_val/" not in n and n.count("/") == 2 for n in names)
+
+    @pytest.mark.skipif(
+        not VENDOR_MODELS.joinpath("pridict2", "trained_models").is_dir(),
+        reason="PRIDICT2 weights not available",
+    )
+    def test_pridict2_evaluate_unknown_weights_raises(self):
+        model = ModelFactory.create_model("pridict2", device=torch.device("cpu"))
+        with pytest.raises(ValueError):
+            model.evaluate(pd.DataFrame(), weights="nope/nope/run_0")
+
+
 class TestBasePEModel:
     """Test BasePEModel interface"""
     

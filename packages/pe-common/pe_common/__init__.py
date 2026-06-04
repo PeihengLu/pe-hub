@@ -7,13 +7,11 @@ __version__ = "0.1.0"
 from .constants import PROJECT_ROOT, DATA_ROOT, MODEL_ROOT, DEVICE
 from .sequence_utils import align_wt_mut_sequences, remove_padding
 from .data_utils import build_test_mask_from_group_id
-from .preprocessing import (
-    has_columns,
-    is_standardized_dataframe,
-    standardized_to_pridict_dataframe,
-    standardized_to_deepprime_features,
-    ensure_schema,
-)
+
+# NOTE: standardized -> model-format conversion lives in the PE-DB service
+# (services/pe-db/app/utils/convert_data.py) and is exposed via GET /api/filter.
+# PE-Ensemble consumes model-format data from that endpoint; pe-common stays
+# free of model-specific conversion logic.
 
 __all__ = [
     # Constants
@@ -25,12 +23,6 @@ __all__ = [
     "align_wt_mut_sequences",
     "remove_padding",
     "build_test_mask_from_group_id",
-    # Preprocessing utilities
-    "has_columns",
-    "is_standardized_dataframe",
-    "standardized_to_pridict_dataframe",
-    "standardized_to_deepprime_features",
-    "ensure_schema",
     # Training utilities (lazy-loaded — requires torch)
     "EarlyStopping",
     "LightningTrainerConfig",

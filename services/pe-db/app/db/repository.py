@@ -158,6 +158,10 @@ class CatalogRepository:
     def filter_all(
         self,
         *,
+        study_name: Optional[str] = None,
+        dataset_name: Optional[str] = None,
+        cell_line: Optional[str] = None,
+        pe_system: Optional[str] = None,
         edit_type: Optional[str] = None,
         edit_length: Optional[int] = None,
         edit_efficiency_min: Optional[float] = None,
@@ -166,24 +170,140 @@ class CatalogRepository:
         experimental_method: Optional[str] = None,
         target_context: Optional[str] = None,
         scaffold_name: Optional[str] = None,
-    ) -> list[DatasheetRead]:
-        """Apply catalog metadata filters, then per-edit filters on standardized data."""
+        target_format: Optional[str] = None,
+    ) -> list[DatasheetRead] | dict[str, Any]:
+        """Apply catalog metadata filters, then per-edit filters on standardized data.
+
+        Args:
+            study_name / dataset_name: Narrow to a study and/or dataset.
+            cell_line / pe_system: Narrow to specific datasheets (e.g. to target a
+                single datasheet for conversion, like the point-lookup data API).
+            edit_* / *_method / *_scope / *_context / scaffold_name: Catalog and
+                per-edit filters (unchanged behavior).
+            target_format: When ``None``, return the matching datasheets as usual.
+                When set (``std`` or a model format such as ``deepprime``,
+                ``pridict``, ``pridict2``, ``oped``), return the matching rows
+                converted from standardized data into the requested format,
+                including only datasets flagged ``standardizable`` in the catalog.
+                This is the single entry point for standardized -> model-format
+                conversion (single or bulk).
+
+        Returns:
+            ``list[DatasheetRead]`` when ``target_format`` is ``None``; otherwise a
+            dict with converted ``groups`` (one per datasheet), ``skipped`` entries
+            (non-standardizable or unavailable), and ``total_records``.
+        """
         rows = self._session.scalars(
             self._apply_catalog_filters(
                 self._datasheet_base_stmt(),
+                study_name=study_name,
+                dataset_name=dataset_name,
+                cell_line=cell_line,
+                pe_system=pe_system,
                 edit_scope=edit_scope,
                 experimental_method=experimental_method,
                 target_context=target_context,
                 scaffold_name=scaffold_name,
             )
         ).unique().all()
-        return self._filter_rows_by_entries(
+
+        if target_format is None:
+            return self._filter_rows_by_entries(
+                rows,
+                edit_type=edit_type,
+                edit_length=edit_length,
+                edit_efficiency_min=edit_efficiency_min,
+                edit_efficiency_max=edit_efficiency_max,
+            )
+
+        return self._convert_filtered_rows_to_format(
             rows,
+            target_format=target_format,
             edit_type=edit_type,
             edit_length=edit_length,
             edit_efficiency_min=edit_efficiency_min,
             edit_efficiency_max=edit_efficiency_max,
         )
+
+    def _convert_filtered_rows_to_format(
+        self,
+        rows: list[Datasheet],
+        *,
+        target_format: str,
+        edit_type: Optional[str] = None,
+        edit_length: Optional[int] = None,
+        edit_efficiency_min: Optional[float] = None,
+        edit_efficiency_max: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """Convert standardizable datasheets' standardized data into ``target_format``."""
+        from ..converter import DataConverter
+
+        data_root = get_settings().data_root
+        loader = PEDataLoader(data_root)
+        converter = DataConverter(data_root)
+        edit_type_code = self._parse_edit_type(edit_type) if edit_type is not None else None
+
+        groups: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for row in rows:
+            if row.dataset is None or row.dataset.study is None:
+                continue
+            dataset = row.dataset
+            descriptor = {
+                "study": dataset.study.name,
+                "dataset": dataset.name,
+                "cell_line": row.cell_line,
+                "pe_system": row.pe_system,
+            }
+
+            if not dataset.standardizable:
+                skipped.append({**descriptor, "reason": "dataset not standardizable"})
+                continue
+
+            data = self._load_standardized_for_datasheet(row, loader)
+            if data is None or data.empty:
+                skipped.append({**descriptor, "reason": "no standardized data on disk"})
+                continue
+
+            filtered = self._filter_dataframe_entries(
+                data,
+                edit_type_code=edit_type_code,
+                edit_length=edit_length,
+                edit_efficiency_min=edit_efficiency_min,
+                edit_efficiency_max=edit_efficiency_max,
+            )
+            if filtered.empty:
+                continue
+
+            try:
+                converted = converter.convert_from_standardized(
+                    filtered,
+                    study=dataset.study.name,
+                    dataset=dataset.name,
+                    cell_line=row.cell_line,
+                    pe_system=row.pe_system,
+                    target_format=target_format,
+                )
+            except (ValueError, KeyError) as exc:
+                skipped.append({**descriptor, "reason": f"conversion failed: {exc}"})
+                continue
+
+            groups.append(
+                {
+                    **descriptor,
+                    "num_records": int(len(converted)),
+                    "columns": list(converted.columns),
+                    "records": converted.to_dict(orient="records"),
+                }
+            )
+
+        return {
+            "target_format": target_format,
+            "groups": groups,
+            "skipped": skipped,
+            "total_records": int(sum(group["num_records"] for group in groups)),
+        }
 
     def compute_statistics(
         self,
@@ -298,11 +418,23 @@ class CatalogRepository:
         self,
         stmt: Select[tuple[Datasheet]],
         *,
+        study_name: Optional[str] = None,
+        dataset_name: Optional[str] = None,
+        cell_line: Optional[str] = None,
+        pe_system: Optional[str] = None,
         edit_scope: Optional[str] = None,
         experimental_method: Optional[str] = None,
         target_context: Optional[str] = None,
         scaffold_name: Optional[str] = None,
     ) -> Select[tuple[Datasheet]]:
+        if study_name is not None:
+            stmt = stmt.where(Study.name == study_name.strip().lower())
+        if dataset_name is not None:
+            stmt = stmt.where(Dataset.name == dataset_name.strip().lower())
+        if cell_line is not None:
+            stmt = stmt.where(Datasheet.cell_line == cell_line.strip().lower().replace("-", "_"))
+        if pe_system is not None:
+            stmt = stmt.where(Datasheet.pe_system == pe_system.strip().lower().replace("-", "_"))
         if edit_scope is not None:
             stmt = stmt.where(Dataset.edit_scope == edit_scope.strip().lower())
         if experimental_method is not None:

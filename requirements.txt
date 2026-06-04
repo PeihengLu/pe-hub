@@ -2,7 +2,9 @@
 pandas>=1.3.0
 numpy>=1.21.0
 tqdm>=4.62.0
-torch>=2.0.0
+# Unified PyTorch across vendor models (DeepPrime/OPED/PRIDICT2). Weights are
+# loaded as state_dicts, so any modern 2.x is compatible; cap for reproducibility.
+torch>=2.0,<2.9
 scikit-learn>=1.0.0
 
 # Web framework

@@ -12,7 +12,7 @@ from pe_common.sequence_utils import sanitize_dna_sequence
 STANDARDIZED_REQUIRED_COLUMNS = {
     "wt_sequence",
     "mut_sequence",
-    "edit_length",
+    "edit_len",
     "type_sub",
     "type_ins",
     "type_del",
@@ -38,6 +38,14 @@ def _col_as_series(df: pd.DataFrame, colname: str, default: Any = 0) -> pd.Serie
     if colname in df.columns and isinstance(df[colname], pd.Series):
         return df[colname]
     return pd.Series(default, index=df.index)
+
+
+def _edit_length_series(df: pd.DataFrame) -> pd.Series:
+    """Read the edit length, accepting the canonical 'edit_len' or legacy 'edit_length'."""
+    for colname in ("edit_len", "edit_length"):
+        if colname in df.columns:
+            return _col_as_series(df, colname, 0)
+    return pd.Series(0, index=df.index)
 
 
 def _safe_int_series(series: pd.Series, default: int = 0) -> pd.Series:
@@ -84,7 +92,7 @@ def standardized_to_pridict_dataframe(
             _col_as_series(df, "type_del", False),
         )
     ]
-    out["Correction_Length"] = _safe_int_series(_col_as_series(df, "edit_length", 0), default=0)
+    out["Correction_Length"] = _safe_int_series(_edit_length_series(df), default=0)
     out["protospacerlocation_only_initial"] = [
         _format_location(l, r)
         for l, r in zip(_col_as_series(df, "protospacer_location_l", 0), _col_as_series(df, "protospacer_location_r", 0))
@@ -123,7 +131,7 @@ def standardized_to_deepprime_dataframe(df: pd.DataFrame, *, spcas9_column: str 
     lha_r_series = _safe_int_series(_col_as_series(df, "lha_location_r", 0)).to_numpy()
     rha_l_series = _safe_int_series(_col_as_series(df, "rha_location_l", 0)).to_numpy()
     rha_r_series = _safe_int_series(_col_as_series(df, "rha_location_r", 0)).to_numpy()
-    edit_len_series = _safe_int_series(_col_as_series(df, "edit_length", 0)).to_numpy()
+    edit_len_series = _safe_int_series(_edit_length_series(df)).to_numpy()
     type_sub_series = _col_as_series(df, "type_sub", False).astype(bool).to_numpy()
     type_ins_series = _col_as_series(df, "type_ins", False).astype(bool).to_numpy()
     type_del_series = _col_as_series(df, "type_del", False).astype(bool).to_numpy()

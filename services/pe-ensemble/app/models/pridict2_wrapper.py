@@ -1,15 +1,11 @@
 import sys
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import torch
 import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
-from pe_common.preprocessing import (
-    ensure_schema,
-    standardized_to_pridict_dataframe,
-    STANDARDIZED_BASE_COLUMNS,
-)
 from pe_common.training import build_group_kfold_indices, pearson_spearman
 
 # Add vendor model paths required by PRIDICT2 imports.
@@ -36,7 +32,20 @@ class PRIDICT2ModelWrapper(BasePEModel):
         'base_390k_decinit_HEKhyongbum_FT',
         'base_390k_decinit_HEKschwank_FT'
     ]
-    STANDARDIZED_REQUIRED_COLUMNS = STANDARDIZED_BASE_COLUMNS
+    # Native PRIDICT/PRIDICT2 input columns (output of PE-DB's pridict converter).
+    PRIDICT_REQUIRED_COLUMNS = {
+        "seq_id",
+        "wide_initial_target",
+        "wide_mutated_target",
+        "deepeditposition",
+        "deepeditposition_lst",
+        "Correction_Type",
+        "Correction_Length",
+        "protospacerlocation_only_initial",
+        "PBSlocation",
+        "RT_initial_location",
+        "RT_mutated_location",
+    }
     
     def __init__(self, device: Optional[torch.device] = None, 
                  wsize: int = 20,
@@ -77,22 +86,19 @@ class PRIDICT2ModelWrapper(BasePEModel):
         return ["averageedited", "averageunedited", "averageindel"]
 
     def _to_pridict_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        return ensure_schema(
-            df,
-            native_required={
-                "seq_id",
-                "wide_initial_target",
-                "wide_mutated_target",
-                "deepeditposition",
-                "deepeditposition_lst",
-                "Correction_Type",
-                "Correction_Length",
-                "protospacerlocation_only_initial",
-                "PBSlocation",
-                "RT_initial_location",
-                "RT_mutated_location",
-            },
-            converters={"standardized_to_pridict": standardized_to_pridict_dataframe},
+        """Validate that ``df`` is already in PRIDICT's native schema.
+
+        Standardized -> PRIDICT conversion is owned by the PE-DB service; fetch
+        model-format data from ``GET /api/filter?...&format=pridict2`` rather than
+        passing standardized rows here.
+        """
+        if self.PRIDICT_REQUIRED_COLUMNS.issubset(df.columns):
+            return df.copy()
+        missing = sorted(self.PRIDICT_REQUIRED_COLUMNS.difference(df.columns))
+        raise ValueError(
+            "PRIDICT2 expects native input columns; missing: "
+            f"{missing}. Fetch model-format data from PE-DB "
+            "(GET /api/filter?...&format=pridict2)."
         )
 
     def _predict_from_loaded_or_current_model(
@@ -113,6 +119,54 @@ class PRIDICT2ModelWrapper(BasePEModel):
             )
         raise ValueError("Model not loaded. Call load_model() first.")
     
+    @staticmethod
+    def list_available_weights() -> List[str]:
+        """List the names of pre-trained PRIDICT2 weight sets bundled in vendor/models.
+
+        Each name identifies a trained run directory in the form
+        ``<model_id>/<experiment>/run_<n>`` (for example
+        ``pridict1_1/exp_2023-08-25_20-55-53/run_2``). Pass one of these names
+        to :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
+        """
+        trained_root = resolve_vendor_models_path("pridict2", "trained_models")
+        names: List[str] = []
+        for run_dir in sorted(trained_root.glob("*/*/train_val/run_*")):
+            if (run_dir / "model_statedict").is_dir() and (run_dir / "config").is_dir():
+                # Drop the fixed 'train_val' segment to keep names compact.
+                parts = [p for p in run_dir.relative_to(trained_root).parts if p != "train_val"]
+                names.append("/".join(parts))
+        return names
+
+    def _resolve_weights_dir(self, name: str) -> Path:
+        """Resolve a weight set name (or directory path) to a run directory."""
+        candidate = Path(name).expanduser()
+        if candidate.is_dir() and (candidate / "model_statedict").is_dir():
+            return candidate
+
+        trained_root = resolve_vendor_models_path("pridict2", "trained_models")
+        parts = name.split("/")
+        # Accept the compact '<model_id>/<experiment>/run_<n>' form by
+        # reinserting the 'train_val' segment used on disk.
+        if len(parts) == 3:
+            resolved = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
+        else:
+            resolved = trained_root / name
+        if (resolved / "model_statedict").is_dir():
+            return resolved
+        raise ValueError(
+            f"Unknown PRIDICT2 weights '{name}'. "
+            f"Available: {self.list_available_weights()}"
+        )
+
+    def load_weights_by_name(self, name: str) -> None:
+        """Load a named pre-trained PRIDICT2 weight set.
+
+        Args:
+            name: A weight set name from :meth:`list_available_weights`, or a
+                path to a trained run directory.
+        """
+        self.load_model(str(self._resolve_weights_dir(name)))
+
     def load_model(self, model_path: str) -> None:
         """
         Load pre-trained PRIDICT2 model
@@ -413,18 +467,27 @@ class PRIDICT2ModelWrapper(BasePEModel):
             result["cross_validation"] = fold_reports
         return result
     
-    def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
         """
         Evaluate PRIDICT2 model on all three outcomes
-        
+
         Args:
             test_data: Test DataFrame with true labels
-            
+            weights: Optional name of a bundled pre-trained weight set to load
+                before evaluating (see :meth:`list_available_weights`). When
+                ``None``, the currently trained/loaded model is used.
+
         Returns:
             Dictionary with evaluation metrics for each outcome
         """
+        if weights is not None:
+            self.load_weights_by_name(weights)
+
         if not self.is_trained:
-            raise ValueError("Model not loaded. Call load_model() first.")
+            raise ValueError(
+                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
+                "or call load_model()/train() first."
+            )
         
         test_df = self._to_pridict_dataframe(test_data)
         outcomes = [o for o in self._default_outcomes() if o in test_df.columns]

@@ -91,6 +91,7 @@ async def root():
             "datasheets": "/api/datasheets",
             "scaffolds": "/api/scaffolds",
             "data": "/api/data",
+            "filter": "/api/filter",
             "statistics": "/api/statistics",
             "export": "POST /api/export",
             "health": "/health",
@@ -143,6 +144,71 @@ async def list_datasheets(
         )
 
 
+@app.get("/api/filter")
+async def filter_data(
+    study: Optional[str] = Query(None, description="Filter by study key (e.g. deepprime)."),
+    dataset: Optional[str] = Query(None, description="Filter by dataset name within the study."),
+    cell_line: Optional[str] = Query(None, description="Filter by cell line (e.g. HEK293T)."),
+    pe_system: Optional[str] = Query(None, description="Filter by PE system (e.g. PE2max)."),
+    edit_type: Optional[str] = Query(None, description="Filter edits by type (sub, ins, del)."),
+    edit_length: Optional[int] = Query(None, description="Filter edits by length."),
+    edit_efficiency_min: Optional[float] = Query(None, description="Minimum editing efficiency."),
+    edit_efficiency_max: Optional[float] = Query(None, description="Maximum editing efficiency."),
+    edit_scope: Optional[str] = Query(None, description="Filter by edit scope (on_target, off_target)."),
+    experimental_method: Optional[str] = Query(None, description="Filter by experimental method."),
+    target_context: Optional[str] = Query(None, description="Filter by target context."),
+    scaffold_name: Optional[str] = Query(None, description="Filter by pegRNA scaffold name."),
+    format_: Optional[Literal["std", "oped", "deepprime", "pridict", "pridict2"]] = Query(
+        None,
+        alias="format",
+        description=(
+            "Output format. When unset, returns matching datasheets as usual. "
+            "When set, returns standardizable datasets' data converted from the "
+            "standardized schema into the requested model format."
+        ),
+    ),
+):
+    """Filter datasheets by catalog/edit metadata; optionally emit model-format data.
+
+    Without ``format``, behaves as a catalog filter and returns matching datasheets.
+    With ``format``, only datasets flagged ``standardizable`` are converted from
+    standardized data into the requested format and returned as grouped records.
+    """
+    try:
+        with get_session() as session:
+            result = CatalogRepository(session).filter_all(
+                study_name=study,
+                dataset_name=dataset,
+                cell_line=cell_line,
+                pe_system=pe_system,
+                edit_type=edit_type,
+                edit_length=edit_length,
+                edit_efficiency_min=edit_efficiency_min,
+                edit_efficiency_max=edit_efficiency_max,
+                edit_scope=edit_scope,
+                experimental_method=experimental_method,
+                target_context=target_context,
+                scaffold_name=scaffold_name,
+                target_format=format_,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Error filtering data: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Error filtering data: {exc}") from exc
+
+    if format_ is None:
+        # Proceed as usual: matching datasheet metadata.
+        return {
+            "status": "success",
+            "format": None,
+            "count": len(result),
+            "datasheets": result,
+        }
+
+    return {"status": "success", **result}
+
+
 @app.get("/api/data")
 async def get_data(
     study: Optional[str] = Query(
@@ -159,12 +225,13 @@ async def get_data(
         None,
         description="Deprecated alias for study (dp, dp_ft, pd1, pd2, etc.).",
     ),
-    target_format: Literal["std", "oped", "deepprime", "pridict", "pridict2"] = Query(
-        "std",
-        description="Target format for the data",
-    ),
     limit: Optional[int] = Query(None, description="Limit number of records returned"),
 ):
+    """Point lookup: return one datasheet's standardized rows.
+
+    Conversion into model-specific formats lives in the filter API; use
+    ``GET /api/filter?study=...&dataset=...&cell_line=...&pe_system=...&format=deepprime``.
+    """
     try:
         resolved_study = study
         if not resolved_study and source_model:
@@ -189,7 +256,6 @@ async def get_data(
             dataset=dataset,
             cell_line=cell_line,
             pe_system=pe_system,
-            target_format=target_format,
         )
 
         if limit is not None and limit > 0:
@@ -200,7 +266,7 @@ async def get_data(
             "dataset": dataset,
             "cell_line": cell_line,
             "pe_system": pe_system,
-            "format": target_format,
+            "format": "std",
             "total_records": len(data),
             "columns": list(data.columns),
         }

@@ -17,7 +17,6 @@ if str(_vendor_root) not in sys.path:
     sys.path.insert(0, str(_vendor_root))
 
 from pe_common.model_interface import BasePEModel
-from pe_common.preprocessing import ensure_schema, standardized_to_deepprime_features
 from pe_common.training import (
     build_lr_scheduler,
     build_group_kfold_indices,
@@ -132,10 +131,19 @@ class DeepPrimeModelWrapper(BasePEModel):
         self._last_training_history: List[Dict[str, float]] = []
 
     def _to_deepprime_feature_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        return ensure_schema(
-            df,
-            native_required=self.DEEPPRIME_REQUIRED_COLUMNS,
-            converters={"standardized_to_deepprime": standardized_to_deepprime_features},
+        """Validate that ``df`` is already in DeepPrime's native feature schema.
+
+        Standardized -> DeepPrime conversion is owned by the PE-DB service; fetch
+        model-format data from ``GET /api/filter?...&format=deepprime`` rather than
+        passing standardized rows here.
+        """
+        if self.DEEPPRIME_REQUIRED_COLUMNS.issubset(df.columns):
+            return df.copy()
+        missing = sorted(self.DEEPPRIME_REQUIRED_COLUMNS.difference(df.columns))
+        raise ValueError(
+            "DeepPrime expects native feature columns; missing: "
+            f"{missing}. Fetch model-format data from PE-DB "
+            "(GET /api/filter?...&format=deepprime)."
         )
 
     @staticmethod
@@ -252,12 +260,47 @@ class DeepPrimeModelWrapper(BasePEModel):
         self.model = self.models  # Store for consistency
         self.is_trained = True
     
+    @staticmethod
+    def list_available_weights() -> List[str]:
+        """List the names of pre-trained DeepPrime weight sets bundled in vendor/models.
+
+        Each name corresponds to a model variant directory (for example
+        'DeepPrime_base' or 'DP_variant_293T_PE4max_Opti_220728') containing the
+        ensemble ``.pt`` checkpoints. Pass one of these names to
+        :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
+        """
+        from glob import glob
+
+        models_root = resolve_vendor_models_path("deepprime", "models", "DeepPrime")
+        names: List[str] = []
+        for entry in sorted(models_root.iterdir()):
+            if entry.is_dir() and glob(str(entry / "*.pt")):
+                names.append(entry.name)
+        return names
+
+    def load_weights_by_name(self, name: str) -> None:
+        """Load a named pre-trained DeepPrime weight set.
+
+        Args:
+            name: A weight set name from :meth:`list_available_weights` (the
+                model variant directory name).
+        """
+        models_root = resolve_vendor_models_path("deepprime", "models", "DeepPrime")
+        target = models_root / name
+        if not target.is_dir():
+            raise ValueError(
+                f"Unknown DeepPrime weights '{name}'. "
+                f"Available: {self.list_available_weights()}"
+            )
+        self.load_model(str(target))
+
     def prepare_data(self, df: pd.DataFrame, **kwargs) -> Dict[str, torch.Tensor]:
         """
         Prepare data in DeepPrime format
         
         Args:
-            df: DataFrame in DeepPrime feature schema or standardized schema
+            df: DataFrame in DeepPrime's native feature schema (fetch from
+                PE-DB: GET /api/filter?...&format=deepprime)
             
         Returns:
             Dictionary with 'g' (gene features) and 'x' (other features) tensors
@@ -326,8 +369,8 @@ class DeepPrimeModelWrapper(BasePEModel):
         Fine-tune loaded DeepPrime model(s) on prepared data.
 
         This is a lightweight fine-tuning path (not the original DeepPrime
-        training pipeline). It supports standardized schema by converting into
-        DeepPrime feature columns before optimization.
+        training pipeline). Inputs must already be in DeepPrime's native feature
+        schema (fetch model-format data from PE-DB: /api/filter?...&format=deepprime).
         """
         hyperparameters = hyperparameters or {}
         epochs = int(hyperparameters.get("epochs", 5))
@@ -440,18 +483,27 @@ class DeepPrimeModelWrapper(BasePEModel):
             "model_summaries": model_summaries,
         }
     
-    def evaluate(self, test_data: pd.DataFrame) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
         """
         Evaluate DeepPrime model
-        
+
         Args:
             test_data: DataFrame with input features and 'Efficiency' column
-            
+            weights: Optional name of a bundled pre-trained weight set to load
+                before evaluating (see :meth:`list_available_weights`). When
+                ``None``, the currently trained/loaded model is used.
+
         Returns:
             Dictionary with evaluation metrics (Pearson, Spearman)
         """
+        if weights is not None:
+            self.load_weights_by_name(weights)
+
         if not self.is_trained:
-            raise ValueError("Model not loaded. Call load_model() first.")
+            raise ValueError(
+                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
+                "or call load_model()/train() first."
+            )
         
         from scipy.stats import pearsonr, spearmanr
         
