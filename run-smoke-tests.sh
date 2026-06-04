@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Run all PE smoke tests across services.
+# Run all PE smoke tests across services (pe-db, pe-ensemble, vendor evaluation).
 #
-# Each service is tested in its own pytest process because pe-db and
-# pe-ensemble both expose a top-level `app` package (running them together
-# would collide in sys.modules). PYTHONPATH is set per suite so imports and
-# pe_common resolve without an editable install.
+# Each suite runs in its own pytest process because pe-db and pe-ensemble both
+# expose a top-level `app` package (running them together would collide in
+# sys.modules). PYTHONPATH is set per suite so imports and pe_common resolve
+# without an editable install.
 #
 # Usage:
 #   ./run-smoke-tests.sh                 # run every smoke-test suite
@@ -26,7 +26,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] [-- PYTEST_ARGS...]
 
-Run all PE smoke tests (pe-db and pe-ensemble) in isolated pytest processes.
+Run all PE smoke tests (pe-db, pe-ensemble, and vendor evaluation) in isolated pytest processes.
 
 Options:
   --install      Install pytest and the pe-common package before running
@@ -72,6 +72,7 @@ fi
 SUITES=(
     "pe-db|${REPO_ROOT}/services/pe-db/tests|${REPO_ROOT}/services/pe-db:${COMMON}"
     "pe-ensemble|${REPO_ROOT}/services/pe-ensemble/tests|${REPO_ROOT}/services/pe-ensemble:${COMMON}"
+    "vendor-eval|${REPO_ROOT}/test_vendor_models_evaluation.py|${REPO_ROOT}/services/pe-ensemble:${COMMON}"
 )
 
 cd "${REPO_ROOT}"
