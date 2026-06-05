@@ -119,7 +119,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
 
-    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at 1,202 endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. Every integration was edited with the same prime-editing pegRNA (\texttt{TRIP\_pegRNA\_GtoC}, supplementary table~5), a uniform 1-bp G$\to$C substitution. Similarly, due to the lack of support for chromatin coordinate translation, this dataset currently has partial standardization support (entry-level fields only).
+    A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at 1,202 endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. Every integration was edited with the same prime-editing pegRNA (\nolinkurl{TRIP\_pegRNA\_GtoC}), a uniform 1-bp G$\to$C substitution. Similarly, due to the lack of support for chromatin coordinate translation, this dataset currently has partial standardization support (entry-level fields only).
 \end{enumerate}
 
 \begin{figure}[ht]
@@ -164,7 +164,7 @@ The standardization process for most datasets are straightforward, as they provi
 
 For efficient filtering, scalable data retrieval, and improved conceptual clarity, the database is designed using a hierarchical schema based on column propagation. This approach allows shared metadata to be stored at the highest appropriate level while enabling fine-grained filtering at lower levels without data duplication.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.95\textwidth]{diagrams/illustration/database_er.png}
     \caption{ER diagram of the implemented PE-DB catalog schema (\texttt{study}, \texttt{dataset}, \texttt{scaffold}, \texttt{datasheet})}
@@ -218,7 +218,7 @@ PE Ensemble also exposes APIs for model evaluation and training, which are mostl
 
 \subsubsection{Software Architecture}
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.5\linewidth]{diagrams/illustration/pe-ensemble-software-stack.png}
     \caption{Software Stack of PE Ensemble}
