@@ -22,6 +22,15 @@
 \usepackage{longtable}
 \usepackage{array}
 
+% Word count via texcount (requires compiling with -shell-escape)
+\makeatletter
+\newcommand{\wordcountwords}{%
+  \immediate\write18{texcount -inc -sum -1 -q \jobname.tex > \jobname.wc}%
+  \IfFileExists{\jobname.wc}{\input{\jobname.wc}\unskip}{---}%
+}
+\makeatother
+\date{\today\qquad Word count: \wordcountwords}
+
 
 \begin{document}
 
@@ -40,15 +49,27 @@ Prime editing represents a cutting-edge gene editing technology that enables pre
 
 While CRISPR-Cas9 disrupts the genome with double strand breaks, and base editing accurately targets single base changes, prime editing is a more flexible 'genomic word processor' that can perform all possible edit types, including substitutions, insertions and deletions\cite{koeppelPredictionPrimeEditing2023}.
 
-(Process of prime editing, describe pegRNA, \autoref{fig:pe-process})
-
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.75\linewidth]{diagrams/illustration/prime editing process.png}
-    \caption{Prime editing process, the reverse transcriptase and Cas9 modules were omitted for visual clarity}
+    \caption{Prime editing components and mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+    A prime editor (PE) fuses a Cas9 nickase with reverse transcriptase; both protein modules are omitted here for visual clarity.
+    The prime editing guide RNA (pegRNA) contains a target-directing \textit{spacer}, a Cas9 \textit{scaffold}, a \textit{primer-binding site} (PBS), and a \textit{reverse-transcriptase template} (RTT) encoding the desired change as left homology arm (LHA), \textit{edit}, and right homology arm (RHA); the \textit{PAM} (red) enables target recognition and nicking.}
     \label{fig:pe-process}
 \end{figure}
+
+
+Prime editing installs programmed sequence changes through a nick-and-copy mechanism rather than double-strand break formation~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+After the prime editor--pegRNA complex binds the target locus and nicks the PAM-containing strand, the exposed 3$'$ end hybridizes to the pegRNA and primes reverse transcription of the desired edit into the genome (\autoref{fig:pe-process}, steps~1--3).
+The steps that follow are less deterministic.
+Reverse transcription generates a branched intermediate in which the newly synthesized edited 3$'$ flap and the displaced original 5$'$ flap can equilibrate between competing annealing configurations (step~4).
+Cellular flap-processing enzymes such as FEN1 preferentially excise the 5$'$ flap and ligate the edited strand when flap resolution favours the edit (step~5), but this excision step does not always work in the editor's favour: the edited flap may fail to invade the duplex, or 3$'$ exonucleases may degrade it instead, restoring the original sequence and leaving the target available for another round of editing from step~1~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+Even when the edited strand is ligated in, the resulting heteroduplex still contains mismatches between the edited and unedited strands that must be resolved by mismatch repair (MMR) or replication (step~6).
+Because MMR can copy from either strand, it may reject the edit and rebuild the original allele, again resetting the locus and permitting re-binding of the PE--pegRNA complex as long as the PAM site remains intact~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
+These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
+
+On top of the competing repair outcomes, the editing efficiency is also heavily affected by target context and pegRNA design.
 
 These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design
 
@@ -62,6 +83,10 @@ This project consists of two main services. The first service, PE Database, can 
 % overview of the database operations
 
 With interest in prime editing guide RNA design steadily growing, the volume of big-data studies researching various aspects of prime editing guide RNA design and efficiency prediction has been increasing year by year. However, none of the studies have agreed upon a standardized format for their model inputs, and as the volume of studies involving prime editing grows, the challenge of comparing new deep learning system benchmarks becomes more pronounced. To streamline the reviewing process, I established a central database for storing prime editing experimental data. This database, called PE DB, is crafted to store and retrieve data from prime editing experiments, including guide RNA sequences, target DNA sequences, and the outcomes of editing. 
+
+Instead of a general PE knowledge base, PE DB is tailored to function as a benchmarking dataset for prime editing efficiency prediction models that often requires a lager training set to achieve good performance. Thus the smaller datasets produced by biological studies on specific prime editing systems, such as Nelson et al.\cite{nelsonEngineeredPegRNAsImprove2022}, are not included in this project. 
+
+However, popular validation datasets such as Anazalone et al.\cite{anzaloneSearchandreplaceGenomeEditing2019} that have direct reference in the modelling literature are included to allow more comprehensive comparison against the state of the art models, despite their small sizes.
 
 \subsubsection{Data Source}
 
@@ -167,7 +192,7 @@ For efficient filtering, scalable data retrieval, and improved conceptual clarit
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.95\textwidth]{diagrams/illustration/database_er.png}
-    \caption{ER diagram of the implemented PE-DB catalog schema (\texttt{study}, \texttt{dataset}, \texttt{scaffold}, \texttt{datasheet})}
+    \caption{ER diagram of the implemented PE-DB catalog schema (\nolinkurl{study}, \nolinkurl{dataset}, \nolinkurl{scaffold}, \nolinkurl{datasheet})}
     \label{fig:database_er}
 \end{figure}
 
@@ -175,11 +200,11 @@ As shown in \autoref{fig:database_er}, the implemented catalog schema consists o
 
 The \textbf{Study} table represents the publication level of the hierarchy and stores one row per source study. In the current implementation it contains a unique study name, optional publication date, and optional author string. Each study is linked to one or more datasets through a one-to-many relation.
 
-The \textbf{Dataset} table forms the intermediate layer and stores dataset-level metadata shared across many experiments. Implemented fields include dataset name, optional textual description, pegRNA delivery method, PE delivery method, edit scope, experimental method, target context, and the \texttt{standardizable} flag. In this project, \texttt{standardizable=True} means full conversion support to the shared standardized format, while \texttt{standardizable=False} means partial support (entry-level fields only). A foreign key (\texttt{study\_id}) links each dataset to its parent study.
+The \textbf{Dataset} table forms the intermediate layer and stores dataset-level metadata shared across many experiments. Implemented fields include dataset name, optional textual description, pegRNA delivery method, PE delivery method, edit scope, experimental method, target context, and the \nolinkurl{standardizable} flag. In this project, \nolinkurl{standardizable=True} means full conversion support to the shared standardized format, while \nolinkurl{standardizable=False} means partial support (entry-level fields only). A foreign key (\nolinkurl{study\_id}) links each dataset to its parent study.
 
 The \textbf{Scaffold} table stores pegRNA scaffold definitions as reusable reference records. Each scaffold has an explicit identifier, scaffold name, sequence, and optional description. This separates scaffold metadata from experiment-specific metadata and allows many datasheets to reuse the same scaffold entry.
 
-The experiment level is represented by the \textbf{Datasheet} table. Each datasheet points to one exported CSV file and stores the condition-specific metadata required by the API: file path, cell line, PE system, scaffold, number of samples, and an \texttt{updated\_at} timestamp. Foreign keys (\texttt{dataset\_id} and \texttt{scaffold\_id}) connect each datasheet to both its parent dataset and scaffold record.
+The experiment level is represented by the \textbf{Datasheet} table. Each datasheet points to one exported CSV file and stores the condition-specific metadata required by the API: file path, cell line, PE system, scaffold, number of samples, and an \nolinkurl{updated\_at} timestamp. Foreign keys (\nolinkurl{dataset\_id} and \nolinkurl{scaffold\_id}) connect each datasheet to both its parent dataset and scaffold record.
 
 Because most metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required. When users requires to filter using fields not represented in the catalog schema, we then go through each datasheet that fulfills metadata requirements and retrieve the rows satisfying the datasheet-level filter criteria.
 
@@ -200,17 +225,39 @@ A number of Python FastAPI endpoints were exposed, the most important endpoint i
 
 We are only considering models with general prime editing efficiency prediction capability, so various models in DeepPE, as well as MinsePIE, who are only designed to work on specific editing types are not included in this study. Additionally, PRIDICTv1 and PRIDICTv2 has minimal changes in term of architecture, thus only the more up to date PRIDICTv2 model is studied. This leaves us with three current state of the art deep learning models - OPED\cite{liuDesignPrimeeditingGuide2023}, DeepPrime\cite{yuPredictionEfficienciesDiverse2023} and PRIDICTv2\cite{mathisMachineLearningPrediction2024}. 
 
-A small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
+\begin{enumerate}
+    \item \textbf{DeepPrime}
+    
+    Yu et al.\cite{yuPredictionEfficienciesDiverse2023} developed DeepPrime as a hybrid convolutional and recurrent architecture that encodes inter-sequence features between the target DNA and pegRNA. One-hot target--pegRNA tensors are processed by a 2D/1D CNN stack followed by a bidirectional GRU, while 24 engineered sequence features (for example GC content, melting temperatures, and minimum folding energies) are passed through a multilayer perceptron; the two representations are concatenated to predict editing efficiency. The model was trained on the ClinVar library ($\sim$259,000 pegRNA--target pairs from 338,996 total measurements) and generalizes across substitutions, insertions, and deletions of up to 3~bp, PBS lengths of 1--17~nt, and RT lengths of 1--50~nt. On the held-out ClinVar test set ($n = 28{,}883$), DeepPrime achieved Pearson $r = 0.84$ and Spearman $R = 0.86$; performance remained high across nine edit-type subsets ($r = 0.76$--$0.89$, median $0.81$; $R = 0.70$--$0.88$, median $0.83$). The same study also introduced DeepPrime-FT, which fine-tunes the base model to 18 cell-line and PE-system combinations across seven cell types and eight PE variants.
+
+    \item \textbf{PRIDICTv2}
+    
+    Mathis et al.\cite{mathisMachineLearningPrediction2024} extended the original PRIDICT framework with PRIDICT2.0, an ensemble of attention-based bidirectional recurrent neural networks. The model averages predictions from two components: one pretrained on PRIDICT library~1 and fine-tuned on the new Library-Diverse screen, and another additionally pretrained on the DeepPrime ClinVar library before fine-tuning on Library-Diverse. Dual RNN encoders with attention layers process the wild-type and edited target sequence contexts separately, enabling predictions for substitutions, insertions, and deletions of up to 15~bp in both mismatch-repair-proficient (HEK293T, K562) and mismatch-repair-deficient (K562 MLH1$^{-/-}$) contexts, as well as in vivo in mouse liver. Library-Diverse comprises 22,619 pegRNA--target pairs in HEK293T and 22,752 in K562; in fivefold cross-validation, PRIDICT2.0 outperformed PRIDICT~v1 and six other machine-learning baselines (Extended Data Fig.~2) and showed consistently higher accuracy across edit types and edit lengths (Fig.~2a--c). Whereas PRIDICT~v1 reached Spearman $R = 0.85$ for intended edits on its 92,423-pegRNA library\cite{schwankgeraldPredictingPrimeEditing2023}, PRIDICT2.0 further improved generalization to longer edits and additional cellular contexts, including validation on endogenous loci and external datasets.
+
+    \item \textbf{OPED}
+    
+    Liu et al.\cite{liuDesignPrimeeditingGuide2023} developed Optimized Prime Editing Design (OPED), an interpretable nucleotide language model that applies transfer learning to pegRNA efficiency prediction. A transformer encoder extracts features from the 47-bp target sequence, while custom transformer decoders model the PBS and RT template sequences and their cross-sequence dependencies; attention weights provide post-hoc interpretability of individual nucleotide contributions. OPED was initially trained on the DeepPE high-throughput training set and validated on three held-out DeepPE subsets that were never used during training. On the HT-test, Type-test, and Position-test sets ($n = 4{,}457$, 403, and 200, respectively), OPED achieved Pearson $r = 0.769$, 0.612, and 0.628 and Spearman $R = 0.798$, 0.624, and 0.562; pegRNAs with higher predicted scores showed 8.0-, 3.1-, and 2.2-fold higher measured editing efficiencies. When retrained on the PRIDICT library~1 training split, OPED reported $r = 0.912$ and $R = 0.905$ for editing efficiency and $r = 0.810$ and $R = 0.826$ for unintended editing rates on the test set ($n = 18{,}485$), consistently outperforming DeepPE, Easy-Prime, and PRIDICT. Experimental validation with optimized pegRNAs yielded up to 44-fold higher editing efficiencies than competing design tools across PE2, PE3/PE3b, and ePE systems, and the authors released the OPEDVar database of optimized designs from over two billion candidate pegRNAs.
+\end{enumerate}
+
+On top of the three deep learning models, a small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
 
 \subsubsection{Synchronizing PyTorch Versions}
 
-Since the models were developed using different versions of PyTorch, it is necessary to synchronize the versions to ensure consistent behavior.
+The three deep learning models originally targeted markedly different releases: DeepPrime\cite{yuPredictionEfficienciesDiverse2023} was built against PyTorch 1.10--1.11, OPED\cite{liuDesignPrimeeditingGuide2023} against PyTorch 1.6--1.8, and PRIDICTv2\cite{mathisMachineLearningPrediction2024} against PyTorch 2.0.1. This poses a challenge for running them within a shared environment.
 
-% TODO: figure out synchronization process
+While DeepPrime and PRIDICTv2 distribute their weights as state dictionaries and consequently load without modification under a modern PyTorch, OPED published checkpoint is a full pickled model that fails to deserialize under PyTorch~$\geq$~2.0. We therefore converted the OPED checkpoint once into a weights-only state dictionary (\nolinkurl{*\_weights.pt}) by loading the original object under a compatibility shim that maps its legacy module paths to the vendored implementation, extracting \nolinkurl{state\_dict()}, and re-serializing it. The OPED wrapper was then updated to load this portable artifact by default, to deserialize with \nolinkurl{weights\_only=True}, and to reject the legacy full-pickle checkpoints with an actionable error rather than failing silently at runtime.
+
+
+Each vendor also ships multiple pretrained weight sets rather than a single checkpoint. DeepPrime provides 20 cell-line and PE-system variants (e.g.\ \nolinkurl{DeepPrime\_base}, \nolinkurl{DP\_variant\_293T\_PE4max\_Opti\_220728}), PRIDICTv2 provides 20 cross-validation runs across four experiment folders, and OPED provides one portable state dictionary. The ensemble wrappers expose these as named weight sets via \nolinkurl{list\_available\_weights()}, and the evaluation API accepts an optional \nolinkurl{weights} parameter so that a specific pretrained checkpoint can be selected without retraining. When \nolinkurl{weights} is omitted, the currently loaded or freshly trained model is used instead.
+
+We verified the unified environment in two ways. First, an automated smoke test loads representative checkpoints from all three vendors under the pinned PyTorch version and confirms that each deserializes as a state dictionary while OPED's legacy full-pickle artifact is explicitly rejected. Second, a root-level test runner executes these suites in isolated processes to avoid import collisions between the PE Database and PE Ensemble services. Together, these checks ensure that future framework upgrades cannot silently break compatibility with any of the vendored models.
 
 \subsubsection{Retraining Deep Learning Models}
 
-For a consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets. 
+For a more consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets using the same set of training strategies.
+
+PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED fine-tuning within this environment, providing a consistent optimizer and learning-rate scheduler interface without re-implementing each vendor's original training scripts.
+
 
 \subsection{PE Ensemble}
 
@@ -232,7 +279,7 @@ While PE Ensemble consumes PE DB’s API endpoints for data preprocessing, it al
 
 
 
-\subsection{Benchmarking}
+\subsection{Benchmarking Deep Learning Models}
 
 
 
@@ -260,7 +307,7 @@ To showcase this transfer learning + ensemble learning ability, we reproduced th
 \section{PE Database catalog: studies}
 \label{app:studies}
 
-The following five studies are registered in PE DB (\texttt{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
+The following five studies are registered in PE DB (\nolinkurl{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
 
 \begin{table}[ht]
     \centering
@@ -283,7 +330,7 @@ The following five studies are registered in PE DB (\texttt{catalog/studies.py})
 \section{PE Database catalog: datasets}
 \label{app:datasets}
 
-Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \texttt{on\_target} or \texttt{off\_target}; \emph{experimental method} is \texttt{in\_vitro} or \texttt{in\_vivo}; \emph{target context} is \texttt{endogenous} (native chromosomal locus) or \texttt{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \texttt{True} for full conversion to the shared standardized format and \texttt{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 20 datasets; subsections below repeat the catalog descriptions verbatim.
+Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \nolinkurl{on\_target} or \nolinkurl{off\_target}; \emph{experimental method} is \nolinkurl{in\_vitro} or \nolinkurl{in\_vivo}; \emph{target context} is \nolinkurl{endogenous} (native chromosomal locus) or \nolinkurl{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \nolinkurl{True} for full conversion to the shared standardized format and \nolinkurl{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 20 datasets; subsections below repeat the catalog descriptions verbatim.
 
 \begin{longtable}{@{}p{0.17\textwidth}p{0.09\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.08\textwidth}p{0.08\textwidth}p{0.10\textwidth}p{0.08\textwidth}@{}}
     \caption{Dataset catalog attributes in PE DB (summary).} \label{tab:app-datasets-summary} \\
