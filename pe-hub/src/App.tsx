@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import HubNavbar, {
+  type DatabasePage,
   type EnsemblePage,
   type HubSection,
 } from '@components/HubNavbar'
 import ServiceGate from '@components/ServiceGate'
 import HomePage from '@/pages/HomePage'
 import CatalogPage from '@apps/database/pages/CatalogPage'
+import ExportPage from '@apps/database/pages/ExportPage'
 import PredictionPage from '@apps/ensemble/pages/PredictionPage'
 import TrainingPage from '@apps/ensemble/pages/TrainingPage'
 import EnsembleToolPage from '@apps/ensemble/pages/EnsemblePage'
@@ -13,6 +15,7 @@ import DocumentationPage from '@apps/ensemble/pages/DocumentationPage'
 
 function App() {
   const [section, setSection] = useState<HubSection>('home')
+  const [databasePage, setDatabasePage] = useState<DatabasePage>('catalog')
   const [ensemblePage, setEnsemblePage] = useState<EnsemblePage>('predict')
 
   const renderContent = () => {
@@ -23,7 +26,8 @@ function App() {
     if (section === 'database') {
       return (
         <ServiceGate serviceId="pe-db">
-          <CatalogPage />
+          {databasePage === 'catalog' && <CatalogPage />}
+          {databasePage === 'export' && <ExportPage />}
         </ServiceGate>
       )
     }
@@ -47,6 +51,8 @@ function App() {
       <HubNavbar
         section={section}
         onSectionChange={setSection}
+        databasePage={databasePage}
+        onDatabasePageChange={setDatabasePage}
         ensemblePage={ensemblePage}
         onEnsemblePageChange={setEnsemblePage}
       />

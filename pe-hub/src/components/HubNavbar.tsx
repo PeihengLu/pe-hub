@@ -4,11 +4,14 @@ import { SERVICES, type ServiceId } from '@config/services'
 import { useServiceHealth } from '@context/ServiceHealthProvider'
 
 export type HubSection = 'home' | 'database' | 'ensemble'
+export type DatabasePage = 'catalog' | 'export'
 export type EnsemblePage = 'predict' | 'train' | 'ensemble' | 'docs'
 
 interface HubNavbarProps {
   section: HubSection
   onSectionChange: (section: HubSection) => void
+  databasePage: DatabasePage
+  onDatabasePageChange: (page: DatabasePage) => void
   ensemblePage: EnsemblePage
   onEnsemblePageChange: (page: EnsemblePage) => void
 }
@@ -33,6 +36,8 @@ function StatusDot({ serviceId }: { serviceId: ServiceId }) {
 export default function HubNavbar({
   section,
   onSectionChange,
+  databasePage,
+  onDatabasePageChange,
   ensemblePage,
   onEnsemblePageChange,
 }: HubNavbarProps) {
@@ -40,6 +45,11 @@ export default function HubNavbar({
     { id: 'home', label: 'Home' },
     { id: 'database', label: 'Database', serviceId: 'pe-db' },
     { id: 'ensemble', label: 'Ensemble', serviceId: 'pe-ensemble' },
+  ]
+
+  const databaseNav: { id: DatabasePage; label: string }[] = [
+    { id: 'catalog', label: 'Catalog' },
+    { id: 'export', label: 'Export' },
   ]
 
   const ensembleNav: { id: EnsemblePage; label: string }[] = [
@@ -86,6 +96,29 @@ export default function HubNavbar({
             ))}
           </div>
         </div>
+
+        {section === 'database' && (
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+            <span className="text-xs font-medium text-slate-500 self-center mr-2">
+              {SERVICES['pe-db'].shortName}
+            </span>
+            {databaseNav.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onDatabasePageChange(item.id)}
+                className={clsx(
+                  'px-3 py-1.5 rounded-md text-sm font-medium transition-all',
+                  databasePage === item.id
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {section === 'ensemble' && (
           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">

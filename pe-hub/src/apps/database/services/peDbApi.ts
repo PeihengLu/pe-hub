@@ -1,10 +1,14 @@
 import axios from 'axios'
 import { PE_DB_URL } from '@config/services'
+import type { ExportFormat, FilterAttributeKey } from '@apps/database/config/exportAttributes'
 
 const apiClient = axios.create({
   baseURL: PE_DB_URL,
   headers: {
     'Content-Type': 'application/json',
+  },
+  paramsSerializer: {
+    indexes: null,
   },
 })
 
@@ -39,11 +43,52 @@ export interface Datasheet {
   dataset_name?: string
 }
 
+export interface Scaffold {
+  id: number
+  name: string
+  sequence: string
+  description?: string
+}
+
 export interface Statistics {
   total_entries: number
   total_studies: number
   edit_type: { study: string; edit_type: string; count: number }[]
+  edit_length: { study: string; edit_length: number; count: number }[]
+  edit_scope: { study: string; edit_scope: string; count: number }[]
+  experimental_method: { study: string; experimental_method: string; count: number }[]
+  target_context: { study: string; target_context: string; count: number }[]
 }
+
+export interface ExportGroup {
+  study: string
+  dataset: string
+  cell_line: string
+  pe_system: string
+  num_records: number
+  columns: string[]
+  records: Record<string, unknown>[]
+}
+
+export interface ExportSkipped {
+  study: string
+  dataset: string
+  cell_line: string
+  pe_system: string
+  reason: string
+}
+
+export interface ExportResponse {
+  status: string
+  target_format: ExportFormat
+  groups: ExportGroup[]
+  skipped: ExportSkipped[]
+  total_records: number
+}
+
+export type ExportFilterParams = Partial<
+  Record<FilterAttributeKey, string[] | number[]>
+>
 
 export const peDbApi = {
   healthCheck: () => apiClient.get('/health'),
@@ -54,7 +99,12 @@ export const peDbApi = {
     apiClient.get<Datasheet[]>('/api/datasheets', {
       params: { ...(study && { study }), ...(dataset && { dataset }) },
     }),
+  listScaffolds: () => apiClient.get<Scaffold[]>('/api/scaffolds'),
   getStatistics: () => apiClient.get<Statistics>('/api/statistics'),
+  exportFiltered: (format: ExportFormat, filters: ExportFilterParams = {}) =>
+    apiClient.get<ExportResponse>('/api/filter', {
+      params: { format, ...filters },
+    }),
 }
 
 export default peDbApi

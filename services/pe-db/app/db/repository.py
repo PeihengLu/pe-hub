@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..config import get_settings
 from ..loaders import PEDataLoader
+from ..utils.json_utils import dataframe_to_json_records
 from .models import Dataset, Datasheet, Scaffold, Study
 from .schemas import (
     DatasetRead,
@@ -28,6 +29,28 @@ from .schemas import (
 )
 
 _EDIT_TYPE_CODES: dict[str, int] = {"sub": 0, "ins": 1, "del": 2}
+
+
+def _normalize_filter_values(values: Optional[str | list[str]]) -> Optional[list[str]]:
+    """Collapse absent, scalar, or repeated filter params into a deduped list."""
+    if values is None:
+        return None
+    if isinstance(values, str):
+        raw = [values]
+    else:
+        raw = list(values)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in raw:
+        token = value.strip()
+        if not token:
+            continue
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(token)
+    return normalized or None
 
 
 class CatalogRepository:
@@ -158,18 +181,18 @@ class CatalogRepository:
     def filter_all(
         self,
         *,
-        study_name: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        cell_line: Optional[str] = None,
-        pe_system: Optional[str] = None,
-        edit_type: Optional[str] = None,
-        edit_length: Optional[int] = None,
+        study_name: Optional[str | list[str]] = None,
+        dataset_name: Optional[str | list[str]] = None,
+        cell_line: Optional[str | list[str]] = None,
+        pe_system: Optional[str | list[str]] = None,
+        edit_type: Optional[str | list[str]] = None,
+        edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
-        edit_scope: Optional[str] = None,
-        experimental_method: Optional[str] = None,
-        target_context: Optional[str] = None,
-        scaffold_name: Optional[str] = None,
+        edit_scope: Optional[str | list[str]] = None,
+        experimental_method: Optional[str | list[str]] = None,
+        target_context: Optional[str | list[str]] = None,
+        scaffold_name: Optional[str | list[str]] = None,
         target_format: Optional[str] = None,
     ) -> list[DatasheetRead] | dict[str, Any]:
         """Apply catalog metadata filters, then per-edit filters on standardized data.
@@ -230,8 +253,8 @@ class CatalogRepository:
         rows: list[Datasheet],
         *,
         target_format: str,
-        edit_type: Optional[str] = None,
-        edit_length: Optional[int] = None,
+        edit_type: Optional[str | list[str]] = None,
+        edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
     ) -> dict[str, Any]:
@@ -241,7 +264,7 @@ class CatalogRepository:
         data_root = get_settings().data_root
         loader = PEDataLoader(data_root)
         converter = DataConverter(data_root)
-        edit_type_code = self._parse_edit_type(edit_type) if edit_type is not None else None
+        edit_type_codes = self._parse_edit_types(edit_type)
 
         groups: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
@@ -268,8 +291,8 @@ class CatalogRepository:
 
             filtered = self._filter_dataframe_entries(
                 data,
-                edit_type_code=edit_type_code,
-                edit_length=edit_length,
+                edit_type_codes=edit_type_codes,
+                edit_lengths=self._normalize_edit_lengths(edit_length),
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
             )
@@ -294,7 +317,7 @@ class CatalogRepository:
                     **descriptor,
                     "num_records": int(len(converted)),
                     "columns": list(converted.columns),
-                    "records": converted.to_dict(orient="records"),
+                    "records": dataframe_to_json_records(converted),
                 }
             )
 
@@ -329,7 +352,8 @@ class CatalogRepository:
         ).unique().all()
 
         loader = PEDataLoader(get_settings().data_root)
-        edit_type_code = self._parse_edit_type(edit_type) if edit_type is not None else None
+        edit_type_codes = self._parse_edit_types(edit_type)
+        edit_lengths = self._normalize_edit_lengths(edit_length)
 
         entry_records: list[dict[str, Any]] = []
         for row in rows:
@@ -340,8 +364,8 @@ class CatalogRepository:
                 continue
             filtered = self._filter_dataframe_entries(
                 data,
-                edit_type_code=edit_type_code,
-                edit_length=edit_length,
+                edit_type_codes=edit_type_codes,
+                edit_lengths=edit_lengths,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
             )
@@ -418,48 +442,67 @@ class CatalogRepository:
         self,
         stmt: Select[tuple[Datasheet]],
         *,
-        study_name: Optional[str] = None,
-        dataset_name: Optional[str] = None,
-        cell_line: Optional[str] = None,
-        pe_system: Optional[str] = None,
-        edit_scope: Optional[str] = None,
-        experimental_method: Optional[str] = None,
-        target_context: Optional[str] = None,
-        scaffold_name: Optional[str] = None,
+        study_name: Optional[str | list[str]] = None,
+        dataset_name: Optional[str | list[str]] = None,
+        cell_line: Optional[str | list[str]] = None,
+        pe_system: Optional[str | list[str]] = None,
+        edit_scope: Optional[str | list[str]] = None,
+        experimental_method: Optional[str | list[str]] = None,
+        target_context: Optional[str | list[str]] = None,
+        scaffold_name: Optional[str | list[str]] = None,
     ) -> Select[tuple[Datasheet]]:
-        if study_name is not None:
-            stmt = stmt.where(Study.name == study_name.strip().lower())
-        if dataset_name is not None:
-            stmt = stmt.where(Dataset.name == dataset_name.strip().lower())
-        if cell_line is not None:
-            stmt = stmt.where(Datasheet.cell_line == cell_line.strip().lower().replace("-", "_"))
-        if pe_system is not None:
-            stmt = stmt.where(Datasheet.pe_system == pe_system.strip().lower().replace("-", "_"))
-        if edit_scope is not None:
-            stmt = stmt.where(Dataset.edit_scope == edit_scope.strip().lower())
-        if experimental_method is not None:
+        studies = _normalize_filter_values(study_name)
+        if studies is not None:
+            stmt = stmt.where(Study.name.in_([value.lower() for value in studies]))
+        datasets = _normalize_filter_values(dataset_name)
+        if datasets is not None:
+            stmt = stmt.where(Dataset.name.in_([value.lower() for value in datasets]))
+        cell_lines = _normalize_filter_values(cell_line)
+        if cell_lines is not None:
             stmt = stmt.where(
-                Dataset.experimental_method == experimental_method.strip().lower()
+                Datasheet.cell_line.in_(
+                    [value.lower().replace("-", "_") for value in cell_lines]
+                )
             )
-        if target_context is not None:
-            stmt = stmt.where(Dataset.target_context == target_context.strip().lower())
-        if scaffold_name is not None:
-            normalized = scaffold_name.strip().lower()
+        pe_systems = _normalize_filter_values(pe_system)
+        if pe_systems is not None:
+            stmt = stmt.where(
+                Datasheet.pe_system.in_(
+                    [value.lower().replace("-", "_") for value in pe_systems]
+                )
+            )
+        scopes = _normalize_filter_values(edit_scope)
+        if scopes is not None:
+            stmt = stmt.where(Dataset.edit_scope.in_([value.lower() for value in scopes]))
+        methods = _normalize_filter_values(experimental_method)
+        if methods is not None:
+            stmt = stmt.where(
+                Dataset.experimental_method.in_([value.lower() for value in methods])
+            )
+        contexts = _normalize_filter_values(target_context)
+        if contexts is not None:
+            stmt = stmt.where(
+                Dataset.target_context.in_([value.lower() for value in contexts])
+            )
+        scaffolds = _normalize_filter_values(scaffold_name)
+        if scaffolds is not None:
             allowed = self._allowed_scaffold_names()
-            if normalized not in allowed:
+            normalized = [value.lower() for value in scaffolds]
+            unknown = sorted({value for value in normalized if value not in allowed})
+            if unknown:
                 raise ValueError(
                     "Unknown scaffold_name "
-                    f"{scaffold_name!r}; expected one of: {', '.join(sorted(allowed))}"
+                    f"{unknown!r}; expected one of: {', '.join(sorted(allowed))}"
                 )
-            stmt = stmt.join(Scaffold).where(func.lower(Scaffold.name) == normalized)
+            stmt = stmt.join(Scaffold).where(func.lower(Scaffold.name).in_(normalized))
         return stmt
 
     def _filter_rows_by_entries(
         self,
         rows: list[Datasheet],
         *,
-        edit_type: Optional[str] = None,
-        edit_length: Optional[int] = None,
+        edit_type: Optional[str | list[str]] = None,
+        edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
     ) -> list[DatasheetRead]:
@@ -472,7 +515,8 @@ class CatalogRepository:
             return [self._datasheet_to_read(row) for row in rows]
 
         loader = PEDataLoader(get_settings().data_root)
-        edit_type_code = self._parse_edit_type(edit_type) if edit_type is not None else None
+        edit_type_codes = self._parse_edit_types(edit_type)
+        edit_lengths = self._normalize_edit_lengths(edit_length)
         matched: list[DatasheetRead] = []
         for row in rows:
             if row.dataset is None or row.dataset.study is None:
@@ -482,8 +526,8 @@ class CatalogRepository:
                 continue
             filtered = self._filter_dataframe_entries(
                 data,
-                edit_type_code=edit_type_code,
-                edit_length=edit_length,
+                edit_type_codes=edit_type_codes,
+                edit_lengths=edit_lengths,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
             )
@@ -494,8 +538,8 @@ class CatalogRepository:
     @staticmethod
     def _entry_filters_active(
         *,
-        edit_type: Optional[str] = None,
-        edit_length: Optional[int] = None,
+        edit_type: Optional[str | list[str]] = None,
+        edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
     ) -> bool:
@@ -517,6 +561,30 @@ class CatalogRepository:
                 f"Unknown edit_type {edit_type!r}; expected one of: sub, ins, del"
             )
         return _EDIT_TYPE_CODES[key]
+
+    @classmethod
+    def _parse_edit_types(cls, edit_type: Optional[str | list[str]]) -> Optional[list[int]]:
+        values = _normalize_filter_values(edit_type)
+        if values is None:
+            return None
+        return [cls._parse_edit_type(value) for value in values]
+
+    @staticmethod
+    def _normalize_edit_lengths(
+        edit_length: Optional[int | list[int]],
+    ) -> Optional[list[int]]:
+        if edit_length is None:
+            return None
+        if isinstance(edit_length, int):
+            return [edit_length]
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for value in edit_length:
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        return normalized or None
 
     def _allowed_scaffold_names(self) -> set[str]:
         names = self._session.scalars(select(func.lower(Scaffold.name))).all()
@@ -542,8 +610,8 @@ class CatalogRepository:
     def _filter_dataframe_entries(
         df: pd.DataFrame,
         *,
-        edit_type_code: Optional[int] = None,
-        edit_length: Optional[int] = None,
+        edit_type_codes: Optional[list[int]] = None,
+        edit_lengths: Optional[list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
     ) -> pd.DataFrame:
@@ -551,13 +619,13 @@ class CatalogRepository:
             return df
 
         mask = pd.Series(True, index=df.index)
-        if edit_length is not None:
+        if edit_lengths is not None:
             length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
             if length_col not in df.columns:
                 return df.iloc[0:0]
-            mask &= pd.to_numeric(df[length_col], errors="coerce") == edit_length
+            mask &= pd.to_numeric(df[length_col], errors="coerce").isin(edit_lengths)
 
-        if edit_type_code is not None:
+        if edit_type_codes is not None:
             type_columns = ("type_sub", "type_ins", "type_del")
             if not set(type_columns).issubset(df.columns):
                 return df.iloc[0:0]
@@ -566,7 +634,10 @@ class CatalogRepository:
                 1: df["type_ins"].astype(bool),
                 2: df["type_del"].astype(bool),
             }
-            mask &= type_masks[edit_type_code]
+            type_mask = pd.Series(False, index=df.index)
+            for code in edit_type_codes:
+                type_mask |= type_masks[code]
+            mask &= type_mask
 
         if edit_efficiency_min is not None or edit_efficiency_max is not None:
             if "editing_efficiency" not in df.columns:

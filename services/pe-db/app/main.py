@@ -25,6 +25,7 @@ from .db.schemas import (
 )
 from .db.session import get_session
 from .loaders import DataLoader
+from .utils.json_utils import dataframe_to_json_records
 
 logging.basicConfig(
     level=logging.INFO,
@@ -146,18 +147,18 @@ async def list_datasheets(
 
 @app.get("/api/filter")
 async def filter_data(
-    study: Optional[str] = Query(None, description="Filter by study key (e.g. deepprime)."),
-    dataset: Optional[str] = Query(None, description="Filter by dataset name within the study."),
-    cell_line: Optional[str] = Query(None, description="Filter by cell line (e.g. HEK293T)."),
-    pe_system: Optional[str] = Query(None, description="Filter by PE system (e.g. PE2max)."),
-    edit_type: Optional[str] = Query(None, description="Filter edits by type (sub, ins, del)."),
-    edit_length: Optional[int] = Query(None, description="Filter edits by length."),
+    study: Optional[list[str]] = Query(None, description="Filter by study key (e.g. deepprime)."),
+    dataset: Optional[list[str]] = Query(None, description="Filter by dataset name within the study."),
+    cell_line: Optional[list[str]] = Query(None, description="Filter by cell line (e.g. HEK293T)."),
+    pe_system: Optional[list[str]] = Query(None, description="Filter by PE system (e.g. PE2max)."),
+    edit_type: Optional[list[str]] = Query(None, description="Filter edits by type (sub, ins, del)."),
+    edit_length: Optional[list[int]] = Query(None, description="Filter edits by length."),
     edit_efficiency_min: Optional[float] = Query(None, description="Minimum editing efficiency."),
     edit_efficiency_max: Optional[float] = Query(None, description="Maximum editing efficiency."),
-    edit_scope: Optional[str] = Query(None, description="Filter by edit scope (on_target, off_target)."),
-    experimental_method: Optional[str] = Query(None, description="Filter by experimental method."),
-    target_context: Optional[str] = Query(None, description="Filter by target context."),
-    scaffold_name: Optional[str] = Query(None, description="Filter by pegRNA scaffold name."),
+    edit_scope: Optional[list[str]] = Query(None, description="Filter by edit scope (on_target, off_target)."),
+    experimental_method: Optional[list[str]] = Query(None, description="Filter by experimental method."),
+    target_context: Optional[list[str]] = Query(None, description="Filter by target context."),
+    scaffold_name: Optional[list[str]] = Query(None, description="Filter by pegRNA scaffold name."),
     format_: Optional[Literal["std", "oped", "deepprime", "pridict", "pridict2"]] = Query(
         None,
         alias="format",
@@ -279,7 +280,7 @@ async def get_data(
         return {
             "status": "success",
             "metadata": metadata,
-            "data": data.to_dict(orient="records"),
+            "data": dataframe_to_json_records(data),
         }
 
     except FileNotFoundError as exc:
