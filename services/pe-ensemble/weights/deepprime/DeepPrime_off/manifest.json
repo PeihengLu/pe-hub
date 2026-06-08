@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-06-08T15:15:50Z",
+  "files": [
+    "final_model_0.pt",
+    "final_model_1.pt",
+    "final_model_2.pt",
+    "final_model_3.pt",
+    "final_model_4.pt",
+    "mean.csv",
+    "std.csv"
+  ],
+  "format": "deepprime_ensemble",
+  "id": "DeepPrime_off",
+  "label": "DeepPrime_off",
+  "metrics": null,
+  "model": "deepprime",
+  "notes": null,
+  "provenance": {
+    "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DeepPrime_off"
+  },
+  "source": "vendor",
+  "training": null
+}

@@ -1,0 +1,38 @@
+{
+  "created_at": "2026-06-08T15:15:50Z",
+  "files": [
+    "final_model_0.pt",
+    "final_model_1.pt",
+    "final_model_10.pt",
+    "final_model_11.pt",
+    "final_model_12.pt",
+    "final_model_13.pt",
+    "final_model_14.pt",
+    "final_model_15.pt",
+    "final_model_16.pt",
+    "final_model_17.pt",
+    "final_model_18.pt",
+    "final_model_19.pt",
+    "final_model_2.pt",
+    "final_model_3.pt",
+    "final_model_4.pt",
+    "final_model_5.pt",
+    "final_model_6.pt",
+    "final_model_7.pt",
+    "final_model_8.pt",
+    "final_model_9.pt",
+    "mean.csv",
+    "std.csv"
+  ],
+  "format": "deepprime_ensemble",
+  "id": "DP_variant_NIH_NRCHPE4max_Opti_220815",
+  "label": "DP_variant_NIH_NRCHPE4max_Opti_220815",
+  "metrics": null,
+  "model": "deepprime",
+  "notes": null,
+  "provenance": {
+    "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DP_variant_NIH_NRCHPE4max_Opti_220815"
+  },
+  "source": "vendor",
+  "training": null
+}

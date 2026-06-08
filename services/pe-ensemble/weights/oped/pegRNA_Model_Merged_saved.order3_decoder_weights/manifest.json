@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-06-08T15:15:50Z",
+  "files": [
+    "weights.pt"
+  ],
+  "format": "oped_state_dict",
+  "id": "pegRNA_Model_Merged_saved.order3_decoder_weights",
+  "label": "pegRNA_Model_Merged_saved.order3_decoder_weights",
+  "metrics": null,
+  "model": "oped",
+  "notes": null,
+  "provenance": {
+    "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/oped/pegRNA_PredictingCodes/Model_Trained/pegRNA_Model_Merged_saved.order3_decoder_weights.pt"
+  },
+  "source": "vendor",
+  "training": null
+}

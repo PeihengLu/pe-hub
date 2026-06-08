@@ -16,6 +16,7 @@ import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 VENDOR_MODELS = REPO_ROOT / "vendor" / "models"
+WEIGHTS_ROOT = REPO_ROOT / "services" / "pe-ensemble" / "weights"
 
 
 def _is_state_dict(obj) -> bool:
@@ -32,9 +33,11 @@ def test_torch_is_unified_2x():
 
 
 def test_deepprime_weights_load_as_state_dict():
-    weights = sorted(
+    registry_weights = sorted(WEIGHTS_ROOT.glob("deepprime/DeepPrime_base/*.pt"))
+    vendor_weights = sorted(
         VENDOR_MODELS.glob("deepprime/models/DeepPrime/DeepPrime_base/*.pt")
     )
+    weights = registry_weights or vendor_weights
     if not weights:
         pytest.skip("DeepPrime weights not available")
     sd = torch.load(weights[0], map_location="cpu", weights_only=True)
@@ -42,11 +45,15 @@ def test_deepprime_weights_load_as_state_dict():
 
 
 def test_pridict2_weights_load_as_state_dict():
-    components = sorted(
+    registry_components = sorted(
+        WEIGHTS_ROOT.glob("pridict2/**/model_statedict/decoder_*.pkl")
+    )
+    vendor_components = sorted(
         VENDOR_MODELS.glob(
             "pridict2/trained_models/**/model_statedict/decoder_*.pkl"
         )
     )
+    components = registry_components or vendor_components
     if not components:
         pytest.skip("PRIDICT2 weights not available")
     sd = torch.load(components[0], map_location="cpu", weights_only=True)
@@ -54,12 +61,14 @@ def test_pridict2_weights_load_as_state_dict():
 
 
 def test_oped_weights_load_as_state_dict():
-    weights = VENDOR_MODELS.joinpath(
+    registry_weights = WEIGHTS_ROOT / "oped" / "pegRNA_Model_Merged_saved.order3_decoder_weights" / "weights.pt"
+    vendor_weights = VENDOR_MODELS.joinpath(
         "oped",
         "pegRNA_PredictingCodes",
         "Model_Trained",
         "pegRNA_Model_Merged_saved.order3_decoder_weights.pt",
     )
+    weights = registry_weights if registry_weights.is_file() else vendor_weights
     if not weights.is_file():
         pytest.skip("OPED state_dict weights not available")
     sd = torch.load(weights, map_location="cpu", weights_only=True)

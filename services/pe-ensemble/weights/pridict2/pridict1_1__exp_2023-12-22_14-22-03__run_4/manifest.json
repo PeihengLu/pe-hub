@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-06-08T15:15:50Z",
+  "files": [],
+  "format": "pridict2_run",
+  "id": "pridict1_1__exp_2023-12-22_14-22-03__run_4",
+  "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_4",
+  "metrics": null,
+  "model": "pridict2",
+  "notes": null,
+  "provenance": {
+    "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/pridict2/trained_models/pridict1_1/exp_2023-12-22_14-22-03/train_val/run_4"
+  },
+  "source": "vendor",
+  "training": null
+}

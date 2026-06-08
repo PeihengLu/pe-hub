@@ -24,16 +24,36 @@ export interface ModelsListResponse {
   count: number
 }
 
+export interface WeightSet {
+  id: string
+  model: string
+  label: string
+  source: 'vendor' | 'trained' | string
+  format?: string
+  created_at?: string
+  metrics?: Record<string, unknown>
+  notes?: string
+}
+
+export interface ModelWeightsResponse {
+  model: string
+  weights: WeightSet[]
+  count: number
+}
+
 export interface PredictionRequest {
   model_name: string
   sequences: string[]
   cell_type?: string
+  weights?: string
 }
 
 export interface PredictionResponse {
   predictions: number[]
   model: string
+  weights?: string | null
   timestamp: string
+  message?: string
 }
 
 export interface TrainingRequest {
@@ -56,6 +76,7 @@ export interface TrainingRequest {
   edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   model_kwargs?: Record<string, unknown>
+  notes?: string
 }
 
 export interface EvaluationRequest {
@@ -123,6 +144,8 @@ export interface ExportResponse {
 export const api = {
   healthCheck: () => apiClient.get('/health'),
   listModels: () => apiClient.get<ModelsListResponse>('/models'),
+  listModelWeights: (modelName: string) =>
+    apiClient.get<ModelWeightsResponse>(`/models/${modelName}/weights`),
   getModel: (name: string) => apiClient.get(`/models/${name}`),
   predict: (request: PredictionRequest): Promise<{ data: PredictionResponse }> =>
     apiClient.post('/predict', request),

@@ -10,7 +10,10 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from datetime import datetime, timezone
+
 from .models.model_factory import ModelFactory
+from .models import weights_registry
 from pe_common.constants import DEVICE
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,7 @@ MODEL_PATH = os.getenv("MODEL_PATH", "/app/vendor/models")
 DEEPPRIME_PATH = os.getenv("DEEPPRIME_PATH", f"{MODEL_PATH}/deepprime")
 OPED_PATH = os.getenv("OPED_PATH", f"{MODEL_PATH}/oped")
 PRIDICT2_PATH = os.getenv("PRIDICT2_PATH", f"{MODEL_PATH}/pridict2")
+WEIGHTS_ROOT = os.getenv("WEIGHTS_ROOT", str(weights_registry.weights_root()))
 
 # Store loaded models in memory
 _loaded_models: Dict[str, Any] = {}
@@ -79,6 +83,7 @@ class PredictionRequest(BaseModel):
     model_name: str
     sequences: List[str]
     cell_type: Optional[str] = None
+    weights: Optional[str] = None
 
 
 class TrainingRequest(BaseModel):
@@ -101,6 +106,7 @@ class TrainingRequest(BaseModel):
     scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
     model_kwargs: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
 
 
 FilterScalar = Union[str, int]
@@ -143,6 +149,66 @@ MODEL_FORMAT = {
     "pridict2": "pridict2",
     "oped": "oped",
 }
+
+
+def _training_metadata_from_request(
+    request: TrainingRequest,
+    *,
+    n_rows: int,
+    train_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    filters = {
+        key: _normalize_filter_param(getattr(request, key))
+        for key in (
+            "study",
+            "dataset",
+            "cell_line",
+            "pe_system",
+            "edit_type",
+            "edit_length",
+            "edit_scope",
+            "experimental_method",
+            "target_context",
+            "scaffold_name",
+        )
+    }
+    filters = {k: v for k, v in filters.items() if v is not None}
+    metrics: Dict[str, Any] = {}
+    if "validation_metrics" in train_result:
+        metrics["validation"] = train_result["validation_metrics"]
+    elif "val_pearson" in train_result:
+        metrics["validation"] = {
+            "pearson": train_result.get("val_pearson"),
+            "spearman": train_result.get("val_spearman"),
+        }
+    return {
+        "training": {
+            "dataset_source": request.dataset_source,
+            "dataset_name": request.dataset_name,
+            "filters": filters,
+            "split": request.split.model_dump(),
+            "hyperparameters": request.hyperparameters or {},
+            "model_kwargs": request.model_kwargs or {},
+            "n_train_rows": n_rows,
+        },
+        "metrics": metrics,
+        "notes": request.notes,
+    }
+
+
+def _default_weight_id_for_model(model_name: str, model: Any) -> Optional[str]:
+    if model_name == "deepprime":
+        from deepprime.models.load_model import load_deepprime
+
+        _, model_type = load_deepprime(
+            getattr(model, "pe_system", "PE2max"),
+            getattr(model, "cell_type", "HEK293T"),
+            silent=True,
+        )
+        return model_type
+    if model_name == "oped":
+        return "pegRNA_Model_Merged_saved.order3_decoder_weights"
+    return None
 
 
 def _normalize_filter_param(value: Optional[FilterValue]) -> Optional[List[FilterScalar]]:
@@ -437,15 +503,11 @@ async def list_models():
 
 @app.get("/models/{model_name}/weights")
 async def list_model_weights(model_name: str):
-    """List the bundled pre-trained weight sets available for a model."""
+    """List registered weight sets available for a model."""
     if model_name not in SUPPORTED_MODELS:
         raise HTTPException(status_code=400, detail="Invalid model name")
-    model_class = ModelFactory._models[model_name]
-    list_weights = getattr(model_class, "list_available_weights", None)
-    if list_weights is None:
-        return {"model": model_name, "weights": [], "count": 0}
-    weights = list_weights()
-    return {"model": model_name, "weights": weights, "count": len(weights)}
+    entries = weights_registry.list_entries(model_name)
+    return {"model": model_name, "weights": entries, "count": len(entries)}
 
 
 @app.post("/predict")
@@ -453,13 +515,33 @@ async def predict(request: PredictionRequest):
     """Get predictions from a model"""
     if request.model_name not in ["deepprime", "pridict", "pridict2", "oped"]:
         raise HTTPException(status_code=400, detail="Invalid model name")
-    
-    model = ModelFactory.create_model(request.model_name, device=torch.device(DEVICE))
+
+    model_kwargs: Dict[str, Any] = {}
+    if request.cell_type:
+        model_kwargs["cell_type"] = request.cell_type
+
+    weight_id: Optional[str] = request.weights
+    try:
+        model = ModelFactory.create_model(
+            request.model_name,
+            device=torch.device(DEVICE),
+            **model_kwargs,
+        )
+        if not weight_id:
+            weight_id = _default_weight_id_for_model(request.model_name, model)
+        if weight_id:
+            model.load_weights_by_name(weight_id)
+        else:
+            model.load_model()
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return {
         "model": request.model_name,
+        "weights": weight_id,
         "predictions": [],
-        "message": "Prediction endpoint - implementation pending"
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": "Prediction endpoint - implementation pending",
     }
 
 
@@ -505,6 +587,19 @@ async def train_model(request: TrainingRequest):
             train_df = model.prepare_data(train_df)
 
         result = model.train(train_df, hyperparameters=request.hyperparameters)
+
+        metadata = _training_metadata_from_request(
+            request,
+            n_rows=int(len(train_df)),
+            train_result=result,
+        )
+        weights_id = weights_registry.register_trained_model(
+            model_name,
+            model,
+            metadata=metadata,
+            notes=request.notes,
+        )
+        entry = weights_registry.get_manifest(model_name, weights_id)
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except HTTPException:
@@ -518,6 +613,8 @@ async def train_model(request: TrainingRequest):
         "status": "success",
         "split_strategy": request.split.split_strategy,
         "n_rows": int(len(train_df)),
+        "weights_id": weights_id,
+        "weights_label": entry.get("label"),
         "result": result,
     }
 

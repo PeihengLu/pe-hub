@@ -19,6 +19,13 @@ version and code layout:
 `services/pe-ensemble/tests/test_weights_loading.py` loads all three under the
 pinned torch as a regression guard.
 
+### Weights location (pe-ensemble)
+
+Pretrained weight files live permanently in `services/pe-ensemble/weights/`
+(versioned in the main repo). Vendor submodules retain source code and non-weight
+assets (e.g. PRIDICT2 dataset indexes); checkpoint binaries are no longer stored
+here. See `services/pe-ensemble/weights/README.md`.
+
 ### OPED legacy full-pickle weights (do not load directly)
 
 OPED also ships two **full-pickle** checkpoints

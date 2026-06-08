@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
 from .vendor_path import resolve_vendor_models_path
+from . import weights_registry
 from pe_common.model_interface import BasePEModel
 from pe_common.constants import DEVICE, DATA_ROOT
 from pe_common.sequence_utils import (
@@ -126,41 +127,42 @@ class OPEDModelWrapper(BasePEModel):
         super().__init__('OPED', device)
         self.model_dir = None
 
+    DEFAULT_WEIGHT_ID = "pegRNA_Model_Merged_saved.order3_decoder_weights"
+
     @staticmethod
     def list_available_weights() -> List[str]:
-        """List the names of pre-trained OPED weight sets bundled in vendor/models.
-
-        OPED ships a single portable state_dict; each name is the file stem of a
-        ``*_weights.pt`` checkpoint in ``Model_Trained``. Pass one of these names
-        to :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
-        """
-        model_root = resolve_vendor_models_path(
-            "oped", "pegRNA_PredictingCodes", "Model_Trained"
-        )
-        return sorted(p.stem for p in model_root.glob("*_weights.pt"))
+        """List registered OPED weight set IDs."""
+        return weights_registry.list_weight_ids("oped")
 
     def load_weights_by_name(self, name: str) -> None:
-        """Load a named pre-trained OPED weight set (or a path to a state_dict).
-
-        Args:
-            name: A weight set name from :meth:`list_available_weights`, or a
-                path to an OPED state_dict file.
-        """
+        """Load a registered OPED weight set by ID, file path, or entry directory."""
         candidate = Path(name).expanduser()
         if candidate.is_file():
             self.load_model(str(candidate))
             return
+        if candidate.is_dir():
+            weights_file = candidate / "weights.pt"
+            if weights_file.is_file():
+                self.load_model(str(weights_file))
+                return
+
+        try:
+            entry_dir = weights_registry.resolve_dir("oped", name)
+            self.load_model(str(entry_dir / "weights.pt"))
+            return
+        except ValueError:
+            pass
 
         model_root = resolve_vendor_models_path(
             "oped", "pegRNA_PredictingCodes", "Model_Trained"
         )
         target = model_root / (name if name.endswith(".pt") else f"{name}.pt")
-        if not target.is_file():
-            raise ValueError(
-                f"Unknown OPED weights '{name}'. "
-                f"Available: {self.list_available_weights()}"
-            )
-        self.load_model(str(target))
+        if target.is_file():
+            self.load_model(str(target))
+            return
+        raise ValueError(
+            f"Unknown OPED weights '{name}'. Available: {self.list_available_weights()}"
+        )
 
     def _resolve_weights_path(self, model_path: Optional[str]) -> str:
         """Resolve a usable OPED state_dict path.
@@ -169,7 +171,11 @@ class OPEDModelWrapper(BasePEModel):
         or None (uses the bundled default inside vendor/models).
         """
         if model_path is None:
-            return str(resolve_vendor_models_path(*self.DEFAULT_WEIGHTS_RELPATH))
+            try:
+                entry_dir = weights_registry.resolve_dir("oped", self.DEFAULT_WEIGHT_ID)
+                return str(entry_dir / "weights.pt")
+            except ValueError:
+                return str(resolve_vendor_models_path(*self.DEFAULT_WEIGHTS_RELPATH))
 
         candidate = Path(model_path).expanduser()
         if candidate.is_dir():

@@ -6,6 +6,7 @@ import torch
 import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
+from . import weights_registry
 from pe_common.training import pearson_spearman
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -126,32 +127,31 @@ class PRIDICT2ModelWrapper(BasePEModel):
     
     @staticmethod
     def list_available_weights() -> List[str]:
-        """List the names of pre-trained PRIDICT2 weight sets bundled in vendor/models.
-
-        Each name identifies a trained run directory in the form
-        ``<model_id>/<experiment>/run_<n>`` (for example
-        ``pridict1_1/exp_2023-08-25_20-55-53/run_2``). Pass one of these names
-        to :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
-        """
-        trained_root = resolve_vendor_models_path("pridict2", "trained_models")
-        names: List[str] = []
-        for run_dir in sorted(trained_root.glob("*/*/train_val/run_*")):
-            if (run_dir / "model_statedict").is_dir() and (run_dir / "config").is_dir():
-                # Drop the fixed 'train_val' segment to keep names compact.
-                parts = [p for p in run_dir.relative_to(trained_root).parts if p != "train_val"]
-                names.append("/".join(parts))
-        return names
+        """List registered PRIDICT2 weight set IDs."""
+        return weights_registry.list_weight_ids("pridict2")
 
     def _resolve_weights_dir(self, name: str) -> Path:
-        """Resolve a weight set name (or directory path) to a run directory."""
+        """Resolve a weight set ID (or directory path) to a run directory."""
         candidate = Path(name).expanduser()
         if candidate.is_dir() and (candidate / "model_statedict").is_dir():
             return candidate
 
+        registry_id = name.replace("/", "__")
+        try:
+            return weights_registry.resolve_dir("pridict2", registry_id)
+        except ValueError:
+            pass
+
+        if "__" in name:
+            parts = name.split("__")
+            if len(parts) == 3:
+                trained_root = resolve_vendor_models_path("pridict2", "trained_models")
+                legacy = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
+                if (legacy / "model_statedict").is_dir():
+                    return legacy
+
         trained_root = resolve_vendor_models_path("pridict2", "trained_models")
         parts = name.split("/")
-        # Accept the compact '<model_id>/<experiment>/run_<n>' form by
-        # reinserting the 'train_val' segment used on disk.
         if len(parts) == 3:
             resolved = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
         else:
@@ -492,25 +492,24 @@ class PRIDICT2ModelWrapper(BasePEModel):
         return results
     
     def save_model(self, model_path: str) -> None:
-        """
-        Save trained PRIDICT2 model
-        
-        Args:
-            model_path: Directory path to save the model components
-        """
+        """Copy the loaded PRIDICT2 run directory into ``model_path``."""
         if not self.is_trained:
             raise ValueError("No trained model to save.")
-        
+        if not self.loaded_model_dir:
+            raise ValueError("No loaded PRIDICT2 run directory to save.")
+
         import os
-        
+        import shutil
+
+        src = Path(self.loaded_model_dir)
         os.makedirs(model_path, exist_ok=True)
-        
-        # PRIDICT2 models are complex with multiple components
-        # This would require saving all model components separately
-        raise NotImplementedError(
-            "PRIDICT2 model saving not yet fully implemented. "
-            "Models typically consist of multiple PyTorch modules that need to be saved separately."
-        )
+        for name in ("model_statedict", "config"):
+            src_sub = src / name
+            if src_sub.is_dir():
+                dest_sub = Path(model_path) / name
+                if dest_sub.exists():
+                    shutil.rmtree(dest_sub)
+                shutil.copytree(src_sub, dest_sub)
     
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""

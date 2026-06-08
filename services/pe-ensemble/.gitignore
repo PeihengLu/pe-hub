@@ -1,0 +1,3 @@
+# Transient registry lock/write artifacts only (weight files are versioned in-repo)
+weights/registry.json.tmp
+weights/.registry.lock

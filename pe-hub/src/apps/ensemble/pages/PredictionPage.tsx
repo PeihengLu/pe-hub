@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from 'react-query'
 import { Play } from 'lucide-react'
 import Card from '@components/Card'
@@ -8,6 +8,7 @@ import api from '@apps/ensemble/services/api'
 
 export default function PredictionPage() {
   const [modelName, setModelName] = useState('deepprime')
+  const [weightId, setWeightId] = useState('')
   const [sequences, setSequences] = useState('')
   const [cellType, setCellType] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -20,11 +21,29 @@ export default function PredictionPage() {
     select: (response) => response.data.models,
   })
 
+  const {
+    data: weightSets,
+    isLoading: weightsLoading,
+    isError: weightsError,
+  } = useQuery(
+    ['model-weights', modelName],
+    () => api.listModelWeights(modelName),
+    {
+      select: (response) => response.data.weights,
+      enabled: Boolean(modelName),
+    }
+  )
+
+  useEffect(() => {
+    setWeightId('')
+  }, [modelName])
+
   const predictMutation = useMutation(
     () => api.predict({
       model_name: modelName,
       sequences: sequences.split('\n').filter(s => s.trim()),
       cell_type: cellType || undefined,
+      weights: weightId || undefined,
     }),
     {
       onSuccess: (response) => {
@@ -45,11 +64,11 @@ export default function PredictionPage() {
     predictMutation.mutate()
   }
 
-  if (modelsLoading) return <LoadingSpinner message="Loading models..." />
+  if (modelsLoading || weightsLoading) return <LoadingSpinner message="Loading models..." />
 
-  if (modelsError) {
+  if (modelsError || weightsError) {
     return (
-      <ErrorAlert message="Could not load models from the Ensemble API. Check that the service is running and reachable." />
+      <ErrorAlert message="Could not load models or weights from the Ensemble API. Check that the service is running and reachable." />
     )
   }
 
@@ -58,7 +77,7 @@ export default function PredictionPage() {
       {/* Introduction Panel */}
       <Card className="lg:col-span-3" title="Prime Editing Prediction">
         <p className="text-slate-600">
-          Use the interface below to submit DNA sequences for Prime Editing efficiency prediction using a pretrained model. Enter one sequence per line. Select the model, cell type and PE system as needed, then click "Predict" to see the results. If a matched model weight is not found, the default weights from their original study will be used.
+          Use the interface below to submit DNA sequences for Prime Editing efficiency prediction. Select a model and weight set, enter one sequence per line, then click Predict. Leave the weight set as default to use the original study weights for that model.
         </p>
       </Card>
 
@@ -77,6 +96,25 @@ export default function PredictionPage() {
               {models?.map((model) => (
                 <option key={model.name} value={model.name}>
                   {model.name} - {model.description}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Weight Set
+            </label>
+            <select
+              value={weightId}
+              onChange={(e) => setWeightId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">Default (original study weights)</option>
+              {weightSets?.map((weight) => (
+                <option key={weight.id} value={weight.id}>
+                  {weight.label}
+                  {weight.source === 'vendor' ? ' [vendor]' : ''}
                 </option>
               ))}
             </select>
@@ -131,6 +169,11 @@ export default function PredictionPage() {
           <div className="space-y-4">
             <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
               <p className="text-sm text-slate-600">Model: {predictMutation.data.data.model}</p>
+              {predictMutation.data.data.weights && (
+                <p className="text-sm text-slate-600 mt-1">
+                  Weights: {predictMutation.data.data.weights}
+                </p>
+              )}
               <p className="text-sm text-slate-600 mt-1">
                 Timestamp: {new Date(predictMutation.data.data.timestamp).toLocaleString()}
               </p>

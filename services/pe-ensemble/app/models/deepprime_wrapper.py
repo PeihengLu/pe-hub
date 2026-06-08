@@ -9,7 +9,10 @@ from torch.utils.data import DataLoader, Dataset
 
 import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
+from pathlib import Path
+
 from .vendor_path import resolve_vendor_models_path
+from . import weights_registry
 
 # Ensure vendor models are importable in local development
 _vendor_root = resolve_vendor_models_path()
@@ -161,49 +164,54 @@ class DeepPrimeModelWrapper(BasePEModel):
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
         Load pre-trained DeepPrime model
-        
+
         Args:
-                        model_path: Optional custom model path. If None, uses default model from repository.
+            model_path: Optional registry entry directory or legacy vendor path.
+                If None, loads the default variant for ``pe_system``/``cell_type``.
         """
         from glob import glob
         from deepprime.models.load_model import load_deepprime
-        
-        if model_path:
-            # Custom model path
-            model_path = str(model_path)
-            if model_path.endswith(".pt"):
-                self.model_dir = os.path.dirname(os.path.dirname(model_path))
-                self.model_type = os.path.basename(os.path.dirname(model_path))
-            else:
-                self.model_dir = os.path.dirname(model_path)
-                self.model_type = os.path.basename(model_path.rstrip("/"))
-        else:
-            # Use default model from repository
-            self.model_dir, self.model_type = load_deepprime(
-                self.pe_system, 
-                self.cell_type, 
-                silent=True
+        from deepprime.src.dprime import GeneInteractionModel
+
+        if model_path is None:
+            _, model_type = load_deepprime(
+                self.pe_system,
+                self.cell_type,
+                silent=True,
             )
-        
-        # Load normalization parameters
-        mean_path = f'{self.model_dir}/DeepPrime_base/mean.csv'
-        std_path = f'{self.model_dir}/DeepPrime_base/std.csv'
-        
+            self.load_weights_by_name(model_type)
+            return
+
+        entry = Path(str(model_path)).expanduser()
+        if entry.is_dir() and (entry / "mean.csv").is_file() and list(entry.glob("*.pt")):
+            self.model_dir = str(entry)
+            self.model_type = entry.name
+            mean_path = entry / "mean.csv"
+            std_path = entry / "std.csv"
+            model_files = sorted(entry.glob("*.pt"))
+        elif model_path.endswith(".pt"):
+            self.model_dir = os.path.dirname(os.path.dirname(model_path))
+            self.model_type = os.path.basename(os.path.dirname(model_path))
+            mean_path = Path(f"{self.model_dir}/DeepPrime_base/mean.csv")
+            std_path = Path(f"{self.model_dir}/DeepPrime_base/std.csv")
+            model_files = glob(f"{self.model_dir}/{self.model_type}/*.pt")
+        else:
+            self.model_dir = os.path.dirname(str(model_path))
+            self.model_type = os.path.basename(str(model_path).rstrip("/"))
+            mean_path = Path(f"{self.model_dir}/DeepPrime_base/mean.csv")
+            std_path = Path(f"{self.model_dir}/DeepPrime_base/std.csv")
+            model_files = glob(f"{self.model_dir}/{self.model_type}/*.pt")
+
         mean_obj = pd.read_csv(mean_path, header=None, index_col=0).squeeze()
         std_obj = pd.read_csv(std_path, header=None, index_col=0).squeeze()
         self.mean = cast(pd.Series, mean_obj if isinstance(mean_obj, pd.Series) else pd.Series(dtype=float))
         self.std = cast(pd.Series, std_obj if isinstance(std_obj, pd.Series) else pd.Series(dtype=float))
-        
-        # Load ensemble models
-        from deepprime.src.dprime import GeneInteractionModel
-        
-        model_files = glob(f'{self.model_dir}/{self.model_type}/*.pt')
-        
+
         if not model_files:
             raise FileNotFoundError(
-                f"No model files found in {self.model_dir}/{self.model_type}"
+                f"No model files found for DeepPrime weights at {model_path}"
             )
-        
+
         self.models = []
         for m_path in model_files:
             model = GeneInteractionModel(hidden_size=128, num_layers=1).to(self.device)
@@ -212,43 +220,38 @@ class DeepPrimeModelWrapper(BasePEModel):
             )
             model.eval()
             self.models.append(model)
-        
-        self.model = self.models  # Store for consistency
+
+        self.model = self.models
         self.is_trained = True
     
     @staticmethod
     def list_available_weights() -> List[str]:
-        """List the names of pre-trained DeepPrime weight sets bundled in vendor/models.
-
-        Each name corresponds to a model variant directory (for example
-        'DeepPrime_base' or 'DP_variant_293T_PE4max_Opti_220728') containing the
-        ensemble ``.pt`` checkpoints. Pass one of these names to
-        :meth:`evaluate` (``weights=...``) or :meth:`load_weights_by_name`.
-        """
-        from glob import glob
-
-        models_root = resolve_vendor_models_path("deepprime", "models", "DeepPrime")
-        names: List[str] = []
-        for entry in sorted(models_root.iterdir()):
-            if entry.is_dir() and glob(str(entry / "*.pt")):
-                names.append(entry.name)
-        return names
+        """List registered DeepPrime weight set IDs."""
+        return weights_registry.list_weight_ids("deepprime")
 
     def load_weights_by_name(self, name: str) -> None:
-        """Load a named pre-trained DeepPrime weight set.
+        """Load a registered DeepPrime weight set by ID or directory path."""
+        candidate = Path(name).expanduser()
+        if candidate.is_dir():
+            self.load_model(str(candidate))
+            return
 
-        Args:
-            name: A weight set name from :meth:`list_available_weights` (the
-                model variant directory name).
-        """
+        try:
+            entry_dir = weights_registry.resolve_dir("deepprime", name)
+            self.load_model(str(entry_dir))
+            return
+        except ValueError:
+            pass
+
         models_root = resolve_vendor_models_path("deepprime", "models", "DeepPrime")
-        target = models_root / name
-        if not target.is_dir():
-            raise ValueError(
-                f"Unknown DeepPrime weights '{name}'. "
-                f"Available: {self.list_available_weights()}"
-            )
-        self.load_model(str(target))
+        legacy = models_root / name
+        if legacy.is_dir():
+            self.load_model(str(legacy))
+            return
+        raise ValueError(
+            f"Unknown DeepPrime weights '{name}'. "
+            f"Available: {self.list_available_weights()}"
+        )
 
     def prepare_data(self, df: pd.DataFrame, **kwargs) -> Dict[str, torch.Tensor]:
         """

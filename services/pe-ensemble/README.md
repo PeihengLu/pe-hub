@@ -47,30 +47,42 @@ PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 800
 ## Data format and conversion
 
 Standardized → model-format conversion is owned by the **PE-DB** service
-(`GET /api/filter?study=...&dataset=...&cell_line=...&pe_system=...&format=deepprime`).
-The model wrappers here expect data already in each model's **native** format and
-do not convert standardized data themselves. The `/evaluate` endpoint fetches
-native model-format rows from PE-DB's `/api/filter` automatically. This keeps
-`pe-common` free of model-specific conversion logic.
+(`GET /api/filter?format=deepprime&cell_line=...&pe_system=...`). PE Ensemble
+exposes the same contract in two places:
 
-## Selecting pre-trained weights
+- **`GET /data/filter`** — direct proxy to PE-DB (same as PE Hub `exportFiltered`)
+- **`POST /evaluate`** — fetches via that filter API, then runs metrics
 
-DeepPrime and PRIDICT2 each ship **multiple** pre-trained weight sets. You can
-evaluate against a specific one by passing its name to `evaluate(...)`, or omit
-the argument to use the model you trained/loaded yourself.
+Both accept multi-value filters (`cell_line=adv&cell_line=hela`, etc.). Model
+wrappers expect data already in each model's **native** format and do not
+convert standardized data themselves. This keeps `pe-common` free of
+model-specific conversion logic.
+
+## Weights registry
+
+All pretrained and service-trained weights live under `services/pe-ensemble/weights/`
+and are **tracked in git** (~630 MB of checkpoints). Each weight set has a
+`manifest.json`; trained runs get structured IDs like
+`deepprime__hek293t-pe2max__20260608__a1b2c3`. Override the path with
+`WEIGHTS_ROOT` only when mounting an external volume.
+
+On older checkouts where weights still sit under `vendor/models`, bootstrap once
+with `python -m app.models.migrate_weights`.
+
+List available weight sets via `GET /models/{model_name}/weights` or from Python:
 
 ```python
 from app.models.model_factory import ModelFactory
 
-# DeepPrime: weight sets are named after the model variant directory.
+# DeepPrime: IDs match the original variant directory names.
 dp = ModelFactory.create_model("deepprime", pe_system="PE2max", cell_type="HEK293T")
 print(dp.list_available_weights())          # ['DeepPrime_base', 'DP_variant_293T_PE4max_Opti_220728', ...]
 metrics = dp.evaluate(test_df, weights="DeepPrime_base")
 
-# PRIDICT2: weight sets are named '<model_id>/<experiment>/run_<n>'.
+# PRIDICT2: compact IDs use '__' instead of '/'.
 pr = ModelFactory.create_model("pridict2")
-print(pr.list_available_weights())          # ['pridict1_1/exp_2023-08-25_20-55-53/run_2', ...]
-metrics = pr.evaluate(test_df, weights="pridict1_1/exp_2023-08-25_20-55-53/run_2")
+print(pr.list_available_weights())          # ['pridict1_1__exp_2023-08-25_20-55-53__run_2', ...]
+metrics = pr.evaluate(test_df, weights="pridict1_1__exp_2023-08-25_20-55-53__run_2")
 
 # Omit `weights` to evaluate the currently trained/loaded model.
 metrics = dp.evaluate(test_df)

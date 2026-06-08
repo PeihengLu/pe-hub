@@ -1,4 +1,3 @@
-from .model_factory import ModelFactory
-from .deepprime_wrapper import DeepPrimeModelWrapper
+from . import weights_registry
 
-__all__ = ['ModelFactory', 'DeepPrimeModelWrapper']
+__all__ = ["weights_registry"]
