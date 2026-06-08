@@ -7,6 +7,7 @@
 #   ./start-all.sh --install    # install deps for all three, then start
 #   ./start-all.sh --no-reload  # backends without uvicorn auto-reload
 #   ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+#   ./start-all.sh --force-reexport  # re-export raw data before starting PE-DB
 #
 set -euo pipefail
 
@@ -18,6 +19,7 @@ FRONTEND_DIR="${REPO_ROOT}/pe-hub"
 
 INSTALL_DEPS=false
 RELOAD=true
+FORCE_REEXPORT=false
 PE_DB_HOST="${PE_DB_HOST:-0.0.0.0}"
 PE_ENSEMBLE_HOST="${PE_ENSEMBLE_HOST:-0.0.0.0}"
 # Set via CLI, environment, .env, or defaults (in that precedence).
@@ -36,6 +38,7 @@ Start PE Database, PE Ensemble API, and PE Hub (Vite frontend).
 Options:
   --install                 Install Python and npm dependencies before starting
   --no-reload               Disable uvicorn auto-reload on both backends
+  --force-reexport          Re-export raw study files on PE-DB startup (also re-standardizes)
   --pe-db-port PORT         PE Database listen port (default: \$PE_DB_PORT or 8000)
   --ensemble-port PORT      PE Ensemble API listen port (default: \$PE_ENSEMBLE_PORT or 8001)
   --frontend-port PORT      PE Hub dev server port (default: \$FRONTEND_PORT or 5173)
@@ -45,6 +48,7 @@ Environment:
   Loads \${REPO_ROOT}/.env when present.
   PE_DB_URL defaults to http://localhost:<pe-db-port>
   VITE_ENSEMBLE_API_URL defaults to http://localhost:<ensemble-port>
+  --force-reexport sets PE_DB_FORCE_EXPORT / PE_DB_FORCE_STANDARDIZE for PE-DB startup.
 
 Press Ctrl+C to stop all services.
 
@@ -52,6 +56,7 @@ Examples:
   ./start-all.sh
   ./start-all.sh --install
   ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+  ./start-all.sh --force-reexport
 EOF
 }
 
@@ -63,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-reload)
             RELOAD=false
+            shift
+            ;;
+        --force-reexport)
+            FORCE_REEXPORT=true
             shift
             ;;
         --pe-db-port)
@@ -102,6 +111,12 @@ FRONTEND_PORT="${FRONTEND_PORT_CLI:-${FRONTEND_PORT:-5173}}"
 
 export PE_PROJECT_ROOT="${PE_PROJECT_ROOT:-${REPO_ROOT}}"
 export DATA_ROOT="${DATA_ROOT:-${PE_DATA_ROOT:-${REPO_ROOT}/datasets}}"
+
+if [[ "${FORCE_REEXPORT}" == true ]]; then
+    export PE_DB_FORCE_EXPORT=1
+    export PE_DB_FORCE_STANDARDIZE=1
+fi
+
 export PE_DB_URL="${PE_DB_URL:-http://localhost:${PE_DB_PORT}}"
 export VITE_PE_DB_URL="${VITE_PE_DB_URL:-http://localhost:${PE_DB_PORT}}"
 export VITE_ENSEMBLE_API_URL="${VITE_ENSEMBLE_API_URL:-${VITE_API_URL:-http://localhost:${PE_ENSEMBLE_PORT}}}"
@@ -274,6 +289,7 @@ echo "PE_DB_URL:      ${PE_DB_URL}"
 echo "VITE_PE_DB_URL: ${VITE_PE_DB_URL}"
 echo "VITE_ENSEMBLE:  ${VITE_ENSEMBLE_API_URL}"
 echo "Reload:         ${RELOAD}"
+echo "Force export:   ${FORCE_REEXPORT}"
 echo "======================================"
 echo ""
 

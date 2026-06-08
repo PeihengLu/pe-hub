@@ -67,9 +67,41 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
 
 ## Run locally
 
+### pip (default)
+
 ```bash
 cd services/pe-db
 pip install -r requirements.txt
-pip install -e ../../packages/pe-common
+pip install -e ../../packages/pe-common --no-deps
 uvicorn app.main:app --reload --port 8000
+```
+
+Or from the repo root: `./start-pe-db-backend.sh --install`
+
+### conda (recommended when using DeepSpCas9 scoring)
+
+Conda-forge provides TensorFlow builds for macOS, Linux, and Windows without
+platform-specific pip wheels. The startup scripts use whichever Python is active
+(`conda activate …` or a venv).
+
+```bash
+conda create -n pe-db python=3.11 -y
+conda activate pe-db
+conda install -c conda-forge tensorflow -y   # optional; for MinSePIE spcas9 backfill
+
+cd services/pe-db
+pip install -r requirements.txt
+pip install -e ../../packages/pe-common --no-deps
+uvicorn app.main:app --reload --port 8000
+```
+
+TensorFlow is **optional**. Standardization runs without it; rows that need a
+computed `spcas9_score` stay `NaN` and a warning is logged. With conda TensorFlow
+installed, MinSePIE standardization fills scores via `fill_missing_spcas9_scores`.
+
+Re-standardize after enabling scoring:
+
+```bash
+PE_DB_FORCE_STANDARDIZE=1 ./start-pe-db-backend.sh
+# or: curl -X POST 'http://localhost:8000/api/export?study=minsepie&force_standardize=true'
 ```

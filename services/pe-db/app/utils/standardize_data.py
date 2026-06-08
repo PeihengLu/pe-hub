@@ -13,6 +13,7 @@ import pandas as pd
 from pe_common.constants import DATA_ROOT
 from pe_common.sequence_utils import align_wt_mut_sequences, reverse_complement
 
+from .deepspcas9 import fill_missing_spcas9_scores
 from ..catalog.scaffolds import SCAFFOLD_MINSEPIE_CODON_VARIANT
 from ..catalog.studies import get_dataset_record
 
@@ -1972,9 +1973,7 @@ def _standardize_minsepie(
 
     # ---- Step 5: assemble efficiency, score and fold fields ----
     editing_efficiency = pd.to_numeric(df.get("percIns"), errors="coerce")
-    # MinSePIE does not provide a DeepSpCas9 score; fill with NaN → 0.0 so the
-    # schema's ``float`` cast succeeds. Downstream can recompute if needed.
-    spcas9_score = pd.Series(np.nan, index=df.index, dtype=float).fillna(0.0)
+    spcas9_score = pd.Series(np.nan, index=df.index, dtype=float)
 
     # MinSePIE MOESM4 ``set`` labels library batches, not author train/test folds.
 
@@ -1991,6 +1990,7 @@ def _standardize_minsepie(
         lha_l, lha_r, rha_l, rha_r,
         spcas9_score, editing_efficiency,
     )
+    output_df = fill_missing_spcas9_scores(output_df)
 
     output_path = DATA_ROOT / "standardized" / "minsepie" / dataset / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
