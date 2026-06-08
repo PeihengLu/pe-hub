@@ -7,6 +7,7 @@ __version__ = "0.1.0"
 from .constants import PROJECT_ROOT, DATA_ROOT, MODEL_ROOT, DEVICE
 from .sequence_utils import align_wt_mut_sequences, remove_padding
 from .data_utils import build_test_mask_from_group_id
+from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
 
 # NOTE: standardized -> model-format conversion lives in the PE-DB service
 # (services/pe-db/app/utils/convert_data.py) and is exposed via GET /api/filter.
@@ -23,6 +24,21 @@ __all__ = [
     "align_wt_mut_sequences",
     "remove_padding",
     "build_test_mask_from_group_id",
+    "SplitConfig",
+    "assign_splits",
+    "split_config_from_params",
+    "summarize_splits",
+    "validate_split_config",
+    "SPLIT_COLUMN",
+    "SPLIT_SOURCE_COLUMN",
+    "list_assigned_folds",
+    "has_assigned_cv_folds",
+    "select_split_partition",
+    "exclude_test_partition",
+    "select_evaluation_partition",
+    "iter_assigned_cv_folds",
+    "resolve_train_val_from_splits",
+    "resolve_final_train_val_for_cv_export",
     # Training utilities (lazy-loaded — requires torch)
     "EarlyStopping",
     "LightningTrainerConfig",

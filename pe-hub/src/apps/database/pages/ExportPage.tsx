@@ -6,14 +6,23 @@ import ErrorAlert from '@components/ErrorAlert'
 import ExportFilterBuilder from '@apps/database/components/ExportFilterBuilder'
 import {
   EXPORT_FORMATS,
+  SPLIT_STRATEGIES,
   STATIC_FILTER_OPTIONS,
   buildFilterParams,
+  buildSplitParams,
   type AttributeFilterRow,
   type ExportFormat,
   type FilterAttributeKey,
+  type SplitStrategy,
 } from '@apps/database/config/exportAttributes'
 import peDbApi from '@apps/database/services/peDbApi'
-import { downloadCsv, mergedExportGroupsToCsv } from '@apps/database/utils/downloadCsv'
+import {
+  downloadCsv,
+  mergedExportGroupsToCsv,
+  recordsToCsv,
+} from '@apps/database/utils/downloadCsv'
+
+type DownloadMode = 'merged' | 'separate'
 
 function uniqueSorted(values: string[]) {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b))
@@ -21,7 +30,15 @@ function uniqueSorted(values: string[]) {
 
 export default function ExportPage() {
   const [format, setFormat] = useState<ExportFormat>('std')
+  const [downloadMode, setDownloadMode] = useState<DownloadMode>('merged')
   const [filterRows, setFilterRows] = useState<AttributeFilterRow[]>([])
+  const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('none')
+  const [trainPct, setTrainPct] = useState('0.8')
+  const [valPct, setValPct] = useState('0.1')
+  const [testPct, setTestPct] = useState('0.2')
+  const [cvFolds, setCvFolds] = useState('5')
+  const [useOriginalFold, setUseOriginalFold] = useState(false)
+  const [splitRandomState, setSplitRandomState] = useState('42')
 
   const studiesQuery = useQuery('pe-db-export-studies', () => peDbApi.listStudies(), {
     select: (response) => response.data,
@@ -75,7 +92,17 @@ export default function ExportPage() {
 
   const exportMutation = useMutation(async () => {
     const filters = buildFilterParams(filterRows)
-    const response = await peDbApi.exportFiltered(format, filters)
+    const split = buildSplitParams({
+      strategy: splitStrategy,
+      trainPct,
+      valPct,
+      testPct,
+      cvFolds,
+      useOriginalFold,
+      randomState: splitRandomState,
+      merge: downloadMode === 'merged',
+    })
+    const response = await peDbApi.exportFiltered(format, filters, split)
     return response.data
   })
 
@@ -93,10 +120,26 @@ export default function ExportPage() {
     const result = exportMutation.data
     if (!result || result.groups.length === 0) return
 
-    const csv = mergedExportGroupsToCsv(result.groups)
-    const filename = `pe-db-export-${format}.csv`
-    downloadCsv(filename, csv)
+    if (downloadMode === 'merged') {
+      const csv = mergedExportGroupsToCsv(result.groups)
+      downloadCsv(`pe-db-export-${format}.csv`, csv)
+      return
+    }
+
+    result.groups.forEach((group) => {
+      const csv = recordsToCsv(group.records, group.columns)
+      const filename = `${group.study}-${group.dataset}-${group.cell_line}-${group.pe_system}-${format}.csv`
+      downloadCsv(filename, csv)
+    })
   }
+
+  const groupCount = exportMutation.data?.groups.length ?? 0
+  const downloadLabel =
+    downloadMode === 'merged'
+      ? 'Download CSV'
+      : groupCount > 1
+        ? `Download CSV (${groupCount} files)`
+        : 'Download CSV'
 
   const selectedFormat = EXPORT_FORMATS.find((item) => item.value === format)
 
@@ -159,6 +202,168 @@ export default function ExportPage() {
         )}
       </Card>
 
+      <Card title="Split assignment">
+        <p className="mb-4 text-sm text-slate-600">
+          Required for formatted exports. Splits are group-aware on{' '}
+          <code className="text-xs">group_id</code>. When downloading a merged CSV,
+          datasheets are merged server-side with composite group keys before splitting.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {SPLIT_STRATEGIES.map((item) => (
+            <label
+              key={item.value}
+              className={`cursor-pointer rounded-lg border p-4 transition-all ${
+                splitStrategy === item.value
+                  ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="split-strategy"
+                  value={item.value}
+                  checked={splitStrategy === item.value}
+                  onChange={() => setSplitStrategy(item.value)}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-900">{item.label}</p>
+                  <p className="text-xs text-slate-500 mt-1">{item.description}</p>
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {(splitStrategy === 'holdout_2' || splitStrategy === 'holdout_3') && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label className="text-sm text-slate-700">
+              Train %
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={trainPct}
+                onChange={(e) => setTrainPct(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            {splitStrategy === 'holdout_3' && (
+              <label className="text-sm text-slate-700">
+                Val %
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={valPct}
+                  onChange={(e) => setValPct(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                />
+              </label>
+            )}
+            <label className="text-sm text-slate-700">
+              Test %
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={testPct}
+                onChange={(e) => setTestPct(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+          </div>
+        )}
+
+        {splitStrategy === 'cv' && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm text-slate-700">
+              CV folds
+              <input
+                type="number"
+                min={2}
+                step={1}
+                value={cvFolds}
+                onChange={(e) => setCvFolds(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-slate-700">
+              Test % (optional holdout)
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={testPct}
+                onChange={(e) => setTestPct(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                placeholder="Leave empty for no holdout"
+              />
+            </label>
+          </div>
+        )}
+
+        {splitStrategy !== 'none' && splitStrategy !== 'holdout_3' && (
+          <label className="mt-4 inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useOriginalFold}
+              onChange={(e) => setUseOriginalFold(e.target.checked)}
+            />
+            Use author original_fold when available
+          </label>
+        )}
+
+        {splitStrategy !== 'none' && (
+          <label className="mt-4 block text-sm text-slate-700 max-w-xs">
+            Random seed
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={splitRandomState}
+              onChange={(e) => setSplitRandomState(e.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
+        )}
+      </Card>
+
+      <Card title="Download options">
+        <div className="flex flex-wrap gap-4">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="radio"
+              name="download-mode"
+              value="merged"
+              checked={downloadMode === 'merged'}
+              onChange={() => setDownloadMode('merged')}
+            />
+            Single merged CSV
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="radio"
+              name="download-mode"
+              value="separate"
+              checked={downloadMode === 'separate'}
+              onChange={() => setDownloadMode('separate')}
+            />
+            Separate file per datasheet
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {downloadMode === 'merged'
+            ? 'All matching datasheets are merged server-side before split assignment, then downloaded as one CSV.'
+            : 'Each datasheet is split independently and downloaded as its own CSV (fold_0 is local to each file).'}
+        </p>
+      </Card>
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -174,7 +379,7 @@ export default function ExportPage() {
             onClick={handleDownload}
             className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Download CSV
+            {downloadLabel}
           </button>
         )}
       </div>

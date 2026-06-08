@@ -1,6 +1,10 @@
 import axios from 'axios'
 import { PE_DB_URL } from '@config/services'
-import type { ExportFormat, FilterAttributeKey } from '@apps/database/config/exportAttributes'
+import type {
+  ExportFormat,
+  FilterAttributeKey,
+  SplitExportParams,
+} from '@apps/database/config/exportAttributes'
 
 const apiClient = axios.create({
   baseURL: PE_DB_URL,
@@ -78,12 +82,21 @@ export interface ExportSkipped {
   reason: string
 }
 
+export interface SplitSummary {
+  strategy: string
+  use_original_fold?: boolean
+  random_state?: number
+  summaries?: Array<Record<string, unknown>>
+}
+
 export interface ExportResponse {
   status: string
   target_format: ExportFormat
   groups: ExportGroup[]
   skipped: ExportSkipped[]
   total_records: number
+  merged?: boolean
+  split?: SplitSummary
 }
 
 export type ExportFilterParams = Partial<
@@ -101,9 +114,13 @@ export const peDbApi = {
     }),
   listScaffolds: () => apiClient.get<Scaffold[]>('/api/scaffolds'),
   getStatistics: () => apiClient.get<Statistics>('/api/statistics'),
-  exportFiltered: (format: ExportFormat, filters: ExportFilterParams = {}) =>
+  exportFiltered: (
+    format: ExportFormat,
+    filters: ExportFilterParams = {},
+    split: SplitExportParams
+  ) =>
     apiClient.get<ExportResponse>('/api/filter', {
-      params: { format, ...filters },
+      params: { format, ...filters, ...split },
     }),
 }
 

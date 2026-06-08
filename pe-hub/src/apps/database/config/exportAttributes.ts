@@ -1,5 +1,79 @@
 export type ExportFormat = 'std' | 'deepprime' | 'pridict' | 'pridict2' | 'oped'
 
+export type SplitStrategy = 'none' | 'holdout_2' | 'holdout_3' | 'cv'
+
+export const SPLIT_STRATEGIES: {
+  value: SplitStrategy
+  label: string
+  description: string
+}[] = [
+  {
+    value: 'none',
+    label: 'No split',
+    description: 'Export rows without split assignment columns.',
+  },
+  {
+    value: 'holdout_2',
+    label: 'Train / test',
+    description: 'Group-aware train and test partitions (percentages must sum to 1).',
+  },
+  {
+    value: 'holdout_3',
+    label: 'Train / val / test',
+    description: 'Group-aware three-way holdout (incompatible with original_fold).',
+  },
+  {
+    value: 'cv',
+    label: 'Cross-validation',
+    description: 'Group-aware CV folds; optional test_pct for a held-out test set.',
+  },
+]
+
+export interface SplitExportParams {
+  split_strategy: SplitStrategy
+  train_pct?: number
+  val_pct?: number
+  test_pct?: number
+  cv_folds?: number
+  use_original_fold?: boolean
+  split_random_state?: number
+  merge?: boolean
+}
+
+export function buildSplitParams(config: {
+  strategy: SplitStrategy
+  trainPct: string
+  valPct: string
+  testPct: string
+  cvFolds: string
+  useOriginalFold: boolean
+  randomState: string
+  merge: boolean
+}): SplitExportParams {
+  const params: SplitExportParams = {
+    split_strategy: config.strategy,
+    use_original_fold: config.useOriginalFold,
+    split_random_state: Number(config.randomState) || 0,
+    merge: config.merge,
+  }
+
+  if (config.strategy === 'holdout_2') {
+    params.train_pct = Number(config.trainPct)
+    params.test_pct = Number(config.testPct)
+  } else if (config.strategy === 'holdout_3') {
+    params.train_pct = Number(config.trainPct)
+    params.val_pct = Number(config.valPct)
+    params.test_pct = Number(config.testPct)
+  } else if (config.strategy === 'cv') {
+    params.cv_folds = Number(config.cvFolds)
+    if (config.testPct.trim() !== '') {
+      params.test_pct = Number(config.testPct)
+    }
+  }
+
+  return params
+}
+
 export type FilterAttributeKey =
   | 'study'
   | 'dataset'

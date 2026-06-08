@@ -19,10 +19,10 @@ if str(_vendor_root) not in sys.path:
 from pe_common.model_interface import BasePEModel
 from pe_common.training import (
     build_lr_scheduler,
-    build_group_kfold_indices,
     fit_lightning_module,
     LightningTrainerConfig,
 )
+from pe_common.splits import resolve_train_val_from_splits
 
 
 class _DeepPrimeTensorDataset(Dataset):
@@ -158,50 +158,6 @@ class DeepPrimeModelWrapper(BasePEModel):
             f"{split_name} data must include 'editing_efficiency' or 'Efficiency' column."
         )
 
-    @staticmethod
-    def _split_train_validation(
-        train_source_df: pd.DataFrame,
-        train_feature_df: pd.DataFrame,
-        y_train: np.ndarray,
-        *,
-        val_fraction: float,
-        random_state: int,
-        group_col: str,
-    ) -> tuple[pd.DataFrame, np.ndarray, pd.DataFrame, np.ndarray]:
-        n_rows = len(train_feature_df)
-        if n_rows < 2:
-            raise ValueError("Need at least 2 rows to train DeepPrime model.")
-
-        val_fraction = max(0.05, min(0.5, float(val_fraction)))
-        n_val = max(1, int(np.ceil(n_rows * val_fraction)))
-        n_splits = max(2, int(round(1.0 / val_fraction)))
-        n_splits = min(n_splits, n_rows)
-
-        folds = build_group_kfold_indices(
-            train_source_df.reset_index(drop=True),
-            n_splits=n_splits,
-            group_col=group_col,
-            random_state=random_state,
-        )
-        if folds:
-            train_idx, val_idx = folds[0]
-        else:
-            rng = np.random.default_rng(random_state)
-            indices = np.arange(n_rows)
-            rng.shuffle(indices)
-            val_idx = indices[:n_val]
-            train_idx = indices[n_val:]
-
-        if len(train_idx) == 0:
-            train_idx = np.asarray([int(val_idx[0])], dtype=int)
-            val_idx = np.asarray([int(i) for i in range(n_rows) if i != int(train_idx[0])], dtype=int)
-
-        tr_df = train_feature_df.iloc[train_idx].reset_index(drop=True)
-        va_df = train_feature_df.iloc[val_idx].reset_index(drop=True)
-        tr_y = y_train[train_idx]
-        va_y = y_train[val_idx]
-        return tr_df, tr_y, va_df, va_y
-    
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
         Load pre-trained DeepPrime model
@@ -385,25 +341,13 @@ class DeepPrimeModelWrapper(BasePEModel):
         early_stopping_patience = int(hyperparameters.get("early_stopping_patience", 10))
         early_stopping_min_delta = float(hyperparameters.get("early_stopping_min_delta", 0.0))
         reshuffle_each_epoch = bool(hyperparameters.get("reshuffle_each_epoch", True))
-        val_fraction = float(hyperparameters.get("val_fraction", 0.1))
-        val_random_state = int(hyperparameters.get("val_random_state", 42))
-        split_group_col = str(hyperparameters.get("split_group_col", "group_id"))
 
-        train_feature_df = self._to_deepprime_feature_df(train_data)
-        y_train = self._extract_targets(train_data, train_feature_df, "Training")
-
-        if val_data is not None:
-            val_feature_df = self._to_deepprime_feature_df(val_data)
-            y_val = self._extract_targets(val_data, val_feature_df, "Validation")
-        else:
-            train_feature_df, y_train, val_feature_df, y_val = self._split_train_validation(
-                train_data,
-                train_feature_df,
-                y_train,
-                val_fraction=val_fraction,
-                random_state=val_random_state,
-                group_col=split_group_col,
-            )
+        source_df = train_data.reset_index(drop=True)
+        train_source, val_source = resolve_train_val_from_splits(source_df, val_data)
+        train_feature_df = self._to_deepprime_feature_df(train_source)
+        val_feature_df = self._to_deepprime_feature_df(val_source)
+        y_train = self._extract_targets(train_source, train_feature_df, "Training")
+        y_val = self._extract_targets(val_source, val_feature_df, "Validation")
 
         if not self.is_trained:
             if load_pretrained:

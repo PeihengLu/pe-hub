@@ -27,6 +27,8 @@ from .db.session import get_session
 from .loaders import DataLoader
 from .utils.json_utils import dataframe_to_json_records
 
+SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -168,13 +170,60 @@ async def filter_data(
             "standardized schema into the requested model format."
         ),
     ),
+    split_strategy: Optional[SplitStrategy] = Query(
+        None,
+        description=(
+            "Required when format is set. Split assignment strategy: "
+            "none, holdout_2, holdout_3, or cv."
+        ),
+    ),
+    train_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
+    val_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
+    test_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
+    cv_folds: Optional[int] = Query(None, ge=2),
+    use_original_fold: bool = Query(
+        False,
+        description="When true, use author original_fold assignments where available.",
+    ),
+    split_random_state: int = Query(42, ge=0),
+    merge: bool = Query(
+        False,
+        description=(
+            "When true, merge all matching datasheets before split assignment. "
+            "Uses composite group keys to avoid group_id collisions across datasheets."
+        ),
+    ),
 ):
     """Filter datasheets by catalog/edit metadata; optionally emit model-format data.
 
     Without ``format``, behaves as a catalog filter and returns matching datasheets.
     With ``format``, only datasets flagged ``standardizable`` are converted from
     standardized data into the requested format and returned as grouped records.
+    ``split_strategy`` must be supplied explicitly when exporting formatted data.
     """
+    if format_ is not None and split_strategy is None:
+        raise HTTPException(
+            status_code=422,
+            detail="split_strategy is required when format is set (use 'none' for no split columns).",
+        )
+
+    split_config = None
+    if format_ is not None:
+        from pe_common.splits import split_config_from_params
+
+        try:
+            split_config = split_config_from_params(
+                strategy=split_strategy,
+                train_pct=train_pct,
+                val_pct=val_pct,
+                test_pct=test_pct,
+                cv_folds=cv_folds,
+                use_original_fold=use_original_fold,
+                random_state=split_random_state,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     try:
         with get_session() as session:
             result = CatalogRepository(session).filter_all(
@@ -191,6 +240,8 @@ async def filter_data(
                 target_context=target_context,
                 scaffold_name=scaffold_name,
                 target_format=format_,
+                split_config=split_config,
+                merge_groups=merge,
             )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

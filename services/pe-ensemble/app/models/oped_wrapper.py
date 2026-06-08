@@ -17,13 +17,16 @@ from pe_common.sequence_utils import (
     reverse_complement,
     sanitize_dna_sequence,
 )
-from pe_common.data_utils import build_test_mask_from_group_id
 from pe_common.training import (
     build_lr_scheduler,
-    build_group_kfold_indices,
     fit_lightning_module,
     LightningTrainerConfig,
     pearson_spearman,
+)
+from pe_common.splits import (
+    has_assigned_cv_folds,
+    iter_assigned_cv_folds,
+    resolve_train_val_from_splits,
 )
 
 # Ensure that the OPED model code directory is in sys.path
@@ -316,43 +319,6 @@ class OPEDModelWrapper(BasePEModel):
 
         return pd.DataFrame(records)
 
-
-    def _split_train_test_by_fold_or_group(
-        self,
-        df: pd.DataFrame,
-        test_size: float = 0.2,
-        random_state: int = 42,
-        test_fold_value: int = -1,
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        fold_col = "original_fold"
-
-        fold_numeric = pd.to_numeric(df[fold_col], errors="coerce")
-        test_mask = fold_numeric.eq(test_fold_value)
-        if (
-            bool(fold_numeric.notna().any())
-            and bool(test_mask.any())
-            and bool((~test_mask).any())
-        ):
-            return df.loc[~test_mask].copy(), df.loc[test_mask].copy()
-
-        # fallback split by standardized group id when fold split is unavailable
-        group_col = "group_id"
-        rng = np.random.default_rng(random_state)
-        test_mask = build_test_mask_from_group_id(
-            group_series=pd.Series(df[group_col], copy=False),
-            test_size=test_size,
-            random_state=random_state,
-        )
-
-        if not bool((~test_mask).any()) or not bool(test_mask.any()):
-            row_indices = np.arange(len(df))
-            rng.shuffle(row_indices)
-            n_test_rows = max(1, int(np.ceil(len(df) * test_size)))
-            test_idx = set(row_indices[:n_test_rows].tolist())
-            test_mask = pd.Series([i in test_idx for i in range(len(df))], index=df.index)
-
-        return df.loc[~test_mask].copy(), df.loc[test_mask].copy()
-
     @staticmethod
     def _build_cache_path(
         df: pd.DataFrame,
@@ -426,30 +392,16 @@ class OPEDModelWrapper(BasePEModel):
 
         Args:
             df: Native OPED dataframe with columns ``Target(47bp)``, ``PBS``,
-                ``RT`` (and optionally ``Efficiency``). Standardized -> OPED
-                conversion is owned by PE-DB; fetch model-format data from
-                ``GET /api/filter?...&format=oped``. Optional ``original_fold`` /
-                ``group_id`` columns, when present, are preserved for splitting.
+                ``RT`` (and optionally ``Efficiency``). Fetch model-format data
+                from PE-DB (``GET /api/filter?...&format=oped``). Train/test
+                assignments come from PE-DB ``split`` columns, not this method.
             **kwargs:
-                - split_data (bool): when True, return (train_df, test_df)
-                - test_size (float): group split ratio when fold is unavailable
-                - random_state (int): random seed for group split
-                - holdout_fold_value (int): fold value treated as test split
+                - target_len (int): target sequence length (default 47)
                 - use_cache (bool): if True, reuse encoded data from cache
 
         Returns:
-            Encoded OPED dataframe, or (train_df, test_df) if split_data=True
-
-        Examples:
-            >>> prepared = model.prepare_data(df_oped_native)
-            >>> train_df, test_df = model.prepare_data(
-            ...     df_oped_native, split_data=True, test_size=0.2, random_state=42
-            ... )
+            Encoded OPED dataframe
         """
-        split_data = kwargs.get("split_data", False)
-        test_size = float(kwargs.get("test_size", 0.2))
-        random_state = int(kwargs.get("random_state", 42))
-        holdout_fold_value = int(kwargs.get("holdout_fold_value", -1))
         target_len = int(kwargs.get("target_len", 47))
         use_cache = bool(kwargs.get("use_cache", False))
 
@@ -485,27 +437,13 @@ class OPEDModelWrapper(BasePEModel):
                 )
             else:
                 encoded_full["Efficiency"] = np.zeros(len(df), dtype=float)
-            # Preserve optional split metadata (NaN when absent, e.g. inference).
-            for meta_col in ("original_fold", "group_id"):
+            for meta_col in ("split", "split_source", "original_fold"):
                 if meta_col in df.columns:
-                    encoded_full[meta_col] = pd.to_numeric(df[meta_col], errors="coerce").to_numpy()
-                else:
-                    encoded_full[meta_col] = np.nan
+                    encoded_full[meta_col] = df[meta_col].to_numpy()
             if use_cache:
                 pd.to_pickle(encoded_full, cache_path)
 
-        if split_data:
-            train_full, test_full = self._split_train_test_by_fold_or_group(
-                df=encoded_full,
-                test_size=test_size,
-                random_state=random_state,
-                test_fold_value=holdout_fold_value,
-            )
-            train_encoded = train_full.drop(columns=["original_fold", "group_id"])
-            test_encoded = test_full.drop(columns=["original_fold", "group_id"])
-            return train_encoded, test_encoded
-
-        return encoded_full.drop(columns=["original_fold", "group_id"])
+        return encoded_full
     
     def predict(self, data: pd.DataFrame, batch_size: int = 1024) -> List[float]:
         """
@@ -671,18 +609,10 @@ class OPEDModelWrapper(BasePEModel):
             "early_stopping_min_delta": 0.0,
             "scheduler": "step",
             "scheduler_kwargs": {"step_size": 10, "gamma": 0.95},
-            # CV controls (applied when val_data is None and cv_folds > 1)
-            "cv_folds": 1,
-            "cv_group_col": "group_id",
-            "cv_random_state": 42,
-            # Holdout split controls for final fit when val_data is absent
-            "val_fraction": 0.1,
-            "val_random_state": 42,
         }
         if hyperparameters:
             default_params.update(hyperparameters)
 
-        # Optional layer freezing for transfer-learning-style finetuning.
         def apply_freezing_if_needed(model_obj: torch.nn.Module) -> None:
             if not freezing:
                 return
@@ -693,20 +623,13 @@ class OPEDModelWrapper(BasePEModel):
                 for param in fc_layers.parameters():
                     param.requires_grad = True
 
-        train_df = train_data.copy().reset_index(drop=True)
+        source_df = train_data.copy().reset_index(drop=True)
         cv_reports: List[Dict[str, Any]] = []
-        cv_folds = int(default_params.get("cv_folds", 1))
 
-        if val_data is None and cv_folds > 1:
-            folds = build_group_kfold_indices(
-                train_df,
-                n_splits=cv_folds,
-                group_col=str(default_params.get("cv_group_col", "group_id")),
-                random_state=int(default_params.get("cv_random_state", 42)),
-            )
-            for fold_idx, (tr_idx, va_idx) in enumerate(folds):
-                fold_train = train_df.iloc[tr_idx].reset_index(drop=True)
-                fold_val = train_df.iloc[va_idx].reset_index(drop=True)
+        if val_data is None and has_assigned_cv_folds(source_df):
+            for fold_idx, (fold_label, fold_train, fold_val) in enumerate(
+                iter_assigned_cv_folds(source_df)
+            ):
                 fold_model = self._build_model_from_hparams(default_params).to(self.device)
                 apply_freezing_if_needed(fold_model)
                 fold_model, fold_metrics = self._run_training_loop(
@@ -717,7 +640,7 @@ class OPEDModelWrapper(BasePEModel):
                 )
                 fold_pred = self._predict_encoded_df(
                     fold_model,
-                    fold_val.drop(columns=["Efficiency"]),
+                    fold_val.drop(columns=["Efficiency"], errors="ignore"),
                     batch_size=int(default_params.get("batch_size", 128)),
                 )
                 fold_true = fold_val["Efficiency"].astype(float).to_numpy()
@@ -725,6 +648,7 @@ class OPEDModelWrapper(BasePEModel):
                 cv_reports.append(
                     {
                         "fold": fold_idx,
+                        "fold_label": fold_label,
                         "n_train": int(len(fold_train)),
                         "n_val": int(len(fold_val)),
                         "best_epoch": int(fold_metrics["best_epoch"]),
@@ -734,26 +658,7 @@ class OPEDModelWrapper(BasePEModel):
                     }
                 )
 
-        if val_data is not None:
-            final_train = train_df
-            final_val = val_data.copy().reset_index(drop=True)
-        else:
-            val_fraction = float(default_params.get("val_fraction", 0.1))
-            val_fraction = max(0.05, min(0.5, val_fraction))
-            n_rows = len(train_df)
-            if n_rows < 2:
-                raise ValueError("Need at least 2 rows to train OPED model.")
-            n_val = max(1, int(np.ceil(n_rows * val_fraction)))
-            rng = np.random.default_rng(int(default_params.get("val_random_state", 42)))
-            all_idx = np.arange(n_rows)
-            rng.shuffle(all_idx)
-            val_idx = all_idx[:n_val]
-            train_idx = all_idx[n_val:]
-            if len(train_idx) == 0:
-                train_idx = val_idx[:1]
-                val_idx = all_idx[1:]
-            final_train = train_df.iloc[train_idx].reset_index(drop=True)
-            final_val = train_df.iloc[val_idx].reset_index(drop=True)
+        final_train, final_val = resolve_train_val_from_splits(source_df, val_data)
 
         model = self._build_model_from_hparams(default_params).to(self.device)
         apply_freezing_if_needed(model)

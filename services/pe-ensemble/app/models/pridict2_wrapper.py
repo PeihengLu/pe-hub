@@ -6,7 +6,12 @@ import torch
 import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
-from pe_common.training import build_group_kfold_indices, pearson_spearman
+from pe_common.training import pearson_spearman
+from pe_common.splits import (
+    has_assigned_cv_folds,
+    iter_assigned_cv_folds,
+    resolve_train_val_from_splits,
+)
 
 # Add vendor model paths required by PRIDICT2 imports.
 _vendor_root = resolve_vendor_models_path()
@@ -262,46 +267,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
         
         return pred_df[f'pred_{outcome}'].tolist()
 
-    @staticmethod
-    def _split_train_validation(
-        train_df: pd.DataFrame,
-        *,
-        val_fraction: float,
-        random_state: int,
-        group_col: str = "group_id",
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        n_rows = len(train_df)
-        if n_rows < 2:
-            raise ValueError("Need at least 2 rows to train PRIDICT2 model.")
-        val_fraction = max(0.05, min(0.5, float(val_fraction)))
-        n_splits = max(2, int(round(1.0 / val_fraction)))
-        n_splits = min(n_splits, n_rows)
-        folds = build_group_kfold_indices(
-            train_df.reset_index(drop=True),
-            n_splits=n_splits,
-            group_col=group_col,
-            random_state=random_state,
-        )
-        if folds:
-            tr_idx, va_idx = folds[0]
-            tr_df = train_df.iloc[tr_idx].reset_index(drop=True)
-            va_df = train_df.iloc[va_idx].reset_index(drop=True)
-            return tr_df, va_df
-
-        rng = np.random.default_rng(random_state)
-        indices = np.arange(n_rows)
-        rng.shuffle(indices)
-        n_val = max(1, int(np.ceil(n_rows * val_fraction)))
-        val_idx = indices[:n_val]
-        tr_idx = indices[n_val:]
-        if len(tr_idx) == 0:
-            tr_idx = np.asarray([int(val_idx[0])], dtype=int)
-            val_idx = np.asarray([int(i) for i in range(n_rows) if i != int(tr_idx[0])], dtype=int)
-        return (
-            train_df.iloc[tr_idx].reset_index(drop=True),
-            train_df.iloc[val_idx].reset_index(drop=True),
-        )
-
     def _build_datatensor(self, df: pd.DataFrame, y_ref: List[str]) -> tuple[Any, List[str]]:
         norm_cols, proc, init, n_init, mut, n_mut = self.prieml_model._process_df(df)
         dtensor = self.prieml_model._construct_datatensor(
@@ -409,41 +374,29 @@ class PRIDICT2ModelWrapper(BasePEModel):
         else:
             trainer_backend = "legacy"
         y_ref = list(hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes())
-        train_df = self._to_pridict_dataframe(train_data)
-        if val_data is not None:
-            val_df = self._to_pridict_dataframe(val_data)
-        else:
-            train_df, val_df = self._split_train_validation(
-                train_df,
-                val_fraction=float(hyperparameters.get("val_fraction", 0.2)),
-                random_state=int(hyperparameters.get("random_state", 42)),
-                group_col=str(hyperparameters.get("split_group_col", "group_id")),
-            )
+        train_native, val_native = resolve_train_val_from_splits(train_data, val_data)
+        train_df = self._to_pridict_dataframe(train_native)
+        val_df = self._to_pridict_dataframe(val_native)
 
         output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
-        cv_folds = int(hyperparameters.get("cv_folds", 1))
         fold_reports: List[Dict[str, Any]] = []
 
-        if val_data is None and cv_folds > 1:
-            cv_indices = build_group_kfold_indices(
-                train_df.reset_index(drop=True),
-                n_splits=min(cv_folds, len(train_df)),
-                group_col=str(hyperparameters.get("split_group_col", "group_id")),
-                random_state=int(hyperparameters.get("random_state", 42)),
-            )
-            for fold_idx, (tr_idx, va_idx) in enumerate(cv_indices):
-                fold_train_df = train_df.iloc[tr_idx].reset_index(drop=True)
-                fold_val_df = train_df.iloc[va_idx].reset_index(drop=True)
+        if val_data is None and has_assigned_cv_folds(train_data):
+            for fold_idx, (fold_label, fold_train_native, fold_val_native) in enumerate(
+                iter_assigned_cv_folds(train_data)
+            ):
+                fold_train_df = self._to_pridict_dataframe(fold_train_native)
+                fold_val_df = self._to_pridict_dataframe(fold_val_native)
                 report = self._run_train_val_once(
                     train_df=fold_train_df,
                     val_df=fold_val_df,
                     y_ref=y_ref,
                     hyperparameters=hyperparameters,
                     output_dir=output_dir,
-                    run_suffix=f"cv_fold_{fold_idx}",
+                    run_suffix=f"cv_{fold_label}",
                     trainer_backend=trainer_backend,
                 )
-                fold_reports.append({"fold": fold_idx, **report})
+                fold_reports.append({"fold": fold_idx, "fold_label": fold_label, **report})
 
         run_report = self._run_train_val_once(
             train_df=train_df,

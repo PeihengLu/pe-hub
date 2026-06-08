@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..loaders import PEDataLoader
 from ..utils.json_utils import dataframe_to_json_records
+from pe_common.splits import SplitConfig, assign_splits
 from .models import Dataset, Datasheet, Scaffold, Study
 from .schemas import (
     DatasetRead,
@@ -29,6 +30,58 @@ from .schemas import (
 )
 
 _EDIT_TYPE_CODES: dict[str, int] = {"sub": 0, "ins": 1, "del": 2}
+_SPLIT_GROUP_SCOPE_COL = "_split_group_scope"
+
+
+def _datasheet_scope_key(descriptor: dict[str, Any]) -> str:
+    return (
+        f"{descriptor['study']}|{descriptor['dataset']}|"
+        f"{descriptor['cell_line']}|{descriptor['pe_system']}"
+    )
+
+
+def _attach_split_metadata(converted: pd.DataFrame, standardized: pd.DataFrame) -> pd.DataFrame:
+    output = converted.copy()
+    for column in ("split", "split_source"):
+        if column in standardized.columns:
+            output[column] = standardized[column].to_numpy()
+    if "original_fold" in standardized.columns:
+        output["original_fold"] = standardized["original_fold"].to_numpy()
+    return output
+
+
+def _apply_export_split(
+    standardized: pd.DataFrame,
+    split_config: SplitConfig,
+    *,
+    merge_groups: bool,
+    group_scope: Optional[str] = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if split_config.strategy == "none":
+        return standardized, {"strategy": "none"}
+
+    if merge_groups:
+        scoped = standardized.copy()
+        if _SPLIT_GROUP_SCOPE_COL not in scoped.columns:
+            scoped[_SPLIT_GROUP_SCOPE_COL] = group_scope or "merged"
+        merged_config = SplitConfig(
+            strategy=split_config.strategy,
+            train_pct=split_config.train_pct,
+            val_pct=split_config.val_pct,
+            test_pct=split_config.test_pct,
+            cv_folds=split_config.cv_folds,
+            use_original_fold=split_config.use_original_fold,
+            original_fold_test_value=split_config.original_fold_test_value,
+            original_fold_col=split_config.original_fold_col,
+            group_col=split_config.group_col,
+            random_state=split_config.random_state,
+            fold_namespace_prefix=split_config.fold_namespace_prefix,
+            group_scope_col=_SPLIT_GROUP_SCOPE_COL,
+        )
+        split_df, summary = assign_splits(scoped, merged_config)
+        return split_df.drop(columns=[_SPLIT_GROUP_SCOPE_COL], errors="ignore"), summary
+
+    return assign_splits(standardized, split_config)
 
 
 def _normalize_filter_values(values: Optional[str | list[str]]) -> Optional[list[str]]:
@@ -194,6 +247,8 @@ class CatalogRepository:
         target_context: Optional[str | list[str]] = None,
         scaffold_name: Optional[str | list[str]] = None,
         target_format: Optional[str] = None,
+        split_config: Optional[SplitConfig] = None,
+        merge_groups: bool = False,
     ) -> list[DatasheetRead] | dict[str, Any]:
         """Apply catalog metadata filters, then per-edit filters on standardized data.
 
@@ -246,6 +301,8 @@ class CatalogRepository:
             edit_length=edit_length,
             edit_efficiency_min=edit_efficiency_min,
             edit_efficiency_max=edit_efficiency_max,
+            split_config=split_config,
+            merge_groups=merge_groups,
         )
 
     def _convert_filtered_rows_to_format(
@@ -257,6 +314,8 @@ class CatalogRepository:
         edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        split_config: Optional[SplitConfig] = None,
+        merge_groups: bool = False,
     ) -> dict[str, Any]:
         """Convert standardizable datasheets' standardized data into ``target_format``."""
         from ..converter import DataConverter
@@ -266,8 +325,11 @@ class CatalogRepository:
         converter = DataConverter(data_root)
         edit_type_codes = self._parse_edit_types(edit_type)
 
+        split_config = split_config or SplitConfig(strategy="none")
         groups: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
+        pending: list[tuple[dict[str, Any], pd.DataFrame]] = []
+        split_summaries: list[dict[str, Any]] = []
 
         for row in rows:
             if row.dataset is None or row.dataset.study is None:
@@ -299,34 +361,95 @@ class CatalogRepository:
             if filtered.empty:
                 continue
 
+            pending.append((descriptor, filtered))
+
+        if merge_groups and pending:
+            merged_frames: list[pd.DataFrame] = []
+            merged_descriptor = {
+                "study": "merged",
+                "dataset": "merged",
+                "cell_line": "merged",
+                "pe_system": "merged",
+            }
+            for descriptor, filtered in pending:
+                scoped = filtered.copy()
+                scoped[_SPLIT_GROUP_SCOPE_COL] = _datasheet_scope_key(descriptor)
+                merged_frames.append(scoped)
+            merged_std = pd.concat(merged_frames, ignore_index=True)
             try:
+                split_std, split_summary = _apply_export_split(
+                    merged_std,
+                    split_config,
+                    merge_groups=True,
+                )
                 converted = converter.convert_from_standardized(
-                    filtered,
-                    study=dataset.study.name,
-                    dataset=dataset.name,
-                    cell_line=row.cell_line,
-                    pe_system=row.pe_system,
+                    split_std,
+                    study="merged",
+                    dataset="merged",
+                    cell_line="merged",
+                    pe_system="merged",
                     target_format=target_format,
                 )
-            except (ValueError, KeyError) as exc:
-                skipped.append({**descriptor, "reason": f"conversion failed: {exc}"})
-                continue
+                converted = _attach_split_metadata(converted, split_std)
+            except ValueError as exc:
+                skipped.append({**merged_descriptor, "reason": f"split assignment failed: {exc}"})
+            else:
+                groups.append(
+                    {
+                        **merged_descriptor,
+                        "num_records": int(len(converted)),
+                        "columns": list(converted.columns),
+                        "records": dataframe_to_json_records(converted),
+                    }
+                )
+                split_summaries.append(split_summary)
+        else:
+            for descriptor, filtered in pending:
+                try:
+                    split_std, split_summary = _apply_export_split(
+                        filtered,
+                        split_config,
+                        merge_groups=False,
+                    )
+                    converted = converter.convert_from_standardized(
+                        split_std,
+                        study=descriptor["study"],
+                        dataset=descriptor["dataset"],
+                        cell_line=descriptor["cell_line"],
+                        pe_system=descriptor["pe_system"],
+                        target_format=target_format,
+                    )
+                    converted = _attach_split_metadata(converted, split_std)
+                except (ValueError, KeyError) as exc:
+                    skipped.append({**descriptor, "reason": str(exc)})
+                    continue
 
-            groups.append(
-                {
-                    **descriptor,
-                    "num_records": int(len(converted)),
-                    "columns": list(converted.columns),
-                    "records": dataframe_to_json_records(converted),
-                }
-            )
+                groups.append(
+                    {
+                        **descriptor,
+                        "num_records": int(len(converted)),
+                        "columns": list(converted.columns),
+                        "records": dataframe_to_json_records(converted),
+                    }
+                )
+                if split_config.strategy != "none":
+                    split_summaries.append({**descriptor, **split_summary})
 
-        return {
+        payload: dict[str, Any] = {
             "target_format": target_format,
             "groups": groups,
             "skipped": skipped,
             "total_records": int(sum(group["num_records"] for group in groups)),
+            "merged": merge_groups,
         }
+        if split_config.strategy != "none":
+            payload["split"] = {
+                "strategy": split_config.strategy,
+                "use_original_fold": split_config.use_original_fold,
+                "random_state": split_config.random_state,
+                "summaries": split_summaries,
+            }
+        return payload
 
     def compute_statistics(
         self,
