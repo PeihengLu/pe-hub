@@ -5,7 +5,7 @@ import { useServiceHealth } from '@context/ServiceHealthProvider'
 
 export type HubSection = 'home' | 'database' | 'ensemble'
 export type DatabasePage = 'catalog' | 'export'
-export type EnsemblePage = 'predict' | 'train' | 'ensemble' | 'docs'
+export type EnsemblePage = 'benchmark' | 'design' | 'train' | 'ensemble' | 'docs'
 
 interface HubNavbarProps {
   section: HubSection
@@ -53,7 +53,8 @@ export default function HubNavbar({
   ]
 
   const ensembleNav: { id: EnsemblePage; label: string }[] = [
-    { id: 'predict', label: 'Predict' },
+    { id: 'benchmark', label: 'Benchmark' },
+    { id: 'design', label: 'Design' },
     { id: 'train', label: 'Train' },
     { id: 'ensemble', label: 'Ensemble' },
     { id: 'docs', label: 'Docs' },

@@ -8,8 +8,10 @@ class BasePEModel(ABC):
     """Base interface for all Prime Editing prediction models"""
     
     def __init__(self, model_name: str, device: Optional[torch.device] = None):
+        from .devices import resolve_device
+
         self.model_name = model_name
-        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device if device is not None else resolve_device()
         self.model = None
         self.is_trained = False
     

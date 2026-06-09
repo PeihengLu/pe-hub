@@ -1,3 +1,9 @@
 # Transient registry lock/write artifacts only (weight files are versioned in-repo)
 weights/registry.json.tmp
 weights/.registry.lock
+
+# Training job state and logs (runtime artifacts)
+jobs/**
+!jobs/README.md
+eval_jobs/**
+!eval_jobs/README.md

@@ -88,18 +88,13 @@ def _torch_version_at_least(major: int, minor: int) -> bool:
         return True
     return parts[0] > major or (parts[0] == major and parts[1] >= minor)
 
-# Constants for device configuration
+# Default device id (prefer accelerators). Use pe_common.devices for discovery/selection.
 if torch is None:
     DEVICE = "cpu"
-elif _torch_version_at_least(2, 0):
-    mps_backend = getattr(torch.backends, "mps", None)
-    DEVICE = (
-        "mps" if mps_backend and torch.backends.mps.is_available()  # Apple Silicon
-        else "cuda" if torch.cuda.is_available()  # NVIDIA GPU
-        else "cpu"
-    )
 else:
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    from .devices import default_device_id
+
+    DEVICE = default_device_id()
 
 # Constants for project paths
 PROJECT_ROOT = _resolve_project_root()

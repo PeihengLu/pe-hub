@@ -5,6 +5,17 @@ from typing import Any
 __version__ = "0.1.0"
 
 from .constants import PROJECT_ROOT, DATA_ROOT, MODEL_ROOT, DEVICE
+from .devices import (
+    AUTO_DEVICE,
+    DeviceDescriptor,
+    cuda_index_from_device,
+    default_device_id,
+    format_devices_for_cli,
+    list_device_ids,
+    list_devices,
+    resolve_device,
+    resolve_device_id,
+)
 from .sequence_utils import align_wt_mut_sequences, remove_padding
 from .data_utils import build_test_mask_from_group_id
 from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
@@ -20,6 +31,15 @@ __all__ = [
     "DATA_ROOT",
     "MODEL_ROOT",
     "DEVICE",
+    "AUTO_DEVICE",
+    "DeviceDescriptor",
+    "cuda_index_from_device",
+    "default_device_id",
+    "format_devices_for_cli",
+    "list_device_ids",
+    "list_devices",
+    "resolve_device",
+    "resolve_device_id",
     # Sequence utilities
     "align_wt_mut_sequences",
     "remove_padding",

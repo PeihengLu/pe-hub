@@ -1,20 +1,49 @@
 # FastAPI endpoints for PE Ensemble service
+from datetime import datetime, timezone
 from typing import List, Literal, Optional, Dict, Any, Union
 import logging
 import os
 
 import pandas as pd
-import requests
 import torch
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from datetime import datetime, timezone
-
 from .models.model_factory import ModelFactory
 from .models import weights_registry
-from pe_common.constants import DEVICE
+from .training.config import MODEL_FORMAT, SUPPORTED_MODELS
+from .training.data import (
+    build_pe_db_filter_params as _build_pe_db_filter_params,
+    request_pe_db_filtered as _request_pe_db_filtered,
+)
+from .compute.device_scheduler import get_scheduler
+from .compute.job_lifecycle import kill_and_remove_job
+from .evaluation.jobs import (
+    create_job as create_eval_job,
+    delete_job as delete_eval_job,
+    get_job as get_eval_job,
+    job_summary as eval_job_summary,
+    list_jobs as list_eval_jobs,
+    read_logs as read_eval_logs,
+)
+from .evaluation.schemas import (
+    EvaluationJobCreatedResponse,
+    EvaluationLogResponse,
+    EvaluationRequest,
+)
+from .training.jobs import create_job, delete_job as delete_train_job, get_job, job_summary, list_jobs, read_logs
+from pe_common.devices import list_devices as list_compute_devices
+from pe_common.devices import default_device_id, resolve_device
+from .training.schemas import (
+    SplitQueryParams,
+    SplitStrategy,
+    TrainingJobCreatedResponse,
+    TrainingJobSummary,
+    TrainingLogResponse,
+    TrainingRequest,
+    default_training_split as _default_training_split,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,156 +73,12 @@ WEIGHTS_ROOT = os.getenv("WEIGHTS_ROOT", str(weights_registry.weights_root()))
 # Store loaded models in memory
 _loaded_models: Dict[str, Any] = {}
 
-
-SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
-
-
-class SplitQueryParams(BaseModel):
-    """PE-DB split assignment parameters (mirrors GET /api/filter)."""
-
-    split_strategy: SplitStrategy = "none"
-    train_pct: Optional[float] = None
-    val_pct: Optional[float] = None
-    test_pct: Optional[float] = None
-    cv_folds: Optional[int] = None
-    use_original_fold: bool = False
-    split_random_state: int = 42
-    merge: bool = False
-
-
-def _default_evaluation_split() -> SplitQueryParams:
-    return SplitQueryParams(
-        split_strategy="holdout_2",
-        train_pct=0.8,
-        test_pct=0.2,
-        use_original_fold=True,
-    )
-
-
-def _default_training_split() -> SplitQueryParams:
-    return SplitQueryParams(
-        split_strategy="holdout_3",
-        train_pct=0.7,
-        val_pct=0.15,
-        test_pct=0.15,
-    )
-
-
 class PredictionRequest(BaseModel):
     model_name: str
     sequences: List[str]
     cell_type: Optional[str] = None
     weights: Optional[str] = None
-
-
-class TrainingRequest(BaseModel):
-    model_name: str
-    dataset_source: str
-    dataset_name: str
-    hyperparameters: Optional[Dict[str, Any]] = None
-    split: SplitQueryParams = Field(default_factory=_default_training_split)
-    study: Optional[FilterValue] = None
-    dataset: Optional[FilterValue] = None
-    cell_line: Optional[FilterValue] = None
-    pe_system: Optional[FilterValue] = None
-    edit_type: Optional[FilterValue] = None
-    edit_length: Optional[FilterValue] = None
-    edit_efficiency_min: Optional[float] = None
-    edit_efficiency_max: Optional[float] = None
-    edit_scope: Optional[FilterValue] = None
-    experimental_method: Optional[FilterValue] = None
-    target_context: Optional[FilterValue] = None
-    scaffold_name: Optional[FilterValue] = None
-    records: Optional[List[Dict[str, Any]]] = None
-    model_kwargs: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
-
-
-FilterScalar = Union[str, int]
-FilterValue = Union[FilterScalar, List[FilterScalar]]
-
-
-class EvaluationRequest(BaseModel):
-    model_name: str
-    # Optional bundled weight set to evaluate (see GET /models/{name}/weights).
-    weights: Optional[str] = None
-    # PE-DB filter params (used when `records` is not provided). Scalar or list
-    # values match the PE Hub ``exportFiltered`` / ``GET /api/filter`` contract.
-    study: Optional[FilterValue] = None
-    dataset: Optional[FilterValue] = None
-    cell_line: Optional[FilterValue] = None
-    pe_system: Optional[FilterValue] = None
-    edit_type: Optional[FilterValue] = None
-    edit_length: Optional[FilterValue] = None
-    edit_efficiency_min: Optional[float] = None
-    edit_efficiency_max: Optional[float] = None
-    edit_scope: Optional[FilterValue] = None
-    experimental_method: Optional[FilterValue] = None
-    target_context: Optional[FilterValue] = None
-    scaffold_name: Optional[FilterValue] = None
-    split: SplitQueryParams = Field(default_factory=_default_evaluation_split)
-    # Inline records, already in the model's native format (bypasses the PE-DB
-    # fetch when provided).
-    records: Optional[List[Dict[str, Any]]] = None
-    # Model constructor kwargs (e.g. pe_system/cell_type for DeepPrime,
-    # model_name for PRIDICT2).
-    model_kwargs: Optional[Dict[str, Any]] = None
-
-
-SUPPORTED_MODELS = ["deepprime", "pridict2", "oped"]
-
-# Map each model to the PE-DB conversion format it consumes. PE-DB owns
-# standardized -> model-format conversion (GET /api/filter?format=...).
-MODEL_FORMAT = {
-    "deepprime": "deepprime",
-    "pridict2": "pridict2",
-    "oped": "oped",
-}
-
-
-def _training_metadata_from_request(
-    request: TrainingRequest,
-    *,
-    n_rows: int,
-    train_result: Dict[str, Any],
-) -> Dict[str, Any]:
-    filters = {
-        key: _normalize_filter_param(getattr(request, key))
-        for key in (
-            "study",
-            "dataset",
-            "cell_line",
-            "pe_system",
-            "edit_type",
-            "edit_length",
-            "edit_scope",
-            "experimental_method",
-            "target_context",
-            "scaffold_name",
-        )
-    }
-    filters = {k: v for k, v in filters.items() if v is not None}
-    metrics: Dict[str, Any] = {}
-    if "validation_metrics" in train_result:
-        metrics["validation"] = train_result["validation_metrics"]
-    elif "val_pearson" in train_result:
-        metrics["validation"] = {
-            "pearson": train_result.get("val_pearson"),
-            "spearman": train_result.get("val_spearman"),
-        }
-    return {
-        "training": {
-            "dataset_source": request.dataset_source,
-            "dataset_name": request.dataset_name,
-            "filters": filters,
-            "split": request.split.model_dump(),
-            "hyperparameters": request.hyperparameters or {},
-            "model_kwargs": request.model_kwargs or {},
-            "n_train_rows": n_rows,
-        },
-        "metrics": metrics,
-        "notes": request.notes,
-    }
+    device: Optional[str] = "auto"
 
 
 def _default_weight_id_for_model(model_name: str, model: Any) -> Optional[str]:
@@ -211,166 +96,14 @@ def _default_weight_id_for_model(model_name: str, model: Any) -> Optional[str]:
     return None
 
 
-def _normalize_filter_param(value: Optional[FilterValue]) -> Optional[List[FilterScalar]]:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return value or None
-    return [value]
-
-
-def _build_pe_db_filter_params(
-    *,
-    model_format: str,
-    split: Optional[SplitQueryParams] = None,
-    study: Optional[FilterValue] = None,
-    dataset: Optional[FilterValue] = None,
-    cell_line: Optional[FilterValue] = None,
-    pe_system: Optional[FilterValue] = None,
-    edit_type: Optional[FilterValue] = None,
-    edit_length: Optional[FilterValue] = None,
-    edit_efficiency_min: Optional[float] = None,
-    edit_efficiency_max: Optional[float] = None,
-    edit_scope: Optional[FilterValue] = None,
-    experimental_method: Optional[FilterValue] = None,
-    target_context: Optional[FilterValue] = None,
-    scaffold_name: Optional[FilterValue] = None,
-) -> Dict[str, Any]:
-    """Build query params for PE-DB ``GET /api/filter`` (exportFiltered contract)."""
-    split = split or SplitQueryParams()
-    params: Dict[str, Any] = {
-        "format": model_format,
-        "split_strategy": split.split_strategy,
-        "use_original_fold": split.use_original_fold,
-        "split_random_state": split.split_random_state,
-        "merge": split.merge,
-    }
-    if split.train_pct is not None:
-        params["train_pct"] = split.train_pct
-    if split.val_pct is not None:
-        params["val_pct"] = split.val_pct
-    if split.test_pct is not None:
-        params["test_pct"] = split.test_pct
-    if split.cv_folds is not None:
-        params["cv_folds"] = split.cv_folds
-    for name, value in (
-        ("study", study),
-        ("dataset", dataset),
-        ("cell_line", cell_line),
-        ("pe_system", pe_system),
-        ("edit_type", edit_type),
-        ("edit_length", edit_length),
-        ("edit_scope", edit_scope),
-        ("experimental_method", experimental_method),
-        ("target_context", target_context),
-        ("scaffold_name", scaffold_name),
-    ):
-        normalized = _normalize_filter_param(value)
-        if normalized is not None:
-            params[name] = normalized
-    if edit_efficiency_min is not None:
-        params["edit_efficiency_min"] = edit_efficiency_min
-    if edit_efficiency_max is not None:
-        params["edit_efficiency_max"] = edit_efficiency_max
-    return params
-
-
 def _request_pe_db_filtered(params: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        response = requests.get(
-            f"{PE_DB_URL}/api/filter",
-            params=params,
-            timeout=120,
-        )
-        response.raise_for_status()
-    except requests.RequestException as exc:
+        return request_pe_db_filtered(params)
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=502, detail=f"Failed to fetch data from PE-DB: {exc}"
         ) from exc
-    return response.json()
 
-
-def _filtered_payload_to_dataframe(payload: Dict[str, Any]) -> pd.DataFrame:
-    frames = [
-        pd.DataFrame(group["records"])
-        for group in payload.get("groups", [])
-        if group.get("records")
-    ]
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
-
-
-def _fetch_model_format_dataframe(
-    *,
-    model_format: str,
-    split: SplitQueryParams,
-    records: Optional[List[Dict[str, Any]]] = None,
-    study: Optional[FilterValue] = None,
-    dataset: Optional[FilterValue] = None,
-    cell_line: Optional[FilterValue] = None,
-    pe_system: Optional[FilterValue] = None,
-    edit_type: Optional[FilterValue] = None,
-    edit_length: Optional[FilterValue] = None,
-    edit_efficiency_min: Optional[float] = None,
-    edit_efficiency_max: Optional[float] = None,
-    edit_scope: Optional[FilterValue] = None,
-    experimental_method: Optional[FilterValue] = None,
-    target_context: Optional[FilterValue] = None,
-    scaffold_name: Optional[FilterValue] = None,
-    evaluation: bool = False,
-) -> pd.DataFrame:
-    """Resolve native model-format rows from inline records or PE-DB."""
-    from pe_common.splits import select_evaluation_partition
-
-    if records is not None:
-        df = pd.DataFrame(records)
-        if evaluation and split.split_strategy != "none":
-            return select_evaluation_partition(df, require_test=True)
-        return df
-
-    params = _build_pe_db_filter_params(
-        model_format=model_format,
-        split=split,
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
-        edit_type=edit_type,
-        edit_length=edit_length,
-        edit_efficiency_min=edit_efficiency_min,
-        edit_efficiency_max=edit_efficiency_max,
-        edit_scope=edit_scope,
-        experimental_method=experimental_method,
-        target_context=target_context,
-        scaffold_name=scaffold_name,
-    )
-    payload = _request_pe_db_filtered(params)
-    df = _filtered_payload_to_dataframe(payload)
-    if evaluation and split.split_strategy != "none":
-        return select_evaluation_partition(df, require_test=True)
-    return df
-
-
-def _fetch_evaluation_dataframe(req: EvaluationRequest, model_format: str) -> pd.DataFrame:
-    return _fetch_model_format_dataframe(
-        model_format=model_format,
-        split=req.split,
-        records=req.records,
-        study=req.study,
-        dataset=req.dataset,
-        cell_line=req.cell_line,
-        pe_system=req.pe_system,
-        edit_type=req.edit_type,
-        edit_length=req.edit_length,
-        edit_efficiency_min=req.edit_efficiency_min,
-        edit_efficiency_max=req.edit_efficiency_max,
-        edit_scope=req.edit_scope,
-        experimental_method=req.experimental_method,
-        target_context=req.target_context,
-        scaffold_name=req.scaffold_name,
-        evaluation=True,
-    )
 
 @app.get("/")
 async def root():
@@ -524,7 +257,7 @@ async def predict(request: PredictionRequest):
     try:
         model = ModelFactory.create_model(
             request.model_name,
-            device=torch.device(DEVICE),
+            device=resolve_device(request.device),
             **model_kwargs,
         )
         if not weight_id:
@@ -545,119 +278,198 @@ async def predict(request: PredictionRequest):
     }
 
 
+@app.get("/devices")
+async def list_devices():
+    """List compute devices available for training and inference."""
+    devices = list_compute_devices()
+    return {
+        "default": default_device_id(),
+        "devices": [device.to_dict() for device in devices],
+        "count": len(devices),
+    }
+
+
+@app.get("/train/devices")
+async def training_device_status():
+    """Per-device occupancy and queue depth for training jobs."""
+    return {
+        "default": default_device_id(),
+        "devices": get_scheduler().device_snapshot(),
+    }
+
+
 @app.post("/train")
 async def train_model(request: TrainingRequest):
-    """Train a model on PE-DB data with centralized split assignments."""
+    """Queue an asynchronous model training job."""
     model_name = request.model_name.strip().lower()
     if model_name not in SUPPORTED_MODELS:
         raise HTTPException(status_code=400, detail="Invalid model name")
 
-    try:
-        train_df = _fetch_model_format_dataframe(
-            model_format=MODEL_FORMAT[model_name],
-            split=request.split,
-            records=request.records,
-            study=request.study,
-            dataset=request.dataset,
-            cell_line=request.cell_line,
-            pe_system=request.pe_system,
-            edit_type=request.edit_type,
-            edit_length=request.edit_length,
-            edit_efficiency_min=request.edit_efficiency_min,
-            edit_efficiency_max=request.edit_efficiency_max,
-            edit_scope=request.edit_scope,
-            experimental_method=request.experimental_method,
-            target_context=request.target_context,
-            scaffold_name=request.scaffold_name,
-            evaluation=False,
-        )
-        if train_df.empty:
-            raise HTTPException(status_code=404, detail="No training data resolved.")
+    job_id = create_job(request)
+    get_scheduler().submit_training(job_id, request)
+    manifest = get_job(job_id)
+    message = "Training job started"
+    if manifest.get("queue_position"):
+        message = f"Training job queued (position {manifest['queue_position']})"
+    return TrainingJobCreatedResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        message=message,
+    )
 
-        from pe_common.splits import exclude_test_partition
 
-        train_df = exclude_test_partition(train_df)
-        if train_df.empty:
-            raise HTTPException(status_code=422, detail="No non-test rows available for training.")
-
-        model = ModelFactory.create_model(
-            model_name, device=torch.device(DEVICE), **(request.model_kwargs or {})
-        )
-        if model_name == "oped":
-            train_df = model.prepare_data(train_df)
-
-        result = model.train(train_df, hyperparameters=request.hyperparameters)
-
-        metadata = _training_metadata_from_request(
-            request,
-            n_rows=int(len(train_df)),
-            train_result=result,
-        )
-        weights_id = weights_registry.register_trained_model(
-            model_name,
-            model,
-            metadata=metadata,
-            notes=request.notes,
-        )
-        entry = weights_registry.get_manifest(model_name, weights_id)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Training failed")
-        raise HTTPException(status_code=500, detail=f"Training failed: {exc}") from exc
-
+@app.get("/train/jobs")
+async def list_training_jobs(limit: int = Query(50, ge=1, le=200)):
+    """List recent training jobs (newest first)."""
+    manifests = list_jobs(limit=limit)
     return {
-        "model": model_name,
-        "status": "success",
-        "split_strategy": request.split.split_strategy,
-        "n_rows": int(len(train_df)),
-        "weights_id": weights_id,
-        "weights_label": entry.get("label"),
-        "result": result,
+        "jobs": [job_summary(m).model_dump() for m in manifests],
+        "count": len(manifests),
     }
+
+
+@app.get("/train/status/{job_id}")
+async def get_training_status(job_id: str):
+    """Return training job status and result metadata."""
+    try:
+        manifest = get_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    summary = job_summary(manifest).model_dump()
+    if manifest.get("result") is not None:
+        summary["result"] = manifest["result"]
+    return summary
+
+
+@app.delete("/train/jobs/{job_id}")
+async def delete_training_job(job_id: str):
+    """Stop a queued or running training job and remove its on-disk artifacts."""
+    try:
+        get_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    kill_and_remove_job(
+        "train",
+        job_id,
+        get_job=get_job,
+        delete_job=delete_train_job,
+    )
+    return {"job_id": job_id, "deleted": True}
+
+
+@app.get("/train/logs/{job_id}")
+async def get_training_logs(
+    job_id: str,
+    offset: int = Query(0, ge=0, description="Byte offset into the log file"),
+):
+    """Return incremental training log output for a job."""
+    try:
+        manifest = get_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    log_chunk, next_offset = read_logs(job_id, offset=offset)
+    return TrainingLogResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        offset=offset,
+        next_offset=next_offset,
+        log=log_chunk,
+    )
 
 
 @app.post("/evaluate")
 async def evaluate_model(request: EvaluationRequest):
-    """Evaluate a model on test data, optionally against a named pre-trained weight set.
-
-    Test data is taken from inline `records` (model-native schema) or fetched
-    from PE-DB via the same multi-value filters as ``GET /data/filter`` /
-    PE Hub ``exportFiltered``. When PE-DB split assignments are present, only
-    rows with ``split=test`` are evaluated.
-    """
+    """Queue an asynchronous benchmark / evaluation job."""
     model_name = request.model_name.strip().lower()
     if model_name not in SUPPORTED_MODELS:
         raise HTTPException(status_code=400, detail="Invalid model name")
 
-    test_df = _fetch_evaluation_dataframe(request, MODEL_FORMAT[model_name])
-    if test_df.empty:
-        raise HTTPException(status_code=404, detail="No test data resolved for evaluation.")
-
+    weight_id = request.weights.strip()
+    if not weight_id:
+        raise HTTPException(status_code=400, detail="weights is required")
     try:
-        model = ModelFactory.create_model(
-            model_name, device=torch.device(DEVICE), **(request.model_kwargs or {})
-        )
+        weights_registry.resolve_dir(model_name, weight_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        if model_name == "oped":
-            # OPED.evaluate expects tokenized inputs; encode the native OPED rows.
-            prepared = model.prepare_data(test_df)
-            metrics = model.evaluate(prepared, weights=request.weights)
-        else:
-            metrics = model.evaluate(test_df, weights=request.weights)
-    except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Evaluation failed")
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}") from exc
+    job_id = create_eval_job(request)
+    get_scheduler().submit_evaluation(job_id, request)
+    manifest = get_eval_job(job_id)
+    message = "Evaluation job started"
+    if manifest.get("queue_position"):
+        message = f"Evaluation job queued (position {manifest['queue_position']})"
+    return EvaluationJobCreatedResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        message=message,
+    )
 
+
+@app.get("/evaluate/jobs")
+async def list_evaluation_jobs(limit: int = Query(50, ge=1, le=200)):
+    manifests = list_eval_jobs(limit=limit)
     return {
-        "model": model_name,
-        "weights": request.weights,
-        "n_samples": int(len(test_df)),
-        "metrics": metrics,
+        "jobs": [eval_job_summary(m).model_dump() for m in manifests],
+        "count": len(manifests),
+    }
+
+
+@app.get("/evaluate/status/{job_id}")
+async def get_evaluation_status(job_id: str):
+    try:
+        manifest = get_eval_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    summary = eval_job_summary(manifest).model_dump()
+    if manifest.get("result") is not None:
+        summary["result"] = manifest["result"]
+    return summary
+
+
+@app.delete("/evaluate/jobs/{job_id}")
+async def delete_evaluation_job(job_id: str):
+    """Stop a queued or running evaluation job and remove its on-disk artifacts."""
+    try:
+        get_eval_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    kill_and_remove_job(
+        "evaluate",
+        job_id,
+        get_job=get_eval_job,
+        delete_job=delete_eval_job,
+    )
+    return {"job_id": job_id, "deleted": True}
+
+
+@app.get("/evaluate/logs/{job_id}")
+async def get_evaluation_logs(
+    job_id: str,
+    offset: int = Query(0, ge=0),
+):
+    try:
+        manifest = get_eval_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    log_chunk, next_offset = read_eval_logs(job_id, offset=offset)
+    return EvaluationLogResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        offset=offset,
+        next_offset=next_offset,
+        log=log_chunk,
+    )
+
+
+@app.get("/evaluate/devices")
+async def evaluation_device_status():
+    return {
+        "default": default_device_id(),
+        "devices": get_scheduler().device_snapshot(),
     }
 
 

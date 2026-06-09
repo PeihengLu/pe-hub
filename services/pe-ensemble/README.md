@@ -20,16 +20,25 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 
 - `GET /health` - Health check endpoint
 - `GET /models` - List available models
-- `POST /train` - Train a model
-- `POST /predict` - Get predictions from a model
-- `POST /evaluate` - Evaluate model performance
-- `POST /ensemble` - Get ensemble predictions
+- `POST /train` - Queue an asynchronous training job
+- `GET /train/status/{job_id}` - Training job status
+- `GET /train/logs/{job_id}` - Incremental training logs
+- `GET /train/jobs` - List recent training jobs
+- `GET /devices` - List compute devices (GPU, MPS, XPU, CPU, …)
+- `GET /train/devices` - Per-device training occupancy and queue depth
+- `GET /data/filter` - Proxy PE-DB filter/export (same contract as PE Hub export)
+- `POST /predict` - Sequence prediction stub (design workflow will use this later)
+- `POST /evaluate` - Queue an asynchronous benchmark job
+- `GET /evaluate/status/{job_id}` - Benchmark job status and metrics
+- `GET /evaluate/logs/{job_id}` - Benchmark job logs
+- `GET /evaluate/jobs` - List recent benchmark jobs
 
 ## Running Locally
 
 ```bash
 cd services/pe-ensemble
-PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
+pip install -e .
+PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
 ```
 
 The service will be available at http://localhost:8001 by default.
@@ -41,7 +50,7 @@ The service will be available at http://localhost:8001 by default.
 pip install -e .
 
 # Run development server
-PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
+PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
 ```
 
 ## Data format and conversion
@@ -68,6 +77,33 @@ and are **tracked in git** (~630 MB of checkpoints). Each weight set has a
 
 On older checkouts where weights still sit under `vendor/models`, bootstrap once
 with `python -m app.models.migrate_weights`.
+
+## Training CLI and SLURM
+
+Run training without the HTTP server (logs and job state land under `jobs/`):
+
+```bash
+cd services/pe-ensemble
+python -m app.train_models --list-devices
+
+python -m app.train_models \
+  --model deepprime \
+  --dataset-name library2 \
+  --dataset library2 \
+  --cell-line HEK293T \
+  --pe-system PE2max \
+  --device cuda:0 \
+  --model-kwargs-json '{"pe_system":"PE2max","cell_type":"HEK293T"}' \
+  --pe-db-url http://pe-db.internal:8000 \
+  --weights-root /scratch/$USER/pe-ensemble/weights \
+  --jobs-root /scratch/$USER/pe-ensemble/jobs
+```
+
+`POST /train` accepts `device` (`auto`, `cuda:0`, `mps`, `cpu`, …). Multiple jobs can run
+concurrently on different devices; the service maintains a per-device queue so only one job
+uses a given device at a time.
+
+See [jobs/README.md](jobs/README.md) for queue-only / worker-step patterns.
 
 List available weight sets via `GET /models/{model_name}/weights` or from Python:
 

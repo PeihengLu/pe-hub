@@ -8,7 +8,8 @@ import ServiceGate from '@components/ServiceGate'
 import HomePage from '@/pages/HomePage'
 import CatalogPage from '@apps/database/pages/CatalogPage'
 import ExportPage from '@apps/database/pages/ExportPage'
-import PredictionPage from '@apps/ensemble/pages/PredictionPage'
+import BenchmarkPage from '@apps/ensemble/pages/BenchmarkPage'
+import DesignPage from '@apps/ensemble/pages/DesignPage'
 import TrainingPage from '@apps/ensemble/pages/TrainingPage'
 import EnsembleToolPage from '@apps/ensemble/pages/EnsemblePage'
 import DocumentationPage from '@apps/ensemble/pages/DocumentationPage'
@@ -16,7 +17,7 @@ import DocumentationPage from '@apps/ensemble/pages/DocumentationPage'
 function App() {
   const [section, setSection] = useState<HubSection>('home')
   const [databasePage, setDatabasePage] = useState<DatabasePage>('catalog')
-  const [ensemblePage, setEnsemblePage] = useState<EnsemblePage>('predict')
+  const [ensemblePage, setEnsemblePage] = useState<EnsemblePage>('benchmark')
 
   const renderContent = () => {
     if (section === 'home') {
@@ -35,7 +36,8 @@ function App() {
     if (section === 'ensemble') {
       return (
         <ServiceGate serviceId="pe-ensemble">
-          {ensemblePage === 'predict' && <PredictionPage />}
+          {ensemblePage === 'benchmark' && <BenchmarkPage />}
+          {ensemblePage === 'design' && <DesignPage />}
           {ensemblePage === 'train' && <TrainingPage />}
           {ensemblePage === 'ensemble' && <EnsembleToolPage />}
           {ensemblePage === 'docs' && <DocumentationPage />}

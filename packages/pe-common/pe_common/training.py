@@ -45,11 +45,9 @@ def ensure_lightning_available() -> None:
 
 def lightning_accelerator_from_device(device: torch.device) -> str:
     """Map torch.device to lightning Trainer accelerator."""
-    if device.type == "cuda":
-        return "gpu"
-    if device.type == "mps":
-        return "mps"
-    return "cpu"
+    from .devices import device_to_lightning_accelerator
+
+    return device_to_lightning_accelerator(device)
 
 
 @dataclass
