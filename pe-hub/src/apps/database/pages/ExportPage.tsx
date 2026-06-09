@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useMutation, useQuery } from 'react-query'
+import { useState } from 'react'
+import { useMutation } from 'react-query'
 import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
@@ -7,12 +7,10 @@ import ExportFilterBuilder from '@apps/database/components/ExportFilterBuilder'
 import {
   EXPORT_FORMATS,
   SPLIT_STRATEGIES,
-  STATIC_FILTER_OPTIONS,
   buildFilterParams,
   buildSplitParams,
   type AttributeFilterRow,
   type ExportFormat,
-  type FilterAttributeKey,
   type SplitStrategy,
 } from '@apps/database/config/exportAttributes'
 import peDbApi from '@apps/database/services/peDbApi'
@@ -21,12 +19,9 @@ import {
   mergedExportGroupsToCsv,
   recordsToCsv,
 } from '@apps/database/utils/downloadCsv'
+import { useCatalogFilterOptions } from '@/hooks/useCatalogFilterOptions'
 
 type DownloadMode = 'merged' | 'separate'
-
-function uniqueSorted(values: string[]) {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b))
-}
 
 export default function ExportPage() {
   const [format, setFormat] = useState<ExportFormat>('std')
@@ -40,55 +35,8 @@ export default function ExportPage() {
   const [useOriginalFold, setUseOriginalFold] = useState(false)
   const [splitRandomState, setSplitRandomState] = useState('42')
 
-  const studiesQuery = useQuery('pe-db-export-studies', () => peDbApi.listStudies(), {
-    select: (response) => response.data,
-  })
-  const datasetsQuery = useQuery('pe-db-export-datasets', () => peDbApi.listDatasets(), {
-    select: (response) => response.data,
-  })
-  const datasheetsQuery = useQuery('pe-db-export-datasheets', () => peDbApi.listDatasheets(), {
-    select: (response) => response.data,
-  })
-  const scaffoldsQuery = useQuery('pe-db-export-scaffolds', () => peDbApi.listScaffolds(), {
-    select: (response) => response.data,
-  })
-  const statsQuery = useQuery('pe-db-export-statistics', () => peDbApi.getStatistics(), {
-    select: (response) => response.data,
-  })
-
-  const optionsByAttribute = useMemo<Partial<Record<FilterAttributeKey, string[]>>>(() => {
-    const studies = studiesQuery.data?.map((study) => study.name) ?? []
-    const datasets = datasetsQuery.data?.map((dataset) => dataset.name) ?? []
-    const cellLines = datasheetsQuery.data?.map((sheet) => sheet.cell_line) ?? []
-    const peSystems = datasheetsQuery.data?.map((sheet) => sheet.pe_system) ?? []
-    const scaffolds = scaffoldsQuery.data?.map((scaffold) => scaffold.name) ?? []
-    const editLengths =
-      statsQuery.data?.edit_length.map((row) => String(row.edit_length)) ?? []
-
-    return {
-      study: uniqueSorted(studies),
-      dataset: uniqueSorted(datasets),
-      cell_line: uniqueSorted(cellLines),
-      pe_system: uniqueSorted(peSystems),
-      scaffold_name: uniqueSorted(scaffolds),
-      edit_length: uniqueSorted(editLengths),
-      ...STATIC_FILTER_OPTIONS,
-    }
-  }, [studiesQuery.data, datasetsQuery.data, datasheetsQuery.data, scaffoldsQuery.data, statsQuery.data])
-
-  const optionsLoading =
-    studiesQuery.isLoading ||
-    datasetsQuery.isLoading ||
-    datasheetsQuery.isLoading ||
-    scaffoldsQuery.isLoading ||
-    statsQuery.isLoading
-
-  const optionsError =
-    studiesQuery.error ||
-    datasetsQuery.error ||
-    datasheetsQuery.error ||
-    scaffoldsQuery.error ||
-    statsQuery.error
+  const { optionsByAttribute, getOptionsForRow, isLoading: optionsLoading, error: optionsError } =
+    useCatalogFilterOptions(filterRows)
 
   const exportMutation = useMutation(async () => {
     const filters = buildFilterParams(filterRows)
@@ -192,6 +140,7 @@ export default function ExportPage() {
           <ExportFilterBuilder
             rows={filterRows}
             optionsByAttribute={optionsByAttribute}
+            getOptionsForRow={getOptionsForRow}
             onChange={setFilterRows}
           />
         )}

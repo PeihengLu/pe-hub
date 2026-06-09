@@ -1,0 +1,26 @@
+---
+description: Commit message format for this repository
+alwaysApply: true
+---
+
+# Commit messages
+
+Use this format for every git commit in this repo:
+
+```
+[edit-type] detailed edit
+```
+
+- **edit-type**: scope or kind of change (lowercase). Examples from this project: `frontend`, `feature`, `fix`, `test`, `data`, `db`, `refactor`, `chore`, `cleanup`, `txt`. Combine when needed, e.g. `[feature/fix]`.
+- **detailed edit**: one short sentence describing why or what changed (lowercase start is fine).
+
+Examples:
+
+```
+[frontend] pe-db exportation
+[test] add system test for evaluation
+[feature] connect pe-db to pe-ensemble, sync up pytorch versions
+[feature/fix] deeppe standardization and exportation, fix pridict1 endo exportation
+```
+
+Do not use generic messages like "update files" or "misc changes".

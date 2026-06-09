@@ -4,46 +4,44 @@ import { Play } from 'lucide-react'
 import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
-import api from '@apps/ensemble/services/api'
 import ComputeJobList from '@apps/ensemble/components/ComputeJobList'
 import ModelDataPanel from '@apps/ensemble/components/ModelDataPanel'
-import TrainingHyperparametersPanel, {
-  DEFAULT_HYPERPARAMETERS,
-  buildHyperparametersPayload,
-  type HyperparameterFormState,
-} from '@apps/ensemble/components/TrainingHyperparametersPanel'
+import api from '@apps/ensemble/services/api'
+import { DEFAULT_EVAL_SPLIT } from '@apps/ensemble/config/splitParams'
 import { exportFormatForModel } from '@apps/ensemble/config/modelFormats'
 import {
-  buildFilterParams,
-  type AttributeFilterRow,
-  type SplitStrategy,
-} from '@apps/database/config/exportAttributes'
+  buildBenchmarkRequestForGroup,
+  buildBenchmarkSplitParams,
+  deepprimeModelKwargsFromFilters,
+} from '@apps/ensemble/utils/benchmarkRequest'
+import { buildFilterParams, type AttributeFilterRow } from '@apps/database/config/exportAttributes'
+import type { SplitStrategy } from '@apps/database/config/exportAttributes'
 import peDbApi, { type ExportResponse } from '@apps/database/services/peDbApi'
-import {
-  buildTrainingRequestForGroup,
-  buildTrainingSplitParams,
-  singleValueFromFilters,
-} from '@apps/ensemble/utils/trainingRequest'
 import {
   jobStatusRefetchInterval,
   TERMINAL_JOB_STATUSES,
 } from '@apps/ensemble/utils/jobStatus'
 
-export default function TrainingPage() {
+export default function BenchmarkPage() {
   const [modelName, setModelName] = useState('deepprime')
+  const [weightId, setWeightId] = useState('')
   const [device, setDevice] = useState('auto')
   const [filterRows, setFilterRows] = useState<AttributeFilterRow[]>([])
-  const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('holdout_3')
-  const [trainPct, setTrainPct] = useState('0.7')
+  const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>(
+    DEFAULT_EVAL_SPLIT.split_strategy
+  )
+  const [trainPct, setTrainPct] = useState(String(DEFAULT_EVAL_SPLIT.train_pct ?? 0.8))
   const [valPct, setValPct] = useState('0.15')
-  const [testPct, setTestPct] = useState('0.15')
+  const [testPct, setTestPct] = useState(String(DEFAULT_EVAL_SPLIT.test_pct ?? 0.2))
   const [cvFolds, setCvFolds] = useState('5')
-  const [useOriginalFold, setUseOriginalFold] = useState(false)
-  const [splitRandomState, setSplitRandomState] = useState('42')
-  const [batchTraining, setBatchTraining] = useState(false)
+  const [useOriginalFold, setUseOriginalFold] = useState(
+    DEFAULT_EVAL_SPLIT.use_original_fold ?? true
+  )
+  const [splitRandomState, setSplitRandomState] = useState(
+    String(DEFAULT_EVAL_SPLIT.split_random_state ?? 42)
+  )
+  const [batchBenchmark, setBatchBenchmark] = useState(false)
   const [previewData, setPreviewData] = useState<ExportResponse | undefined>()
-  const [hyperparameters, setHyperparameters] =
-    useState<HyperparameterFormState>(DEFAULT_HYPERPARAMETERS)
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -55,23 +53,36 @@ export default function TrainingPage() {
     select: (response) => response.data.models,
   })
 
+  const { data: weightSets, isLoading: weightsLoading } = useQuery(
+    ['model-weights', modelName],
+    () => api.listModelWeights(modelName),
+    {
+      enabled: Boolean(modelName),
+      select: (response) => response.data.weights,
+    }
+  )
+
   const { data: devices } = useQuery('ensemble-devices', () => api.listDevices(), {
     select: (response) => response.data,
   })
 
-  const { data: deviceStatus } = useQuery('training-devices', () => api.listTrainingDevices(), {
+  const { data: deviceStatus } = useQuery('benchmark-devices', () => api.listBenchmarkDevices(), {
     refetchInterval: 3000,
     select: (response) => response.data,
   })
 
-  const { data: jobs, refetch: refetchJobs } = useQuery('training-jobs', () => api.listTrainingJobs(30), {
-    refetchInterval: 3000,
-    select: (response) => response.data.jobs,
-  })
+  const { data: jobs, refetch: refetchJobs } = useQuery(
+    'benchmark-jobs',
+    () => api.listBenchmarkJobs(30),
+    {
+      refetchInterval: 3000,
+      select: (response) => response.data.jobs,
+    }
+  )
 
   const { data: jobStatusResponse } = useQuery(
-    ['training-status', selectedJobId],
-    () => api.getTrainingStatus(selectedJobId!),
+    ['benchmark-status', selectedJobId],
+    () => api.getBenchmarkStatus(selectedJobId!),
     {
       enabled: Boolean(selectedJobId),
       refetchInterval: jobStatusRefetchInterval,
@@ -82,12 +93,17 @@ export default function TrainingPage() {
 
   useEffect(() => {
     if (!jobStatus?.status || !TERMINAL_JOB_STATUSES.has(jobStatus.status)) return
-    void queryClient.invalidateQueries('training-jobs')
+    void queryClient.invalidateQueries('benchmark-jobs')
   }, [jobStatus?.status, queryClient])
 
   useEffect(() => {
+    setWeightId('')
     setPreviewData(undefined)
-  }, [modelName, filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, splitRandomState, batchTraining])
+  }, [modelName])
+
+  useEffect(() => {
+    setPreviewData(undefined)
+  }, [filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, splitRandomState, batchBenchmark])
 
   useEffect(() => {
     if (!selectedJobId) return undefined
@@ -97,18 +113,18 @@ export default function TrainingPage() {
 
     const pollLogs = async () => {
       try {
-        const response = await api.getTrainingLogs(selectedJobId, logOffsetRef.current)
+        const response = await api.getBenchmarkLogs(selectedJobId, logOffsetRef.current)
         if (cancelled) return
         if (response.data.log) {
           setLogText((prev) => prev + response.data.log)
           logOffsetRef.current = response.data.next_offset
         }
         if (TERMINAL_JOB_STATUSES.has(response.data.status)) {
-          void queryClient.invalidateQueries(['training-status', selectedJobId])
-          void queryClient.invalidateQueries('training-jobs')
+          void queryClient.invalidateQueries(['benchmark-status', selectedJobId])
+          void queryClient.invalidateQueries('benchmark-jobs')
         }
       } catch {
-        // status endpoint will surface terminal errors
+        // status endpoint surfaces terminal errors
       }
     }
 
@@ -129,10 +145,12 @@ export default function TrainingPage() {
   const incompleteRows = filterRows.filter(
     (row) => row.attribute !== '' && row.values.length === 0
   )
-  const canSubmit = incompleteRows.length === 0
+  const hasWeightSelection = weightId.trim().length > 0
+  const hasRegisteredWeights = (weightSets?.length ?? 0) > 0
+  const canSubmit = incompleteRows.length === 0 && hasWeightSelection && hasRegisteredWeights
 
-  const trainMutation = useMutation(async () => {
-    const split = buildTrainingSplitParams({
+  const benchmarkMutation = useMutation(async () => {
+    const split = buildBenchmarkSplitParams({
       strategy: splitStrategy,
       trainPct,
       valPct,
@@ -140,16 +158,10 @@ export default function TrainingPage() {
       cvFolds,
       useOriginalFold,
       randomState: splitRandomState,
-      batchTraining,
+      batchTraining: batchBenchmark,
     })
-    const hyperparameterPayload = buildHyperparametersPayload(modelName, hyperparameters)
 
-    const modelKwargsForDeepprime = (cellLine?: string, peSystem?: string) =>
-      modelName === 'deepprime' && cellLine && peSystem
-        ? { cell_type: cellLine, pe_system: peSystem }
-        : undefined
-
-    if (batchTraining) {
+    if (batchBenchmark) {
       const filters = buildFilterParams(filterRows)
       const exportFormat = exportFormatForModel(modelName)
       const preview = await peDbApi.exportFiltered(exportFormat, filters, split)
@@ -160,15 +172,15 @@ export default function TrainingPage() {
 
       let lastJobId: string | null = null
       for (const group of groups) {
-        const response = await api.train(
-          buildTrainingRequestForGroup({
+        const response = await api.benchmark(
+          buildBenchmarkRequestForGroup({
             modelName,
             device,
-            hyperparameters: hyperparameterPayload,
-            modelKwargs: modelKwargsForDeepprime(group.cell_line, group.pe_system),
+            weights: weightId,
             split,
             filterRows,
             group,
+            modelKwargs: deepprimeModelKwargsFromFilters(filterRows, group),
           })
         )
         lastJobId = response.data.job_id
@@ -176,58 +188,67 @@ export default function TrainingPage() {
       return { job_id: lastJobId!, batch_count: groups.length }
     }
 
-    const cellLine = singleValueFromFilters(filterRows, 'cell_line')
-    const peSystem = singleValueFromFilters(filterRows, 'pe_system')
-    const response = await api.train(
-      buildTrainingRequestForGroup({
+    const response = await api.benchmark(
+      buildBenchmarkRequestForGroup({
         modelName,
         device,
-        hyperparameters: hyperparameterPayload,
-        modelKwargs: modelKwargsForDeepprime(cellLine, peSystem),
+        weights: weightId,
         split,
         filterRows,
+        modelKwargs: deepprimeModelKwargsFromFilters(filterRows),
       })
     )
     return { job_id: response.data.job_id, batch_count: 1 }
   })
 
-  const handleTrain = () => {
+  const handleBenchmark = () => {
+    if (!hasRegisteredWeights) {
+      setError(`No weight sets are registered for ${modelName}. Check GET /models/${modelName}/weights.`)
+      return
+    }
+    if (!hasWeightSelection) {
+      setError('Select a weight set before starting the benchmark')
+      return
+    }
     if (!canSubmit) {
-      setError('Complete all filter rows before starting training')
+      setError('Complete all filter rows before starting the benchmark')
       return
     }
     setError(null)
-    trainMutation.mutate(undefined, {
+    benchmarkMutation.mutate(undefined, {
       onSuccess: (result) => {
         setSelectedJobId(result.job_id)
         refetchJobs()
       },
       onError: (err: any) => {
-        setError(err.response?.data?.detail || err.message || 'Failed to queue training job')
+        setError(err.response?.data?.detail || err.message || 'Failed to queue benchmark job')
       },
     })
   }
 
-  if (modelsLoading) return <LoadingSpinner message="Loading models..." />
+  if (modelsLoading || weightsLoading) {
+    return <LoadingSpinner message="Loading models..." />
+  }
 
   const statusLabel = (status: string, queuePosition?: number | null) => {
     if (status === 'queued' && queuePosition) return `queued (#${queuePosition})`
     return status
   }
 
+  const metrics = jobStatus?.result?.metrics as Record<string, number> | undefined
+
   return (
     <div className="space-y-6">
-      <Card title="Model Training">
+      <Card title="Model Benchmark">
         <p className="text-slate-600">
-          Choose training data from the PE Database catalog, configure hyperparameters, and queue
-          jobs. Batch mode trains each matching datasheet separately; otherwise datasheets are
-          merged into one training run.
+          Evaluate a model on held-out PE Database test splits. Select catalog filters, pick a weight
+          set, and queue benchmark jobs on the shared device queue.
         </p>
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <ModelDataPanel
-          mode="train"
+          mode="benchmark"
           modelName={modelName}
           filterRows={filterRows}
           onFilterRowsChange={setFilterRows}
@@ -245,14 +266,14 @@ export default function TrainingPage() {
           onUseOriginalFoldChange={setUseOriginalFold}
           splitRandomState={splitRandomState}
           onSplitRandomStateChange={setSplitRandomState}
-          batchMode={batchTraining}
-          onBatchModeChange={setBatchTraining}
+          batchMode={batchBenchmark}
+          onBatchModeChange={setBatchBenchmark}
           previewData={previewData}
           onPreviewDataChange={setPreviewData}
         />
 
-        <Card title="Training configuration">
-          <div className="space-y-6">
+        <Card title="Benchmark configuration">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
               <select
@@ -262,10 +283,38 @@ export default function TrainingPage() {
               >
                 {models?.map((model) => (
                   <option key={model.name} value={model.name}>
-                    {model.name}
+                    {model.name} — {model.description}
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Weight set <span className="text-red-600">*</span>
+              </label>
+              <select
+                value={weightId}
+                onChange={(e) => setWeightId(e.target.value)}
+                disabled={!hasRegisteredWeights}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg disabled:bg-slate-100 disabled:text-slate-500"
+              >
+                <option value="" disabled>
+                  {hasRegisteredWeights ? 'Select a weight set…' : 'No weights registered'}
+                </option>
+                {weightSets?.map((weight) => (
+                  <option key={weight.id} value={weight.id}>
+                    {weight.label}
+                    {weight.source === 'vendor' ? ' [vendor]' : ''}
+                  </option>
+                ))}
+              </select>
+              {!hasRegisteredWeights && (
+                <p className="mt-1 text-xs text-amber-700">
+                  No checkpoints found for {modelName}. Weights must be registered under{' '}
+                  <code className="text-xs">services/pe-ensemble/weights/{modelName}/</code>.
+                </p>
+              )}
             </div>
 
             <div>
@@ -286,32 +335,22 @@ export default function TrainingPage() {
               </select>
             </div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Hyperparameters</h3>
-              <TrainingHyperparametersPanel
-                modelName={modelName}
-                values={hyperparameters}
-                onChange={setHyperparameters}
-              />
-            </div>
-
             <button
-              onClick={handleTrain}
-              disabled={trainMutation.isLoading || !canSubmit}
+              onClick={handleBenchmark}
+              disabled={benchmarkMutation.isLoading || !canSubmit}
               className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-slate-400 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />
-              {trainMutation.isLoading
+              {benchmarkMutation.isLoading
                 ? 'Queueing…'
-                : batchTraining
-                  ? 'Start batch training'
-                  : 'Start training'}
+                : batchBenchmark
+                  ? 'Start batch benchmark'
+                  : 'Start benchmark'}
             </button>
 
-            {trainMutation.isSuccess && trainMutation.data.batch_count > 1 && (
+            {benchmarkMutation.isSuccess && benchmarkMutation.data.batch_count > 1 && (
               <p className="text-sm text-green-700">
-                Queued {trainMutation.data.batch_count} training jobs. Select any job below to
-                monitor progress.
+                Queued {benchmarkMutation.data.batch_count} benchmark jobs.
               </p>
             )}
 
@@ -333,9 +372,9 @@ export default function TrainingPage() {
             void refetchJobs()
           }}
           onKillError={(message) => setError(message)}
-          getJobTitle={(job) => `${job.model_name ?? ''} · ${job.dataset_name ?? ''}`}
-          killJob={(jobId) => api.deleteTrainingJob(jobId)}
-          emptyMessage="No training jobs yet."
+          getJobTitle={(job) => `${job.model_name ?? ''} · ${job.benchmark_name ?? ''}`}
+          killJob={(jobId) => api.deleteBenchmarkJob(jobId)}
+          emptyMessage="No benchmark jobs yet."
         />
 
         <Card title="Device occupancy">
@@ -351,8 +390,8 @@ export default function TrainingPage() {
                   <span className="font-mono">{item.device_id}</span>
                   <span className="text-slate-600 text-right">
                     {item.running_job_id
-                    ? `${item.running_job_kind ?? 'job'} ${item.running_job_id.slice(0, 8)}…`
-                    : 'idle'}
+                      ? `${item.running_job_kind ?? 'job'} ${item.running_job_id.slice(0, 8)}…`
+                      : 'idle'}
                     {item.queued_jobs > 0 ? ` · ${item.queued_jobs} queued` : ''}
                   </span>
                 </li>
@@ -362,9 +401,9 @@ export default function TrainingPage() {
         </Card>
       </div>
 
-      <Card title="Job Status">
+      <Card title="Benchmark results">
         {!selectedJobId ? (
-          <p className="text-slate-500 py-8 text-center">Select a job to view status and logs.</p>
+          <p className="text-slate-500 py-8 text-center">Select a job to view metrics and logs.</p>
         ) : (
           <div className="space-y-4">
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm space-y-1">
@@ -373,26 +412,37 @@ export default function TrainingPage() {
                 <span className="font-medium">Status:</span>{' '}
                 {statusLabel(jobStatus?.status ?? 'loading...', jobStatus?.queue_position)}
               </p>
-              {jobStatus?.device_requested && (
-                <p>
-                  <span className="font-medium">Device requested:</span> {jobStatus.device_requested}
-                </p>
-              )}
               {jobStatus?.device_assigned && (
                 <p>
-                  <span className="font-medium">Device assigned:</span> {jobStatus.device_assigned}
+                  <span className="font-medium">Device:</span> {jobStatus.device_assigned}
                 </p>
               )}
-              {jobStatus?.weights_id && (
-                <p><span className="font-medium">Weights:</span> {jobStatus.weights_label ?? jobStatus.weights_id}</p>
+              {jobStatus?.result?.n_samples != null && (
+                <p>
+                  <span className="font-medium">Test samples:</span> {jobStatus.result.n_samples}
+                </p>
+              )}
+              {metrics && (
+                <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {Object.entries(metrics).map(([key, value]) => (
+                    <div key={key} className="rounded border border-slate-200 bg-white px-3 py-2">
+                      <p className="text-xs text-slate-500">{key}</p>
+                      <p className="font-semibold text-slate-900">
+                        {typeof value === 'number' ? value.toFixed(4) : String(value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               )}
               {jobStatus?.error && (
-                <p className="text-red-600"><span className="font-medium">Error:</span> {jobStatus.error}</p>
+                <p className="text-red-600">
+                  <span className="font-medium">Error:</span> {jobStatus.error}
+                </p>
               )}
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900 mb-2">Training log</h3>
+              <h3 className="font-semibold text-slate-900 mb-2">Execution log</h3>
               <pre
                 ref={logRef}
                 className="bg-slate-900 text-slate-100 p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"

@@ -3,10 +3,12 @@ import {
   type AttributeFilterRow,
   type FilterAttributeKey,
 } from '@apps/database/config/exportAttributes'
+import { CATALOG_INSTANCE_ATTRIBUTES } from '@/utils/catalog'
 
 interface ExportFilterBuilderProps {
   rows: AttributeFilterRow[]
   optionsByAttribute: Partial<Record<FilterAttributeKey, string[]>>
+  getOptionsForRow?: (rowId: string, attribute: FilterAttributeKey) => string[]
   onChange: (rows: AttributeFilterRow[]) => void
 }
 
@@ -17,6 +19,7 @@ function nextRowId() {
 export default function ExportFilterBuilder({
   rows,
   optionsByAttribute,
+  getOptionsForRow,
   onChange,
 }: ExportFilterBuilderProps) {
   const usedAttributes = new Set(
@@ -62,10 +65,14 @@ export default function ExportFilterBuilder({
             attribute.key === row.attribute || !usedAttributes.has(attribute.key)
         )
         const optionList =
-          row.attribute && optionsByAttribute[row.attribute]
-            ? optionsByAttribute[row.attribute]!
-            : []
+          row.attribute && getOptionsForRow
+            ? getOptionsForRow(row.id, row.attribute)
+            : row.attribute && optionsByAttribute[row.attribute]
+              ? optionsByAttribute[row.attribute]!
+              : []
         const remainingOptions = optionList.filter((option) => !row.values.includes(option))
+        const catalogLimited =
+          row.attribute !== '' && CATALOG_INSTANCE_ATTRIBUTES.has(row.attribute)
 
         return (
           <div
@@ -100,10 +107,17 @@ export default function ExportFilterBuilder({
               {row.attribute ? (
                 <div className="space-y-2">
                   <div className="flex flex-wrap gap-2">
-                    {row.values.map((value) => (
+                    {row.values.map((value) => {
+                      const stale = catalogLimited && !optionList.includes(value)
+                      return (
                       <span
                         key={value}
-                        className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-3 py-1 text-sm text-primary-800"
+                        title={stale ? 'No longer matches your other filters' : undefined}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ${
+                          stale
+                            ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-300'
+                            : 'bg-primary-100 text-primary-800'
+                        }`}
                       >
                         {value}
                         <button
@@ -115,11 +129,24 @@ export default function ExportFilterBuilder({
                           ×
                         </button>
                       </span>
-                    ))}
+                    )})}
                     {row.values.length === 0 && (
                       <span className="text-sm text-slate-400">No values selected</span>
                     )}
                   </div>
+                  {catalogLimited && optionList.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      {optionList.length} value{optionList.length === 1 ? '' : 's'} in this
+                      catalog
+                      {rows.length > 1 ? ' matching your other filters' : ''}
+                    </p>
+                  )}
+                  {catalogLimited && optionList.length === 0 && (
+                    <p className="text-xs text-amber-700">
+                      No catalog values match your other filters. Relax or remove conflicting
+                      attributes.
+                    </p>
+                  )}
                   <select
                     value=""
                     onChange={(event) => {
@@ -131,7 +158,9 @@ export default function ExportFilterBuilder({
                   >
                     <option value="">
                       {remainingOptions.length === 0
-                        ? 'All values selected'
+                        ? optionList.length === 0
+                          ? 'No values available'
+                          : 'All values selected'
                         : 'Add value…'}
                     </option>
                     {remainingOptions.map((option) => (

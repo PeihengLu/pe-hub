@@ -4,12 +4,15 @@ import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import peDbApi from '@apps/database/services/peDbApi'
+import { useCatalogFilterOptions } from '@/hooks/useCatalogFilterOptions'
 
 type Tab = 'studies' | 'datasets' | 'datasheets' | 'statistics'
 
 export default function CatalogPage() {
   const [tab, setTab] = useState<Tab>('studies')
   const [studyFilter, setStudyFilter] = useState('')
+  const { optionsByAttribute, isLoading: catalogOptionsLoading } = useCatalogFilterOptions()
+  const studyOptions = optionsByAttribute.study ?? []
 
   const studiesQuery = useQuery('pe-db-studies', () => peDbApi.listStudies(), {
     enabled: tab === 'studies',
@@ -67,13 +70,19 @@ export default function CatalogPage() {
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Study filter (optional)
             </label>
-            <input
-              type="text"
+            <select
               value={studyFilter}
               onChange={(e) => setStudyFilter(e.target.value)}
-              placeholder="e.g. deepprime"
-              className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
+              disabled={catalogOptionsLoading}
+              className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white disabled:bg-slate-100"
+            >
+              <option value="">All studies</option>
+              {studyOptions.map((study) => (
+                <option key={study} value={study}>
+                  {study}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </Card>
