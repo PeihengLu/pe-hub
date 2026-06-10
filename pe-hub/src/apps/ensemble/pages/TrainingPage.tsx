@@ -4,6 +4,7 @@ import { Play } from 'lucide-react'
 import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
+import SelectMenu from '@components/SelectMenu'
 import api from '@apps/ensemble/services/api'
 import ComputeJobList from '@apps/ensemble/components/ComputeJobList'
 import ModelDataPanel from '@apps/ensemble/components/ModelDataPanel'
@@ -51,7 +52,11 @@ export default function TrainingPage() {
   const logOffsetRef = useRef(0)
   const queryClient = useQueryClient()
 
-  const { data: models, isLoading: modelsLoading } = useQuery('models', () => api.listModels(), {
+  const {
+    data: models,
+    isLoading: modelsLoading,
+    isError: modelsError,
+  } = useQuery('models', () => api.listModels(), {
     select: (response) => response.data.models,
   })
 
@@ -210,6 +215,12 @@ export default function TrainingPage() {
 
   if (modelsLoading) return <LoadingSpinner message="Loading models..." />
 
+  if (modelsError) {
+    return (
+      <ErrorAlert message="Could not load models from the Ensemble API. Confirm pe-ensemble is running on port 8001 (or use ./start-all.sh)." />
+    )
+  }
+
   const statusLabel = (status: string, queuePosition?: number | null) => {
     if (status === 'queued' && queuePosition) return `queued (#${queuePosition})`
     return status
@@ -255,35 +266,36 @@ export default function TrainingPage() {
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
-              <select
+              <SelectMenu
                 value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                {models?.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setModelName}
+                aria-label="Model"
+                options={
+                  models?.map((model) => ({
+                    value: model.name,
+                    label: model.name,
+                  })) ?? []
+                }
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Device</label>
-              <select
+              <SelectMenu
                 value={device}
-                onChange={(e) => setDevice(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                <option value="auto">
-                  auto ({devices?.default ?? 'best available'})
-                </option>
-                {devices?.devices.map((item) => (
-                  <option key={item.device_id} value={item.device_id}>
-                    {item.device_id} — {item.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setDevice}
+                aria-label="Device"
+                options={[
+                  {
+                    value: 'auto',
+                    label: `auto (${devices?.default ?? 'best available'})`,
+                  },
+                  ...(devices?.devices.map((item) => ({
+                    value: item.device_id,
+                    label: `${item.device_id} — ${item.name}`,
+                  })) ?? []),
+                ]}
+              />
             </div>
 
             <div>

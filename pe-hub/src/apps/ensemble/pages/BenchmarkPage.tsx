@@ -4,6 +4,7 @@ import { Play } from 'lucide-react'
 import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
+import SelectMenu from '@components/SelectMenu'
 import ComputeJobList from '@apps/ensemble/components/ComputeJobList'
 import ModelDataPanel from '@apps/ensemble/components/ModelDataPanel'
 import api from '@apps/ensemble/services/api'
@@ -48,11 +49,15 @@ export default function BenchmarkPage() {
   const logOffsetRef = useRef(0)
   const queryClient = useQueryClient()
 
-  const { data: models, isLoading: modelsLoading } = useQuery('models', () => api.listModels(), {
+  const {
+    data: models,
+    isLoading: modelsLoading,
+    isError: modelsError,
+  } = useQuery('models', () => api.listModels(), {
     select: (response) => response.data.models,
   })
 
-  const { data: weightSets, isLoading: weightsLoading } = useQuery(
+  const { data: weightSets, isFetching: weightsFetching } = useQuery(
     ['model-weights', modelName],
     () => api.listModelWeights(modelName),
     {
@@ -146,7 +151,11 @@ export default function BenchmarkPage() {
   )
   const hasWeightSelection = weightId.trim().length > 0
   const hasRegisteredWeights = (weightSets?.length ?? 0) > 0
-  const canSubmit = incompleteRows.length === 0 && hasWeightSelection && hasRegisteredWeights
+  const canSubmit =
+    incompleteRows.length === 0 &&
+    hasWeightSelection &&
+    hasRegisteredWeights &&
+    !weightsFetching
 
   const benchmarkMutation = useMutation(async () => {
     const split = buildBenchmarkSplitParams({
@@ -223,8 +232,14 @@ export default function BenchmarkPage() {
     })
   }
 
-  if (modelsLoading || weightsLoading) {
+  if (modelsLoading) {
     return <LoadingSpinner message="Loading models..." />
+  }
+
+  if (modelsError) {
+    return (
+      <ErrorAlert message="Could not load models from the Ensemble API. Confirm pe-ensemble is running on port 8001 (or use ./start-all.sh)." />
+    )
   }
 
   const statusLabel = (status: string, queuePosition?: number | null) => {
@@ -273,40 +288,43 @@ export default function BenchmarkPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
-              <select
+              <SelectMenu
                 value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                {models?.map((model) => (
-                  <option key={model.name} value={model.name}>
-                    {model.name} — {model.description}
-                  </option>
-                ))}
-              </select>
+                onChange={setModelName}
+                aria-label="Model"
+                options={
+                  models?.map((model) => ({
+                    value: model.name,
+                    label: `${model.name} — ${model.description}`,
+                  })) ?? []
+                }
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Weight set <span className="text-red-600">*</span>
               </label>
-              <select
+              <SelectMenu
                 value={weightId}
-                onChange={(e) => setWeightId(e.target.value)}
-                disabled={!hasRegisteredWeights}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg disabled:bg-slate-100 disabled:text-slate-500"
-              >
-                <option value="" disabled>
-                  {hasRegisteredWeights ? 'Select a weight set…' : 'No weights registered'}
-                </option>
-                {weightSets?.map((weight) => (
-                  <option key={weight.id} value={weight.id}>
-                    {weight.label}
-                    {weight.source === 'vendor' ? ' [vendor]' : ''}
-                  </option>
-                ))}
-              </select>
-              {!hasRegisteredWeights && (
+                onChange={setWeightId}
+                disabled={weightsFetching || !hasRegisteredWeights}
+                aria-label="Weight set"
+                placeholder={
+                  weightsFetching
+                    ? 'Loading weight sets…'
+                    : hasRegisteredWeights
+                      ? 'Select a weight set…'
+                      : 'No weights registered'
+                }
+                options={
+                  weightSets?.map((weight) => ({
+                    value: weight.id,
+                    label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
+                  })) ?? []
+                }
+              />
+              {!weightsFetching && !hasRegisteredWeights && (
                 <p className="mt-1 text-xs text-amber-700">
                   No checkpoints found for {modelName}. Weights must be registered under{' '}
                   <code className="text-xs">services/pe-ensemble/weights/{modelName}/</code>.
@@ -316,20 +334,21 @@ export default function BenchmarkPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Device</label>
-              <select
+              <SelectMenu
                 value={device}
-                onChange={(e) => setDevice(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-              >
-                <option value="auto">
-                  auto ({devices?.default ?? 'best available'})
-                </option>
-                {devices?.devices.map((item) => (
-                  <option key={item.device_id} value={item.device_id}>
-                    {item.device_id} — {item.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setDevice}
+                aria-label="Device"
+                options={[
+                  {
+                    value: 'auto',
+                    label: `auto (${devices?.default ?? 'best available'})`,
+                  },
+                  ...(devices?.devices.map((item) => ({
+                    value: item.device_id,
+                    label: `${item.device_id} — ${item.name}`,
+                  })) ?? []),
+                ]}
+              />
             </div>
 
             <button

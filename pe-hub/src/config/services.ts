@@ -11,11 +11,21 @@ export interface ServiceDefinition {
   startupCommands: string[]
 }
 
+/** Vite dev proxy paths (see vite.config.js). Avoids hitting the wrong backend port. */
+function devProxyBase(id: ServiceId): string | null {
+  if (!import.meta.env.DEV) return null
+  return id === 'pe-db' ? '/proxy/pe-db' : '/proxy/ensemble'
+}
+
 export const PE_DB_URL =
-  import.meta.env.VITE_PE_DB_URL?.trim() || 'http://localhost:8000'
+  devProxyBase('pe-db') ??
+  import.meta.env.VITE_PE_DB_URL?.trim() ??
+  'http://localhost:8000'
 
 export const ENSEMBLE_API_URL =
-  import.meta.env.VITE_ENSEMBLE_API_URL?.trim() || 'http://localhost:8001'
+  devProxyBase('pe-ensemble') ??
+  import.meta.env.VITE_ENSEMBLE_API_URL?.trim() ??
+  'http://localhost:8001'
 
 export const SERVICES: Record<ServiceId, ServiceDefinition> = {
   'pe-db': {

@@ -159,10 +159,71 @@ if ! PYTHON="$(resolve_python)"; then
     exit 1
 fi
 
+MIN_NODE_MAJOR=18
+
+node_major_version() {
+    local node_bin="$1"
+    "$node_bin" -p "Number(process.versions.node.split('.')[0])" 2>/dev/null
+}
+
+node_version_ok() {
+    local node_bin="$1"
+    local major
+    major="$(node_major_version "${node_bin}")" || return 1
+    (( major >= MIN_NODE_MAJOR ))
+}
+
+resolve_node() {
+    local -a candidates=()
+    if [[ -n "${NODE_BIN:-}" && -x "${NODE_BIN}" ]]; then
+        candidates+=("${NODE_BIN}")
+    fi
+    if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/node" ]]; then
+        candidates+=("${CONDA_PREFIX}/bin/node")
+    fi
+    if [[ -x "${HOME}/miniconda3/bin/node" ]]; then
+        candidates+=("${HOME}/miniconda3/bin/node")
+    fi
+    if [[ -x "${HOME}/anaconda3/bin/node" ]]; then
+        candidates+=("${HOME}/anaconda3/bin/node")
+    fi
+    if command -v node >/dev/null 2>&1; then
+        candidates+=("$(command -v node)")
+    fi
+
+    local candidate seen="" deduped=()
+    for candidate in "${candidates[@]}"; do
+        if [[ ":${seen}:" != *":${candidate}:"* ]]; then
+            deduped+=("${candidate}")
+            seen="${seen}:${candidate}"
+        fi
+    done
+
+    local node_bin
+    for node_bin in "${deduped[@]}"; do
+        if node_version_ok "${node_bin}"; then
+            echo "${node_bin}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 resolve_npm() {
+    local node_bin npm_bin node_dir
+    if node_bin="$(resolve_node)"; then
+        node_dir="$(dirname "${node_bin}")"
+        if [[ -x "${node_dir}/npm" ]]; then
+            echo "${node_dir}/npm"
+            return 0
+        fi
+    fi
     if command -v npm >/dev/null 2>&1; then
-        command -v npm
-        return 0
+        npm_bin="$(command -v npm)"
+        if node_version_ok "$(dirname "${npm_bin}")/node" 2>/dev/null || node_version_ok "$(command -v node 2>/dev/null)"; then
+            echo "${npm_bin}"
+            return 0
+        fi
     fi
     return 1
 }
@@ -229,13 +290,23 @@ start_pe_ensemble() {
 }
 
 start_frontend() {
+    local NODE_BIN
+    if ! NODE_BIN="$(resolve_node)"; then
+        echo "Error: Node.js ${MIN_NODE_MAJOR}+ is required for the PE Hub frontend (Vite 5)." >&2
+        echo "Install Node 20+ (e.g. conda install nodejs=20) or set NODE_BIN to a modern node binary." >&2
+        if command -v node >/dev/null 2>&1; then
+            echo "Found $(command -v node) ($(node --version 2>/dev/null || echo unknown))" >&2
+        fi
+        exit 1
+    fi
     if ! NPM="$(resolve_npm)"; then
-        echo "Error: npm is not installed (required for the frontend)" >&2
+        echo "Error: npm is not installed next to ${NODE_BIN}" >&2
         exit 1
     fi
 
     (
         cd "${FRONTEND_DIR}"
+        export PATH="$(dirname "${NODE_BIN}"):${PATH}"
         export VITE_PE_DB_URL
         export VITE_ENSEMBLE_API_URL
         exec "${NPM}" run dev -- --host 0.0.0.0 --port "${FRONTEND_PORT}"
@@ -281,6 +352,11 @@ echo "======================================"
 echo "PE Platform (all services)"
 echo "======================================"
 echo "Python:         ${PYTHON}"
+if NODE_BIN="$(resolve_node)"; then
+    echo "Node.js:        ${NODE_BIN} ($("${NODE_BIN}" --version))"
+else
+    echo "Node.js:        not found (need ${MIN_NODE_MAJOR}+)"
+fi
 echo "Data root:      ${DATA_ROOT}"
 echo "PE Database:    http://localhost:${PE_DB_PORT}  (docs: /docs)"
 echo "PE Ensemble:    http://localhost:${PE_ENSEMBLE_PORT}  (docs: /docs)"

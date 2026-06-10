@@ -10,6 +10,7 @@ import {
 import {
   type ServiceId,
   SERVICES,
+  serviceBaseUrl,
   serviceHealthUrl,
 } from '@config/services'
 
@@ -56,6 +57,31 @@ async function probeService(id: ServiceId): Promise<ServiceHealthState> {
         error: `HTTP ${response.status}`,
       }
     }
+
+    const base = serviceBaseUrl(id).replace(/\/$/, '')
+    const rootResponse = await fetch(`${base}/`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    })
+    if (rootResponse.ok) {
+      const info = (await rootResponse.json()) as { service?: string; name?: string }
+      if (id === 'pe-ensemble' && info.service !== 'PE Ensemble') {
+        return {
+          status: 'down',
+          lastChecked: new Date(),
+          error:
+            'Wrong API at the Ensemble URL (got PE Database). Start pe-ensemble on port 8001 or fix VITE_ENSEMBLE_API_URL.',
+        }
+      }
+      if (id === 'pe-db' && info.name !== 'PE Database API') {
+        return {
+          status: 'down',
+          lastChecked: new Date(),
+          error: 'Wrong API at the PE Database URL.',
+        }
+      }
+    }
+
     return { status: 'up', lastChecked: new Date(), error: null }
   } catch (err) {
     const message =
