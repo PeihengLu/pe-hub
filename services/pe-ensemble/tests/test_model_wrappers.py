@@ -34,36 +34,24 @@ class TestModelFactory:
         assert model.model_name == 'DeepPrime'
         assert model.pe_system == 'PE2max'
         assert model.cell_type == 'HEK293T'
+
+    def test_create_deepprime_without_pe_kwargs(self):
+        """Benchmark path: pe_system/cell_type are optional at construction."""
+        model = ModelFactory.create_model('deepprime', device=torch.device('cpu'))
+        assert model.model_name == 'DeepPrime'
+        assert model.pe_system is None
+        assert model.cell_type is None
     
     def test_invalid_model_name(self):
         """Test creating model with invalid name"""
         with pytest.raises(ValueError):
             ModelFactory.create_model('invalid_model')
     
-    def test_invalid_pe_system(self):
-        """Test creating DeepPrime with invalid PE system"""
-        with pytest.raises(ValueError):
-            ModelFactory.create_model(
-                'deepprime',
-                pe_system='INVALID_PE',
-                cell_type='HEK293T'
-            )
-    
-    def test_invalid_cell_type(self):
-        """Test creating DeepPrime with invalid cell type"""
-        with pytest.raises(ValueError):
-            ModelFactory.create_model(
-                'deepprime',
-                pe_system='PE2max',
-                cell_type='INVALID_CELL'
-            )
-    
     def test_get_model_info(self):
         """Test getting model information"""
         info = ModelFactory.get_model_info('deepprime')
         assert 'name' in info
-        assert 'supported_pe_systems' in info
-        assert 'supported_cell_types' in info
+        assert 'available_weights' in info
         assert info['name'] == 'deepprime'
 
 
@@ -114,49 +102,17 @@ class TestDeepPrimeWrapper:
         with pytest.raises(ValueError):
             model.predict({})
     
-    def test_evaluate_without_loading(self, model):
-        """Test evaluation without loading model first"""
+    def test_evaluate_requires_weights(self, model):
+        """Test evaluation requires a weight set ID"""
         test_data = pd.DataFrame({'Efficiency': [0.5, 0.6]})
-        with pytest.raises(ValueError):
-            model.evaluate(test_data)
+        with pytest.raises(ValueError, match="weights is required"):
+            model.evaluate(test_data, weights="")
     
     def test_train_not_implemented(self, model):
         """Test that training raises NotImplementedError"""
         train_data = pd.DataFrame()
         with pytest.raises(NotImplementedError):
             model.train(train_data)
-    
-    def test_supported_pe_systems(self):
-        """Test that all supported PE systems can be instantiated"""
-        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
-        
-        for pe_system in DeepPrimeModelWrapper.SUPPORTED_PE_SYSTEMS:
-            try:
-                model = ModelFactory.create_model(
-                    'deepprime',
-                    pe_system=pe_system,
-                    cell_type='HEK293T'
-                )
-                assert model.pe_system == pe_system
-            except ValueError:
-                # Some PE systems may not be available for all cell types
-                pass
-    
-    def test_supported_cell_types(self):
-        """Test that all supported cell types can be instantiated"""
-        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
-        
-        for cell_type in DeepPrimeModelWrapper.SUPPORTED_CELL_TYPES:
-            try:
-                model = ModelFactory.create_model(
-                    'deepprime',
-                    pe_system='PE2max',
-                    cell_type=cell_type
-                )
-                assert model.cell_type == cell_type
-            except ValueError:
-                # Some cell types may not support all PE systems
-                pass
 
 
 VENDOR_MODELS = Path(__file__).resolve().parents[3] / "vendor" / "models"
@@ -181,10 +137,7 @@ class TestWeightSelection:
         reason="DeepPrime weights not available",
     )
     def test_deepprime_evaluate_unknown_weights_raises(self):
-        model = ModelFactory.create_model(
-            "deepprime", device=torch.device("cpu"),
-            pe_system="PE2max", cell_type="HEK293T",
-        )
+        model = ModelFactory.create_model("deepprime", device=torch.device("cpu"))
         with pytest.raises(ValueError):
             model.evaluate(pd.DataFrame({"Efficiency": [0.1, 0.2]}), weights="does_not_exist")
 

@@ -94,13 +94,7 @@ class ModelFactory:
             'module': model_class.__module__,
         }
         
-        # Add model-specific info if available
-        if model_name_lower == 'deepprime':
-            info['supported_pe_systems'] = DeepPrimeModelWrapper.SUPPORTED_PE_SYSTEMS
-            info['supported_cell_types'] = DeepPrimeModelWrapper.SUPPORTED_CELL_TYPES
-        elif model_name_lower == 'pridict2':
-            info['supported_cell_types'] = PRIDICT2ModelWrapper.SUPPORTED_CELL_TYPES
-            info['supported_model_names'] = PRIDICT2ModelWrapper.SUPPORTED_MODEL_NAMES
-            info['supported_models_map'] = PRIDICT2ModelWrapper.get_supported_models()
-        
+        from . import weights_registry
+
+        info['available_weights'] = weights_registry.list_weight_ids(model_name_lower)
         return info

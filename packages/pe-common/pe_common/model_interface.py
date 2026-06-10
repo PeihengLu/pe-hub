@@ -37,16 +37,12 @@ class BasePEModel(ABC):
         pass
     
     @abstractmethod
-    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
-        """Evaluate the model.
+    def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
+        """Evaluate the model on held-out data using a registered weight set.
 
         Args:
             test_data: Test data with ground-truth labels.
-            weights: Optional name of a bundled pre-trained weight set to load
-                before evaluating. When ``None``, the currently trained/loaded
-                model is used. Models that expose multiple pre-trained weights
-                (e.g. DeepPrime, PRIDICT2) provide ``list_available_weights()``;
-                models with a single weight set may ignore this argument.
+            weights: Registered weight set ID (see ``list_available_weights()``).
         """
         pass
     

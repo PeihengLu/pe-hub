@@ -26,8 +26,8 @@ export default function DocumentationPage() {
           <h3>Models</h3>
           <ul>
             <li>
-              <strong>DeepPrime</strong> — CNN-GRU; specify <code>pe_system</code>{' '}
-              and <code>cell_type</code> in <code>model_kwargs</code>
+              <strong>DeepPrime</strong> — CNN-GRU; select a registered weight set for
+              evaluation (normalization stats come from the weights)
             </li>
             <li>
               <strong>PRIDICT2</strong> — attention LSTM with transfer learning
@@ -52,9 +52,8 @@ export default function DocumentationPage() {
   "weights": "DeepPrime_base",
   "study": "pridict1",
   "dataset": "library2",
-  "cell_line": "HEK293T",
-  "pe_system": "PE2max",
-  "model_kwargs": { "pe_system": "PE2max", "cell_type": "HEK293T" },
+  "cell_line": ["hek293t"],
+  "pe_system": ["pe2max"],
   "split": {
     "split_strategy": "holdout_2",
     "train_pct": 0.8,

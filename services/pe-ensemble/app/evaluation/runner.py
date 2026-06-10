@@ -78,11 +78,7 @@ def execute_evaluation(
             _log(f"Resolved {len(test_df)} test rows")
 
             _raise_if_cancelled()
-            model = ModelFactory.create_model(
-                model_name,
-                device=device,
-                **(request.model_kwargs or {}),
-            )
+            model = ModelFactory.create_model(model_name, device=device)
 
             if model_name == "oped":
                 prepared = model.prepare_data(test_df)

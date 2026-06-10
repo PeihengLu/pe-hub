@@ -700,27 +700,23 @@ class OPEDModelWrapper(BasePEModel):
             }
         return result
     
-    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
         """
-        Evaluate OPED model
+        Evaluate OPED model using a registered weight set.
 
         Args:
             test_data: Test DataFrame with features and 'Efficiency' label
-            weights: Optional name of a bundled pre-trained weight set to load
-                before evaluating (see :meth:`list_available_weights`). When
-                ``None``, the currently trained/loaded model is used.
+            weights: Registered weight set ID (see :meth:`list_available_weights`).
 
         Returns:
             Dictionary with evaluation metrics
         """
-        if weights is not None:
-            self.load_weights_by_name(weights)
-
-        if not self.is_trained:
+        if not weights or not str(weights).strip():
             raise ValueError(
-                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
-                "or call load_model()/train() first."
+                "weights is required for evaluate(). "
+                f"Available: {self.list_available_weights()}"
             )
+        self.load_weights_by_name(weights)
         
         from oped.pegRNA_PredictingCodes.evaluate_model import evaluate_transformer_order3
         

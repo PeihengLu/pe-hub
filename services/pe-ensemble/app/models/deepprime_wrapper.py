@@ -85,13 +85,7 @@ class _DeepPrimeLightningRegressor(pl.LightningModule):
 
 class DeepPrimeModelWrapper(BasePEModel):
     """Wrapper for DeepPrime model"""
-    
-    # Available PE systems and cell types
-    SUPPORTED_PE_SYSTEMS = ['PE2', 'PE2max', 'PE4max', 'PE2max-e', 'PE4max-e', 
-                           'NRCH_PE2', 'NRCH_PE2max', 'NRCH_PE4max', 'PE2-Off']
-    
-    SUPPORTED_CELL_TYPES = ['HEK293T', 'A549', 'DLD1', 'HCT116', 'HeLa', 
-                           'MDA-MB-231', 'NIH3T3']
+
     DEEPPRIME_REQUIRED_COLUMNS = {
         'WT74_On', 'Edited74_On', 'PBSlen', 'RTlen', 'RT-PBSlen', 'Edit_pos',
         'Edit_len', 'RHA_len', 'type_sub', 'type_ins', 'type_del', 'Tm1', 'Tm2',
@@ -99,31 +93,24 @@ class DeepPrimeModelWrapper(BasePEModel):
         'fGCcont1', 'fGCcont2', 'fGCcont3', 'MFE3', 'MFE4', 'DeepSpCas9_score',
     }
     
-    def __init__(self, device: Optional[torch.device] = None, 
-                 pe_system: str = 'PE2max', 
-                 cell_type: str = 'HEK293T'):
+    def __init__(
+        self,
+        device: Optional[torch.device] = None,
+        pe_system: Optional[str] = None,
+        cell_type: Optional[str] = None,
+    ):
         """
-        Initialize DeepPrime model wrapper
-        
+        Initialize DeepPrime model wrapper.
+
         Args:
             device: PyTorch device
-            pe_system: Prime editor system (PE2, PE2max, PE4max, etc.)
-            cell_type: Cell type (HEK293T, A549, DLD1, etc.)
+            pe_system: Optional vendor PE system for legacy ``load_deepprime`` lookup
+                when training with ``load_pretrained=True`` and no explicit weights.
+            cell_type: Optional vendor cell type paired with ``pe_system`` for the
+                same legacy lookup path.
         """
         super().__init__('DeepPrime', device)
-        
-        if pe_system not in self.SUPPORTED_PE_SYSTEMS:
-            raise ValueError(
-                f"Unsupported PE system: {pe_system}. "
-                f"Supported: {self.SUPPORTED_PE_SYSTEMS}"
-            )
-        
-        if cell_type not in self.SUPPORTED_CELL_TYPES:
-            raise ValueError(
-                f"Unsupported cell type: {cell_type}. "
-                f"Supported: {self.SUPPORTED_CELL_TYPES}"
-            )
-        
+
         self.pe_system = pe_system
         self.cell_type = cell_type
         self.model_dir = None
@@ -174,6 +161,11 @@ class DeepPrimeModelWrapper(BasePEModel):
         from deepprime.src.dprime import GeneInteractionModel
 
         if model_path is None:
+            if not self.pe_system or not self.cell_type:
+                raise ValueError(
+                    "DeepPrime.load_model() requires a weight path/ID, or both "
+                    "pe_system and cell_type for vendor default lookup."
+                )
             _, model_type = load_deepprime(
                 self.pe_system,
                 self.cell_type,
@@ -430,27 +422,23 @@ class DeepPrimeModelWrapper(BasePEModel):
             "model_summaries": model_summaries,
         }
     
-    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
         """
-        Evaluate DeepPrime model
+        Evaluate DeepPrime model using a registered weight set.
 
         Args:
             test_data: DataFrame with input features and 'Efficiency' column
-            weights: Optional name of a bundled pre-trained weight set to load
-                before evaluating (see :meth:`list_available_weights`). When
-                ``None``, the currently trained/loaded model is used.
+            weights: Registered weight set ID (see :meth:`list_available_weights`).
 
         Returns:
             Dictionary with evaluation metrics (Pearson, Spearman)
         """
-        if weights is not None:
-            self.load_weights_by_name(weights)
-
-        if not self.is_trained:
+        if not weights or not str(weights).strip():
             raise ValueError(
-                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
-                "or call load_model()/train() first."
+                "weights is required for evaluate(). "
+                f"Available: {self.list_available_weights()}"
             )
+        self.load_weights_by_name(weights)
         
         from scipy.stats import pearsonr, spearmanr
         
@@ -518,7 +506,6 @@ class DeepPrimeModelWrapper(BasePEModel):
             'n_models': len(self.models),
             'model_type': self.model_type,
             'supports_standardized_input': True,
-            'supported_pe_systems': self.SUPPORTED_PE_SYSTEMS,
-            'supported_cell_types': self.SUPPORTED_CELL_TYPES
+            'available_weights': self.list_available_weights(),
         })
         return info

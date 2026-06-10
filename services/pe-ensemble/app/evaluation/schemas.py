@@ -39,7 +39,6 @@ class EvaluationRequest(BaseModel):
     target_context: Optional[FilterValue] = None
     scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
-    model_kwargs: Optional[Dict[str, Any]] = None
     device: Optional[str] = "auto"
 
 

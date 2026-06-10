@@ -165,7 +165,6 @@ export interface EvaluationRequest {
   edit_efficiency_min?: number
   edit_efficiency_max?: number
   records?: Record<string, unknown>[]
-  model_kwargs?: Record<string, unknown>
   device?: string
 }
 

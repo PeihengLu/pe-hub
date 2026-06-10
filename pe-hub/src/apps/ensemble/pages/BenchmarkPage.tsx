@@ -12,7 +12,6 @@ import { exportFormatForModel } from '@apps/ensemble/config/modelFormats'
 import {
   buildBenchmarkRequestForGroup,
   buildBenchmarkSplitParams,
-  deepprimeModelKwargsFromFilters,
 } from '@apps/ensemble/utils/benchmarkRequest'
 import { buildFilterParams, type AttributeFilterRow } from '@apps/database/config/exportAttributes'
 import type { SplitStrategy } from '@apps/database/config/exportAttributes'
@@ -180,7 +179,6 @@ export default function BenchmarkPage() {
             split,
             filterRows,
             group,
-            modelKwargs: deepprimeModelKwargsFromFilters(filterRows, group),
           })
         )
         lastJobId = response.data.job_id
@@ -195,7 +193,6 @@ export default function BenchmarkPage() {
         weights: weightId,
         split,
         filterRows,
-        modelKwargs: deepprimeModelKwargsFromFilters(filterRows),
       })
     )
     return { job_id: response.data.job_id, batch_count: 1 }

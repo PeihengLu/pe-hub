@@ -27,17 +27,7 @@ from pe_common.model_interface import BasePEModel
 
 class PRIDICT2ModelWrapper(BasePEModel):
     """Wrapper for PRIDICT2 model (outcome distribution prediction)"""
-    
-    SUPPORTED_CELL_TYPES = ['HEK', 'K562', 'HEKschwank', 'HEKhyongbum']
-    
-    SUPPORTED_MODEL_NAMES = [
-        'base_90k',
-        'base_390k',
-        'base_23k',
-        'base_90k_decinit_HEKschwank_FT',
-        'base_390k_decinit_HEKhyongbum_FT',
-        'base_390k_decinit_HEKschwank_FT'
-    ]
+
     # Native PRIDICT/PRIDICT2 input columns (output of PE-DB's pridict converter).
     PRIDICT_REQUIRED_COLUMNS = {
         "seq_id",
@@ -53,27 +43,25 @@ class PRIDICT2ModelWrapper(BasePEModel):
         "RT_mutated_location",
     }
     
-    def __init__(self, device: Optional[torch.device] = None, 
-                 wsize: int = 20,
-                 model_name: str = 'base_390k'):
+    def __init__(
+        self,
+        device: Optional[torch.device] = None,
+        wsize: int = 20,
+        model_name: Optional[str] = None,
+    ):
         """
-        Initialize PRIDICT2 model wrapper
-        
+        Initialize PRIDICT2 model wrapper.
+
         Args:
             device: PyTorch device
             wsize: Window size for sequence processing
-            model_name: Pre-trained model name to use
+            model_name: Optional legacy vendor base-model name used only when
+                preparing data without loaded weights (prefer explicit weights).
         """
         super().__init__('PRIDICT2', device)
         self.wsize = wsize
         self.model_name_str = model_name
-        
-        if model_name not in self.SUPPORTED_MODEL_NAMES:
-            raise ValueError(
-                f"Unsupported model name: {model_name}. "
-                f"Supported: {self.SUPPORTED_MODEL_NAMES}"
-            )
-        
+
         from pridict2.pridict.pridictv2.predict_outcomedistrib import PRIEML_Model
         
         self.prieml_model = PRIEML_Model(
@@ -87,9 +75,20 @@ class PRIDICT2ModelWrapper(BasePEModel):
 
     def _default_outcomes(self) -> List[str]:
         # Original PRIDICT1 base models were mostly used for intended edits.
-        if self.model_name_str in {"base_90k", "base_390k"}:
+        if self.model_name_str in {None, "base_90k", "base_390k"}:
             return ["averageedited"]
         return ["averageedited", "averageunedited", "averageindel"]
+
+    def _cell_types_from_loaded_config(self) -> List[str]:
+        """Return prediction-head cell types from the loaded weight run config."""
+        if not self.loaded_model_dir:
+            raise ValueError("PRIDICT2 weights are not loaded.")
+        import os
+
+        mconfig_dir = os.path.join(self.loaded_model_dir, "config")
+        _, options = self.prieml_model._load_model_config(mconfig_dir)
+        datasets = options.get("datasets_name") or []
+        return ["".join(str(name).split("_")) for name in datasets]
 
     def _to_pridict_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Validate that ``df`` is already in PRIDICT's native schema.
@@ -201,13 +200,16 @@ class PRIDICT2ModelWrapper(BasePEModel):
         df = self._to_pridict_dataframe(df)
         y_ref = kwargs.get('y_ref', self._default_outcomes())
         batch_size = kwargs.get('batch_size', 500)
-        cell_types = kwargs.get('cell_types', None)
-        
+        cell_types = kwargs.get('cell_types')
+        if cell_types is None and self.is_trained and self.loaded_model_dir:
+            cell_types = self._cell_types_from_loaded_config()
+        model_name = self.model_name_str or kwargs.get('model_name', 'base_390k')
+
         # Prepare data using PRIDICT2's preprocessing pipeline
         dloader = self.prieml_model.prepare_data(
             df=df,
-            model_name=self.model_name_str,
-            cell_types=cell_types,
+            model_name=model_name,
+            cell_types=cell_types or [],
             y_ref=y_ref,
             batch_size=batch_size
         )
@@ -420,27 +422,23 @@ class PRIDICT2ModelWrapper(BasePEModel):
             result["cross_validation"] = fold_reports
         return result
     
-    def evaluate(self, test_data: pd.DataFrame, weights: Optional[str] = None) -> Dict[str, float]:
+    def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
         """
-        Evaluate PRIDICT2 model on all three outcomes
+        Evaluate PRIDICT2 model on all three outcomes using a registered weight set.
 
         Args:
             test_data: Test DataFrame with true labels
-            weights: Optional name of a bundled pre-trained weight set to load
-                before evaluating (see :meth:`list_available_weights`). When
-                ``None``, the currently trained/loaded model is used.
+            weights: Registered weight set ID (see :meth:`list_available_weights`).
 
         Returns:
             Dictionary with evaluation metrics for each outcome
         """
-        if weights is not None:
-            self.load_weights_by_name(weights)
-
-        if not self.is_trained:
+        if not weights or not str(weights).strip():
             raise ValueError(
-                "Model not loaded. Pass `weights=<name>` (see list_available_weights()), "
-                "or call load_model()/train() first."
+                "weights is required for evaluate(). "
+                f"Available: {self.list_available_weights()}"
             )
+        self.load_weights_by_name(weights)
         
         test_df = self._to_pridict_dataframe(test_data)
         outcomes = [o for o in self._default_outcomes() if o in test_df.columns]
@@ -517,23 +515,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
         info.update({
             'model_name': self.model_name_str,
             'wsize': self.wsize,
-            'supported_cell_types': self.SUPPORTED_CELL_TYPES,
-            'supported_model_names': self.SUPPORTED_MODEL_NAMES,
-            'available_cell_types': self.prieml_model.get_celltypes(self.model_name_str),
+            'available_weights': self.list_available_weights(),
             'outcomes': self._default_outcomes(),
             'supports_standardized_input': True,
             'description': 'PRIDICT2 model for predicting outcome distribution (edited/unedited/indel)'
         })
+        if self.is_trained and self.loaded_model_dir:
+            info['cell_types_from_config'] = self._cell_types_from_loaded_config()
         return info
-    
-    @staticmethod
-    def get_supported_models() -> Dict[str, List[str]]:
-        """Get mapping of model names to supported cell types"""
-        return {
-            'base_90k': ['HEK'],
-            'base_390k': ['HEKschwank', 'HEKhyongbum'],
-            'base_23k': ['HEK', 'K562'],
-            'base_90k_decinit_HEKschwank_FT': ['HEK', 'K562'],
-            'base_390k_decinit_HEKhyongbum_FT': ['HEK', 'K562'],
-            'base_390k_decinit_HEKschwank_FT': ['HEK', 'K562']
-        }
