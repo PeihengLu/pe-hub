@@ -96,3 +96,23 @@ def test_explicit_device_assignment(jobs_root: Path, monkeypatch: pytest.MonkeyP
     scheduler.submit_training(job_id, _training_request(device="cpu"))
     wait_for_job(job_id, poll_interval=0.05, timeout=5)
     assert assigned == ["cpu"]
+
+
+def test_shutdown_cancels_queued_jobs(jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
+    gate = threading.Event()
+
+    def fake_execute(request, *, job_id=None, device_id=None):
+        gate.wait(timeout=5)
+
+    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+
+    scheduler = ComputeDeviceScheduler()
+    running_id = create_job(_training_request(dataset_name="running"))
+    queued_id = create_job(_training_request(dataset_name="queued"))
+    scheduler.submit_training(running_id, _training_request(dataset_name="running"))
+    time.sleep(0.1)
+    scheduler.submit_training(queued_id, _training_request(dataset_name="queued"))
+    assert get_job(queued_id)["status"] == "queued"
+
+    scheduler.shutdown(wait=False)
+    assert get_job(queued_id)["status"] == "cancelled"

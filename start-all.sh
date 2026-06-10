@@ -263,7 +263,12 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 start_pe_db() {
-    local -a uvicorn_args=(app.main:app --host "${PE_DB_HOST}" --port "${PE_DB_PORT}")
+    local -a uvicorn_args=(
+        app.main:app
+        --host "${PE_DB_HOST}"
+        --port "${PE_DB_PORT}"
+        --timeout-graceful-shutdown 5
+    )
     if [[ "${RELOAD}" == true ]]; then
         uvicorn_args+=(--reload)
     fi
@@ -276,7 +281,12 @@ start_pe_db() {
 }
 
 start_pe_ensemble() {
-    local -a uvicorn_args=(app.main:app --host "${PE_ENSEMBLE_HOST}" --port "${PE_ENSEMBLE_PORT}")
+    local -a uvicorn_args=(
+        app.main:app
+        --host "${PE_ENSEMBLE_HOST}"
+        --port "${PE_ENSEMBLE_PORT}"
+        --timeout-graceful-shutdown 5
+    )
     if [[ "${RELOAD}" == true ]]; then
         uvicorn_args+=(--reload)
     fi

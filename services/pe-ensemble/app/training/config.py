@@ -17,6 +17,13 @@ def pe_db_url() -> str:
     return os.getenv("PE_DB_URL", "http://localhost:8000")
 
 
+def pe_db_filter_timeout() -> tuple[float, float]:
+    """Return ``(connect_timeout, read_timeout)`` for PE-DB ``/api/filter`` requests."""
+    connect = float(os.getenv("PE_DB_FILTER_CONNECT_TIMEOUT_SECONDS", "10"))
+    read = float(os.getenv("PE_DB_FILTER_TIMEOUT_SECONDS", "600"))
+    return connect, read
+
+
 def jobs_root() -> Path:
     env = os.getenv("TRAINING_JOBS_ROOT")
     if env:

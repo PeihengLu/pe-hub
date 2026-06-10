@@ -239,6 +239,22 @@ class ComputeDeviceScheduler:
         for index, (kind, job_id) in enumerate(self._wait_queue, start=1):
             self._update_job_locked(kind, job_id, queue_position=index, device_assigned=None)
 
+    def shutdown(self, *, wait: bool = False) -> None:
+        """Stop accepting work and release worker threads."""
+        with self._lock:
+            while self._wait_queue:
+                kind, job_id = self._wait_queue.popleft()
+                try:
+                    if kind == "train":
+                        mark_train_cancelled(job_id)
+                    else:
+                        mark_eval_cancelled(job_id)
+                except FileNotFoundError:
+                    pass
+            for kind, job_id in list(self._job_device.keys()):
+                request_cancel(kind, job_id)
+        self._executor.shutdown(wait=wait, cancel_futures=not wait)
+
 
 def _load_request(kind: JobKind, job_id: str) -> TrainingRequest | EvaluationRequest:
     if kind == "train":
@@ -266,3 +282,11 @@ def get_scheduler() -> ComputeDeviceScheduler:
         if _scheduler is None:
             _scheduler = ComputeDeviceScheduler()
         return _scheduler
+
+
+def shutdown_scheduler() -> None:
+    global _scheduler
+    with _scheduler_lock:
+        if _scheduler is not None:
+            _scheduler.shutdown(wait=False)
+            _scheduler = None

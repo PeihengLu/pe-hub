@@ -9,14 +9,13 @@ import ComputeJobList from '@apps/ensemble/components/ComputeJobList'
 import ModelDataPanel from '@apps/ensemble/components/ModelDataPanel'
 import api from '@apps/ensemble/services/api'
 import { DEFAULT_EVAL_SPLIT } from '@apps/ensemble/config/splitParams'
-import { exportFormatForModel } from '@apps/ensemble/config/modelFormats'
 import {
   buildBenchmarkRequestForGroup,
   buildBenchmarkSplitParams,
 } from '@apps/ensemble/utils/benchmarkRequest'
-import { buildFilterParams, type AttributeFilterRow } from '@apps/database/config/exportAttributes'
-import type { SplitStrategy } from '@apps/database/config/exportAttributes'
-import peDbApi, { type ExportResponse } from '@apps/database/services/peDbApi'
+import { resolveBatchGroups } from '@apps/ensemble/utils/batchGroups'
+import type { AttributeFilterRow, SplitStrategy } from '@apps/database/config/exportAttributes'
+import type { ExportResponse } from '@apps/database/services/peDbApi'
 import {
   jobStatusRefetchInterval,
   TERMINAL_JOB_STATUSES,
@@ -48,6 +47,11 @@ export default function BenchmarkPage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [queueProgress, setQueueProgress] = useState<{
+    phase: 'discovering' | 'queueing'
+    current: number
+    total: number
+  } | null>(null)
   const logRef = useRef<HTMLPreElement>(null)
   const logOffsetRef = useRef(0)
   const queryClient = useQueryClient()
@@ -174,16 +178,16 @@ export default function BenchmarkPage() {
     })
 
     if (batchBenchmark) {
-      const filters = buildFilterParams(filterRows)
-      const exportFormat = exportFormatForModel(modelName)
-      const preview = await peDbApi.exportFiltered(exportFormat, filters, split)
-      const groups = preview.data.groups
+      setQueueProgress({ phase: 'discovering', current: 0, total: 0 })
+      const groups = await resolveBatchGroups(filterRows)
       if (groups.length === 0) {
         throw new Error('No datasheets matched your filters')
       }
 
       let lastJobId: string | null = null
-      for (const group of groups) {
+      for (let index = 0; index < groups.length; index += 1) {
+        const group = groups[index]
+        setQueueProgress({ phase: 'queueing', current: index + 1, total: groups.length })
         const response = await api.benchmark(
           buildBenchmarkRequestForGroup({
             modelName,
@@ -195,7 +199,9 @@ export default function BenchmarkPage() {
           })
         )
         lastJobId = response.data.job_id
+        void queryClient.invalidateQueries('benchmark-jobs')
       }
+      setQueueProgress(null)
       return { job_id: lastJobId!, batch_count: groups.length }
     }
 
@@ -228,10 +234,14 @@ export default function BenchmarkPage() {
     benchmarkMutation.mutate(undefined, {
       onSuccess: (result) => {
         setSelectedJobId(result.job_id)
-        refetchJobs()
+        void refetchJobs()
       },
       onError: (err: any) => {
+        setQueueProgress(null)
         setError(err.response?.data?.detail || err.message || 'Failed to queue benchmark job')
+      },
+      onSettled: () => {
+        setQueueProgress(null)
       },
     })
   }
@@ -364,7 +374,11 @@ export default function BenchmarkPage() {
             >
               <Play className="w-4 h-4" />
               {benchmarkMutation.isLoading
-                ? 'Queueing…'
+                ? queueProgress?.phase === 'discovering'
+                  ? 'Finding datasheets…'
+                  : queueProgress && queueProgress.total > 0
+                    ? `Queueing ${queueProgress.current}/${queueProgress.total}…`
+                    : 'Queueing…'
                 : batchBenchmark
                   ? 'Start batch benchmark'
                   : 'Start benchmark'}

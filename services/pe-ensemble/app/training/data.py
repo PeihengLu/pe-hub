@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import requests
 
-from .config import pe_db_url
+from .config import pe_db_filter_timeout, pe_db_url
 from .schemas import FilterScalar, FilterValue, SplitQueryParams, TrainingRequest
 
 
@@ -78,7 +78,7 @@ def request_pe_db_filtered(params: Dict[str, Any]) -> Dict[str, Any]:
     response = requests.get(
         f"{pe_db_url()}/api/filter",
         params=params,
-        timeout=120,
+        timeout=pe_db_filter_timeout(),
     )
     response.raise_for_status()
     return response.json()

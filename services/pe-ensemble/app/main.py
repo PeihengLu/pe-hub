@@ -1,4 +1,7 @@
 # FastAPI endpoints for PE Ensemble service
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Literal, Optional, Dict, Any, Union
 import logging
@@ -15,7 +18,7 @@ from .models import weights_registry
 from .training.config import MODEL_FORMAT, SUPPORTED_MODELS
 from .training.data import (
     build_pe_db_filter_params as _build_pe_db_filter_params,
-    request_pe_db_filtered as _request_pe_db_filtered,
+    request_pe_db_filtered,
 )
 from .compute.device_scheduler import get_scheduler
 from .compute.job_lifecycle import kill_and_remove_job
@@ -47,10 +50,28 @@ from .training.schemas import (
 
 logger = logging.getLogger(__name__)
 
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-ensemble-sync")
+    loop.set_default_executor(executor)
+    try:
+        yield
+    finally:
+        from .compute.device_scheduler import shutdown_scheduler
+
+        shutdown_scheduler()
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 app = FastAPI(
     title="PE Ensemble API",
     description="Unified API for training and evaluating Prime Editing prediction models (DeepPrime, OPED, PRIDICT2)",
-    version="0.2.0"
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS(Cross-Origin Resource Sharing, allow all origins for simplicity)
@@ -200,7 +221,7 @@ async def export_filtered_data(
         target_context=target_context,
         scaffold_name=scaffold_name,
     )
-    return _request_pe_db_filtered(params)
+    return await asyncio.to_thread(_request_pe_db_filtered, params)
 
 
 @app.get("/models")
@@ -477,4 +498,9 @@ async def evaluation_device_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8001,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )

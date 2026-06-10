@@ -99,6 +99,13 @@ export interface ExportResponse {
   split?: SplitSummary
 }
 
+export interface FilterDatasheetsResponse {
+  status: string
+  format: null
+  count: number
+  datasheets: Datasheet[]
+}
+
 export type ExportFilterParams = Partial<
   Record<FilterAttributeKey, string[] | number[]>
 >
@@ -121,6 +128,11 @@ export const peDbApi = {
   ) =>
     apiClient.get<ExportResponse>('/api/filter', {
       params: { format, ...filters, ...split },
+    }),
+  /** Catalog-only filter (no model conversion). Use to discover batch job targets quickly. */
+  filterDatasheets: (filters: ExportFilterParams = {}) =>
+    apiClient.get<FilterDatasheetsResponse>('/api/filter', {
+      params: filters,
     }),
 }
 

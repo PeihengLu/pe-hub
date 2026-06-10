@@ -143,7 +143,12 @@ fi
 
 cd "${SERVICE_DIR}"
 
-UVICORN_ARGS=(app.main:app --host "${HOST}" --port "${PORT}")
+UVICORN_ARGS=(
+    app.main:app
+    --host "${HOST}"
+    --port "${PORT}"
+    --timeout-graceful-shutdown 5
+)
 if [[ "${RELOAD}" == true ]]; then
     UVICORN_ARGS+=(--reload)
 fi

@@ -13,13 +13,9 @@ import TrainingHyperparametersPanel, {
   buildHyperparametersPayload,
   type HyperparameterFormState,
 } from '@apps/ensemble/components/TrainingHyperparametersPanel'
-import { exportFormatForModel } from '@apps/ensemble/config/modelFormats'
-import {
-  buildFilterParams,
-  type AttributeFilterRow,
-  type SplitStrategy,
-} from '@apps/database/config/exportAttributes'
-import peDbApi, { type ExportResponse } from '@apps/database/services/peDbApi'
+import type { AttributeFilterRow, SplitStrategy } from '@apps/database/config/exportAttributes'
+import type { ExportResponse } from '@apps/database/services/peDbApi'
+import { resolveBatchGroups } from '@apps/ensemble/utils/batchGroups'
 import {
   buildTrainingRequestForGroup,
   buildTrainingSplitParams,
@@ -49,6 +45,11 @@ export default function TrainingPage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [queueProgress, setQueueProgress] = useState<{
+    phase: 'discovering' | 'queueing'
+    current: number
+    total: number
+  } | null>(null)
   const logRef = useRef<HTMLPreElement>(null)
   const logOffsetRef = useRef(0)
   const queryClient = useQueryClient()
@@ -157,16 +158,16 @@ export default function TrainingPage() {
         : undefined
 
     if (batchTraining) {
-      const filters = buildFilterParams(filterRows)
-      const exportFormat = exportFormatForModel(modelName)
-      const preview = await peDbApi.exportFiltered(exportFormat, filters, split)
-      const groups = preview.data.groups
+      setQueueProgress({ phase: 'discovering', current: 0, total: 0 })
+      const groups = await resolveBatchGroups(filterRows)
       if (groups.length === 0) {
         throw new Error('No datasheets matched your filters')
       }
 
       let lastJobId: string | null = null
-      for (const group of groups) {
+      for (let index = 0; index < groups.length; index += 1) {
+        const group = groups[index]
+        setQueueProgress({ phase: 'queueing', current: index + 1, total: groups.length })
         const response = await api.train(
           buildTrainingRequestForGroup({
             modelName,
@@ -179,7 +180,9 @@ export default function TrainingPage() {
           })
         )
         lastJobId = response.data.job_id
+        void queryClient.invalidateQueries('training-jobs')
       }
+      setQueueProgress(null)
       return { job_id: lastJobId!, batch_count: groups.length }
     }
 
@@ -207,10 +210,14 @@ export default function TrainingPage() {
     trainMutation.mutate(undefined, {
       onSuccess: (result) => {
         setSelectedJobId(result.job_id)
-        refetchJobs()
+        void refetchJobs()
       },
       onError: (err: any) => {
+        setQueueProgress(null)
         setError(err.response?.data?.detail || err.message || 'Failed to queue training job')
+      },
+      onSettled: () => {
+        setQueueProgress(null)
       },
     })
   }
@@ -318,7 +325,11 @@ export default function TrainingPage() {
             >
               <Play className="w-4 h-4" />
               {trainMutation.isLoading
-                ? 'Queueing…'
+                ? queueProgress?.phase === 'discovering'
+                  ? 'Finding datasheets…'
+                  : queueProgress && queueProgress.total > 0
+                    ? `Queueing ${queueProgress.current}/${queueProgress.total}…`
+                    : 'Queueing…'
                 : batchTraining
                   ? 'Start batch training'
                   : 'Start training'}

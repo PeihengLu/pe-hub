@@ -5,10 +5,12 @@ Serves prime editing efficiency data and exposes the catalog schema defined in
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,11 +46,17 @@ def _env_flag(name: str) -> bool:
 async def lifespan(_app: FastAPI):
     from .catalog.initialize import initialize_database
 
-    initialize_database(
-        force_export=_env_flag("PE_DB_FORCE_EXPORT"),
-        force_standardize=_env_flag("PE_DB_FORCE_STANDARDIZE"),
-    )
-    yield
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-db-sync")
+    loop.set_default_executor(executor)
+    try:
+        initialize_database(
+            force_export=_env_flag("PE_DB_FORCE_EXPORT"),
+            force_standardize=_env_flag("PE_DB_FORCE_STANDARDIZE"),
+        )
+        yield
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 app = FastAPI(
@@ -69,6 +77,8 @@ app.add_middleware(
 converter = DataConverter()
 loader = DataLoader()
 
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
 
 def _legacy_model_to_study(source_model: str) -> str:
     legacy_map = {
@@ -78,6 +88,44 @@ def _legacy_model_to_study(source_model: str) -> str:
         "pd2": "pridict2",
     }
     return legacy_map.get(source_model.strip().lower(), source_model.strip().lower())
+
+
+def _filter_data_sync(
+    *,
+    study: Optional[list[str]],
+    dataset: Optional[list[str]],
+    cell_line: Optional[list[str]],
+    pe_system: Optional[list[str]],
+    edit_type: Optional[list[str]],
+    edit_length: Optional[list[int]],
+    edit_efficiency_min: Optional[float],
+    edit_efficiency_max: Optional[float],
+    edit_scope: Optional[list[str]],
+    experimental_method: Optional[list[str]],
+    target_context: Optional[list[str]],
+    scaffold_name: Optional[list[str]],
+    format_: Optional[str],
+    split_config: Any,
+    merge: bool,
+) -> dict[str, Any]:
+    with get_session() as session:
+        return CatalogRepository(session).filter_all(
+            study_name=study,
+            dataset_name=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            edit_type=edit_type,
+            edit_length=edit_length,
+            edit_efficiency_min=edit_efficiency_min,
+            edit_efficiency_max=edit_efficiency_max,
+            edit_scope=edit_scope,
+            experimental_method=experimental_method,
+            target_context=target_context,
+            scaffold_name=scaffold_name,
+            target_format=format_,
+            split_config=split_config,
+            merge_groups=merge,
+        )
 
 
 @app.get("/")
@@ -233,24 +281,24 @@ async def filter_data(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
-        with get_session() as session:
-            result = CatalogRepository(session).filter_all(
-                study_name=study,
-                dataset_name=dataset,
-                cell_line=cell_line,
-                pe_system=pe_system,
-                edit_type=edit_type,
-                edit_length=edit_length,
-                edit_efficiency_min=edit_efficiency_min,
-                edit_efficiency_max=edit_efficiency_max,
-                edit_scope=edit_scope,
-                experimental_method=experimental_method,
-                target_context=target_context,
-                scaffold_name=scaffold_name,
-                target_format=format_,
-                split_config=split_config,
-                merge_groups=merge,
-            )
+        result = await asyncio.to_thread(
+            _filter_data_sync,
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            edit_type=edit_type,
+            edit_length=edit_length,
+            edit_efficiency_min=edit_efficiency_min,
+            edit_efficiency_max=edit_efficiency_max,
+            edit_scope=edit_scope,
+            experimental_method=experimental_method,
+            target_context=target_context,
+            scaffold_name=scaffold_name,
+            format_=format_,
+            split_config=split_config,
+            merge=merge,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -484,4 +532,9 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
