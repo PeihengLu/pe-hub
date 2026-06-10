@@ -155,6 +155,7 @@ def test_pridict_correction_length_matches_edit_len():
     out = standardized_to_pridict_dataframe(df)
     assert PRIDICT_REQUIRED.issubset(out.columns)
     assert out["Correction_Length"].tolist() == [1, 3]
+    assert out["Correction_Length"].dtype in (int, "int64", "int32")
 
 
 def test_pridict_includes_vendor_normalizer_columns():
@@ -163,6 +164,15 @@ def test_pridict_includes_vendor_normalizer_columns():
     for colname in PRIDICT2_NORMALIZER_COLUMNS:
         assert colname in out.columns
     assert "Correction_Length_effective" not in out.columns
+
+
+def test_pridict_conversion_reports_progress():
+    df = _standardized_df("edit_len")
+    messages: list[str] = []
+    standardized_to_pridict_dataframe(df, progress_callback=messages.append)
+    assert messages
+    assert any("thermodynamic" in message.lower() for message in messages)
+    assert messages[-1].endswith("(100%)")
 
 
 @pytest.mark.skipif(not PRIDICT2_EXPORT.is_file(), reason="PRIDICT2 export fixture unavailable")

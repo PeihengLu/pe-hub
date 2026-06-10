@@ -140,7 +140,7 @@ export default function ModelDataPanel({
       randomState: splitRandomState,
       batchTraining: batchMode,
     })
-    const response = await peDbApi.exportFiltered(exportFormat, filters, split)
+    const response = await peDbApi.previewFiltered(filters, split)
     return response.data
   }, {
     onSuccess: (data) => onPreviewDataChange(data),

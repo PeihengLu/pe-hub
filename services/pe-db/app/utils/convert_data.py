@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ProcessPoolExecutor
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 import pandas as pd
 from Bio.Seq import Seq
@@ -144,6 +144,25 @@ _MT_FEATURE_NAMES = (
 
 _viennarna = None
 
+ProgressCallback = Callable[[str], None]
+
+
+def _report_progress_milestone(
+    progress_callback: Optional[ProgressCallback],
+    *,
+    phase: str,
+    done: int,
+    total: int,
+    last_milestone: list[int],
+) -> None:
+    if progress_callback is None or total <= 0:
+        return
+    pct = int(100 * done / total)
+    milestone = 100 if done >= total else (pct // 10) * 10
+    if done >= total or milestone > last_milestone[0]:
+        last_milestone[0] = milestone
+        progress_callback(f"{phase}: {done}/{total} ({pct}%)")
+
 
 def _get_viennarna():
     global _viennarna
@@ -176,21 +195,43 @@ def _pridict2_mfe_chunk_worker(
 
 def _compute_pridict2_mfe_features_batch(
     payloads: list[tuple[str, str, dict[str, int]]],
+    *,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> list[dict[str, float]]:
     if len(payloads) < _pridict2_mfe_parallel_min_rows():
-        return [
-            _compute_pridict2_mfe_features(wt, mut, **seq_kwargs)
-            for wt, mut, seq_kwargs in payloads
-        ]
+        results: list[dict[str, float]] = []
+        last_milestone = [-1]
+        total = len(payloads)
+        for index, (wt, mut, seq_kwargs) in enumerate(payloads, start=1):
+            results.append(_compute_pridict2_mfe_features(wt, mut, **seq_kwargs))
+            _report_progress_milestone(
+                progress_callback,
+                phase="Computing RNA MFE features",
+                done=index,
+                total=total,
+                last_milestone=last_milestone,
+            )
+        return results
 
     workers = min(_pridict2_mfe_worker_count(), len(payloads))
     chunk_count = workers * 8
     chunk_size = max(1, (len(payloads) + chunk_count - 1) // chunk_count)
     chunks = [payloads[i:i + chunk_size] for i in range(0, len(payloads), chunk_size)]
     results: list[dict[str, float]] = []
+    last_milestone = [-1]
+    total = len(payloads)
+    done = 0
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        for chunk_result in pool.map(_pridict2_mfe_chunk_worker, chunks):
+        for chunk_result in pool.imap(_pridict2_mfe_chunk_worker, chunks):
             results.extend(chunk_result)
+            done += len(chunk_result)
+            _report_progress_milestone(
+                progress_callback,
+                phase="Computing RNA MFE features",
+                done=done,
+                total=total,
+                last_milestone=last_milestone,
+            )
     return results
 
 
@@ -414,7 +455,12 @@ def _compute_deepprime_thermo_features(
     }
 
 
-def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.DataFrame:
+def _enrich_pridict2_features(
+    source: pd.DataFrame,
+    out: pd.DataFrame,
+    *,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> pd.DataFrame:
     """Compute PRIDICT2 model features from the canonical standardized schema."""
     pbs_l = _safe_int_series(_col_as_series(source, "pbs_location_l", 0))
     pbs_r = _safe_int_series(_col_as_series(source, "pbs_location_r", 0))
@@ -431,7 +477,8 @@ def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.Dat
     edit_pos = _safe_int_series(_col_as_series(source, "lha_location_r", 0))
 
     out["deepcas9"] = _safe_float_series(_col_as_series(source, "spcas9_score", 0.0), default=0.0)
-    out["Correction_Length"] = edit_len.astype(float)
+    # Keep integer dtype: vendor sequence alignment uses Correction_Length as a repeat count.
+    out["Correction_Length"] = edit_len.astype(int)
     out["PBSlength"] = (pbs_r - pbs_l).clip(lower=0).astype(float)
     out["RTlength"] = (rtt_r - rtt_l).clip(lower=0).astype(float)
     out["RToverhanglength"] = (rha_r - rha_l).clip(lower=0).astype(float)
@@ -442,7 +489,9 @@ def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.Dat
     row_indices = list(source.index)
     mfe_payloads: list[tuple[str, str, dict[str, int]]] = []
     feature_rows: list[dict[str, float]] = []
-    for row_idx in row_indices:
+    last_milestone = [-1]
+    total_rows = len(row_indices)
+    for row_number, row_idx in enumerate(row_indices, start=1):
         wt = wt_series.loc[row_idx]
         mut = mut_series.loc[row_idx]
         pbs_seq = mut[pbs_l.loc[row_idx]:pbs_r.loc[row_idx]]
@@ -484,8 +533,18 @@ def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.Dat
             }
         )
         mfe_payloads.append((wt, mut, seq_kwargs))
+        _report_progress_milestone(
+            progress_callback,
+            phase="Computing thermodynamic features",
+            done=row_number,
+            total=total_rows,
+            last_milestone=last_milestone,
+        )
 
-    for row_feats, mfe_feats in zip(feature_rows, _compute_pridict2_mfe_features_batch(mfe_payloads)):
+    for row_feats, mfe_feats in zip(
+        feature_rows,
+        _compute_pridict2_mfe_features_batch(mfe_payloads, progress_callback=progress_callback),
+    ):
         row_feats.update(mfe_feats)
 
     feat_df = pd.DataFrame(feature_rows, index=row_indices)
@@ -500,7 +559,10 @@ def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.Dat
         )
 
     for colname in PRIDICT2_NORMALIZER_COLUMNS:
-        out[colname] = _safe_float_series(out[colname], default=0.0)
+        if colname == "Correction_Length":
+            out[colname] = _safe_int_series(out[colname], default=0)
+        else:
+            out[colname] = _safe_float_series(out[colname], default=0.0)
 
     for colname in ("original_base_mt_nan", "edited_base_mt_nan"):
         out[colname] = _safe_float_series(out[colname], default=0.0)
@@ -512,6 +574,7 @@ def standardized_to_pridict_dataframe(
     df: pd.DataFrame,
     *,
     sequence_id_prefix: str = "seq_",
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
     """Convert standardized schema into PRIDICT/PRIDICT2-compatible dataframe."""
     out = pd.DataFrame(index=df.index)
@@ -553,10 +616,15 @@ def standardized_to_pridict_dataframe(
     for optional_col in ("averageunedited", "averageindel"):
         if optional_col in df.columns:
             out[optional_col] = _safe_float_series(_col_as_series(df, optional_col, 0.0), default=0.0)
-    return _enrich_pridict2_features(df, out)
+    return _enrich_pridict2_features(df, out, progress_callback=progress_callback)
 
 
-def standardized_to_deepprime_dataframe(df: pd.DataFrame, *, spcas9_column: str = "spcas9_score") -> pd.DataFrame:
+def standardized_to_deepprime_dataframe(
+    df: pd.DataFrame,
+    *,
+    spcas9_column: str = "spcas9_score",
+    progress_callback: Optional[ProgressCallback] = None,
+) -> pd.DataFrame:
     """Convert standardized schema into DeepPrime feature dataframe."""
     wt_series = _col_as_series(df, "wt_sequence", "").astype(str).map(sanitize_dna_sequence).to_numpy()
     mut_series = _col_as_series(df, "mut_sequence", "").astype(str).map(sanitize_dna_sequence).to_numpy()
@@ -581,7 +649,9 @@ def standardized_to_deepprime_dataframe(df: pd.DataFrame, *, spcas9_column: str 
     )
 
     rows: list[dict[str, Any]] = []
-    for i in range(len(df)):
+    total_rows = len(df)
+    last_milestone = [-1]
+    for i in range(total_rows):
         wt = str(wt_series[i])
         mut = str(mut_series[i])
         protospacer_l = int(protospacer_l_series[i])
@@ -641,6 +711,13 @@ def standardized_to_deepprime_dataframe(df: pd.DataFrame, *, spcas9_column: str 
         if efficiency_series is not None:
             row["Efficiency"] = float(efficiency_series[i])
         rows.append(row)
+        _report_progress_milestone(
+            progress_callback,
+            phase="Converting DeepPrime features",
+            done=i + 1,
+            total=total_rows,
+            last_milestone=last_milestone,
+        )
     return pd.DataFrame(rows, index=df.index)
 
 
@@ -649,6 +726,7 @@ def standardized_to_oped_dataframe(
     *,
     target_len: int = 47,
     protospacer_upstream_bases: int = 4,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
     """Convert standardized schema into OPED sequence dataframe."""
     efficiency = _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0).to_numpy()
@@ -661,6 +739,8 @@ def standardized_to_oped_dataframe(
     prot_l = _safe_int_series(_col_as_series(df, "protospacer_location_l", 0), default=0).to_numpy()
 
     records: list[dict[str, Any]] = []
+    total_rows = len(wt_series)
+    last_milestone = [-1]
     for row_pos, (wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i) in enumerate(
         zip(wt_series, mut_series, pbs_l, pbs_r, rtt_l, rtt_r, prot_l)
     ):
@@ -703,6 +783,13 @@ def standardized_to_oped_dataframe(
                 "RT": rt_seq,
                 "Efficiency": float(efficiency[row_pos]),
             }
+        )
+        _report_progress_milestone(
+            progress_callback,
+            phase="Converting OPED sequences",
+            done=row_pos + 1,
+            total=total_rows,
+            last_milestone=last_milestone,
         )
 
     return pd.DataFrame(records, index=df.index)

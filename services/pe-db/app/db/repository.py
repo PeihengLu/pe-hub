@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -215,6 +215,8 @@ class CatalogRepository:
         target_format: Optional[str] = None,
         split_config: Optional[SplitConfig] = None,
         merge_groups: bool = False,
+        summary_only: bool = False,
+        progress_callback: Optional[Callable[[str], None]] = None,
     ) -> list[DatasheetRead] | dict[str, Any]:
         """Apply catalog metadata filters, then per-edit filters on standardized data.
 
@@ -269,7 +271,26 @@ class CatalogRepository:
             edit_efficiency_max=edit_efficiency_max,
             split_config=split_config,
             merge_groups=merge_groups,
+            summary_only=summary_only,
+            progress_callback=progress_callback,
         )
+
+    @staticmethod
+    def _build_export_group(
+        descriptor: dict[str, Any],
+        num_records: int,
+        converted: Optional[pd.DataFrame],
+        *,
+        summary_only: bool,
+    ) -> dict[str, Any]:
+        group = {**descriptor, "num_records": int(num_records)}
+        if summary_only or converted is None:
+            group["columns"] = []
+            group["records"] = []
+        else:
+            group["columns"] = list(converted.columns)
+            group["records"] = dataframe_to_json_records(converted)
+        return group
 
     def _convert_filtered_rows_to_format(
         self,
@@ -282,13 +303,22 @@ class CatalogRepository:
         edit_efficiency_max: Optional[float] = None,
         split_config: Optional[SplitConfig] = None,
         merge_groups: bool = False,
+        summary_only: bool = False,
+        progress_callback: Optional[Callable[[str], None]] = None,
     ) -> dict[str, Any]:
-        """Convert standardizable datasheets' standardized data into ``target_format``."""
-        from ..converter import DataConverter
+        """Convert standardizable datasheets' standardized data into ``target_format``.
 
+        When ``summary_only`` is true, rows are filtered and split on standardized data
+        only; counts and split summaries are returned without model-format conversion
+        or per-row record payloads.
+        """
         data_root = get_settings().data_root
         loader = PEDataLoader(data_root)
-        converter = DataConverter(data_root)
+        converter = None
+        if not summary_only:
+            from ..converter import DataConverter
+
+            converter = DataConverter(data_root)
         edit_type_codes = self._parse_edit_types(edit_type)
 
         split_config = split_config or SplitConfig(strategy="none")
@@ -327,10 +357,10 @@ class CatalogRepository:
             if filtered.empty:
                 continue
 
-            pending.append((descriptor, filtered))
+            pending.append((descriptor, data, filtered))
 
         if merge_groups and pending:
-            merged_frames = [filtered.copy() for _, filtered in pending]
+            merged_frames = [filtered.copy() for _, _, filtered in pending]
             merged_std = pd.concat(merged_frames, ignore_index=True)
             merged_std = reassign_group_ids_by_target_location(merged_std)
             merged_descriptor = {
@@ -344,64 +374,86 @@ class CatalogRepository:
                     merged_std,
                     split_config,
                 )
-                converted = converter.convert_from_standardized(
-                    split_std,
-                    study="merged",
-                    dataset="merged",
-                    cell_line="merged",
-                    pe_system="merged",
-                    target_format=target_format,
-                )
-                converted = _attach_split_metadata(converted, split_std)
+                if summary_only:
+                    num_records = int(len(split_std))
+                else:
+                    if progress_callback is not None:
+                        progress_callback(
+                            f"Converting {len(split_std)} standardized rows to {target_format} (merged groups)"
+                        )
+                    converted = converter.convert_from_standardized(
+                        split_std,
+                        study="merged",
+                        dataset="merged",
+                        cell_line="merged",
+                        pe_system="merged",
+                        target_format=target_format,
+                        progress_callback=progress_callback,
+                    )
+                    converted = _attach_split_metadata(converted, split_std)
+                    num_records = int(len(converted))
             except ValueError as exc:
                 skipped.append({**merged_descriptor, "reason": f"split assignment failed: {exc}"})
             else:
                 groups.append(
-                    {
-                        **merged_descriptor,
-                        "num_records": int(len(converted)),
-                        "columns": list(converted.columns),
-                        "records": dataframe_to_json_records(converted),
-                    }
+                    self._build_export_group(
+                        merged_descriptor,
+                        num_records,
+                        converted if not summary_only else None,
+                        summary_only=summary_only,
+                    )
                 )
                 split_summaries.append(split_summary)
         else:
-            for descriptor, filtered in pending:
+            for descriptor, data, filtered in pending:
                 try:
                     split_std, split_summary = _apply_export_split(
                         filtered,
                         split_config,
                     )
-                    converted = converter.convert_from_standardized(
-                        split_std,
-                        study=descriptor["study"],
-                        dataset=descriptor["dataset"],
-                        cell_line=descriptor["cell_line"],
-                        pe_system=descriptor["pe_system"],
-                        target_format=target_format,
-                    )
-                    converted = _attach_split_metadata(converted, split_std)
+                    if summary_only:
+                        num_records = int(len(split_std))
+                        converted = None
+                    elif target_format == "std":
+                        converted = split_std.copy()
+                        converted = _attach_split_metadata(converted, split_std)
+                        num_records = int(len(converted))
+                    else:
+                        converted_full = converter.load_or_convert_formatted(
+                            data,
+                            study=descriptor["study"],
+                            dataset=descriptor["dataset"],
+                            cell_line=descriptor["cell_line"],
+                            pe_system=descriptor["pe_system"],
+                            target_format=target_format,
+                            progress_callback=progress_callback,
+                        )
+                        converted = converted_full.loc[split_std.index].reset_index(drop=True)
+                        split_std = split_std.reset_index(drop=True)
+                        converted = _attach_split_metadata(converted, split_std)
+                        num_records = int(len(converted))
                 except (ValueError, KeyError) as exc:
                     skipped.append({**descriptor, "reason": str(exc)})
                     continue
 
                 groups.append(
-                    {
-                        **descriptor,
-                        "num_records": int(len(converted)),
-                        "columns": list(converted.columns),
-                        "records": dataframe_to_json_records(converted),
-                    }
+                    self._build_export_group(
+                        descriptor,
+                        num_records,
+                        converted,
+                        summary_only=summary_only,
+                    )
                 )
                 if split_config.strategy != "none":
                     split_summaries.append({**descriptor, **split_summary})
 
         payload: dict[str, Any] = {
-            "target_format": target_format,
+            "target_format": "std" if summary_only else target_format,
             "groups": groups,
             "skipped": skipped,
             "total_records": int(sum(group["num_records"] for group in groups)),
             "merged": merge_groups,
+            "summary_only": summary_only,
         }
         if split_config.strategy != "none":
             payload["split"] = {

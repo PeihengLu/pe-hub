@@ -16,7 +16,7 @@ from .schemas import EvaluationJobSummary, EvaluationRequest
 MANIFEST_FILENAME = "manifest.json"
 LOG_FILENAME = "eval.log"
 REQUEST_FILENAME = "request.json"
-TERMINAL_JOB_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+TERMINAL_JOB_STATUSES = frozenset({"succeeded", "failed", "cancelled", "skipped"})
 
 
 def _utc_now_iso() -> str:
@@ -109,6 +109,19 @@ def mark_succeeded(job_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
         "finished_at": _utc_now_iso(),
         "result": result,
         "error": None,
+    }
+    resolved_weights = result.get("weights") or result.get("weights_id")
+    if resolved_weights:
+        fields["weights_id"] = resolved_weights
+    return update_job(job_id, **fields)
+
+
+def mark_skipped(job_id: str, result: Dict[str, Any], *, reason: str) -> Dict[str, Any]:
+    fields: Dict[str, Any] = {
+        "status": "skipped",
+        "finished_at": _utc_now_iso(),
+        "result": result,
+        "error": reason,
     }
     resolved_weights = result.get("weights") or result.get("weights_id")
     if resolved_weights:

@@ -83,7 +83,7 @@ export interface PredictionResponse {
   message?: string
 }
 
-export type TrainingJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+export type TrainingJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped'
 
 export interface TrainingRequest {
   model_name: string

@@ -96,6 +96,7 @@ export interface ExportResponse {
   skipped: ExportSkipped[]
   total_records: number
   merged?: boolean
+  summary_only?: boolean
   split?: SplitSummary
 }
 
@@ -133,6 +134,11 @@ export const peDbApi = {
   filterDatasheets: (filters: ExportFilterParams = {}) =>
     apiClient.get<FilterDatasheetsResponse>('/api/filter', {
       params: filters,
+    }),
+  /** Standardized-data summary for train/benchmark preview (no model conversion). */
+  previewFiltered: (filters: ExportFilterParams = {}, split: SplitExportParams) =>
+    apiClient.get<ExportResponse>('/api/filter', {
+      params: { format: 'std', summary_only: true, ...filters, ...split },
     }),
 }
 

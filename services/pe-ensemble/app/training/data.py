@@ -1,12 +1,14 @@
 """Resolve training data from PE-DB or inline records."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 import requests
 
 from .config import pe_db_filter_timeout, pe_db_url
+from .conversion_progress import pe_db_filter_progress
 from .schemas import FilterScalar, FilterValue, SplitQueryParams, TrainingRequest
 
 
@@ -95,6 +97,89 @@ def filtered_payload_to_dataframe(payload: Dict[str, Any]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+@dataclass
+class ModelFormatFetchResult:
+    """PE-DB filter response materialized as a dataframe plus export metadata."""
+
+    df: pd.DataFrame
+    skipped: List[Dict[str, Any]] = field(default_factory=list)
+    total_records: int = 0
+    partition_error: Optional[str] = None
+
+
+def fetch_model_format_result(
+    *,
+    model_format: str,
+    split: SplitQueryParams,
+    records: Optional[List[Dict[str, Any]]] = None,
+    study: Optional[FilterValue] = None,
+    dataset: Optional[FilterValue] = None,
+    cell_line: Optional[FilterValue] = None,
+    pe_system: Optional[FilterValue] = None,
+    edit_type: Optional[FilterValue] = None,
+    edit_length: Optional[FilterValue] = None,
+    edit_efficiency_min: Optional[float] = None,
+    edit_efficiency_max: Optional[float] = None,
+    edit_scope: Optional[FilterValue] = None,
+    experimental_method: Optional[FilterValue] = None,
+    target_context: Optional[FilterValue] = None,
+    scaffold_name: Optional[FilterValue] = None,
+    evaluation: bool = False,
+    progress_log: Optional[Callable[[str], None]] = None,
+) -> ModelFormatFetchResult:
+    from pe_common.splits import select_evaluation_partition
+
+    if records is not None:
+        df = pd.DataFrame(records)
+        if evaluation and split.split_strategy != "none":
+            try:
+                df = select_evaluation_partition(df, require_test=True)
+            except ValueError as exc:
+                return ModelFormatFetchResult(
+                    pd.DataFrame(),
+                    partition_error=str(exc),
+                )
+        return ModelFormatFetchResult(df)
+
+    params = build_pe_db_filter_params(
+        model_format=model_format,
+        split=split,
+        study=study,
+        dataset=dataset,
+        cell_line=cell_line,
+        pe_system=pe_system,
+        edit_type=edit_type,
+        edit_length=edit_length,
+        edit_efficiency_min=edit_efficiency_min,
+        edit_efficiency_max=edit_efficiency_max,
+        edit_scope=edit_scope,
+        experimental_method=experimental_method,
+        target_context=target_context,
+        scaffold_name=scaffold_name,
+    )
+    if progress_log is not None:
+        progress_log(f"Fetching {model_format} data from PE-DB (conversion may take a while)...")
+    with pe_db_filter_progress(params, progress_log=progress_log, request_fn=request_pe_db_filtered) as payload:
+        skipped = list(payload.get("skipped") or [])
+        total_records = int(payload.get("total_records") or 0)
+        df = filtered_payload_to_dataframe(payload)
+    if evaluation and split.split_strategy != "none":
+        try:
+            df = select_evaluation_partition(df, require_test=True)
+        except ValueError as exc:
+            return ModelFormatFetchResult(
+                pd.DataFrame(),
+                skipped=skipped,
+                total_records=total_records,
+                partition_error=str(exc),
+            )
+    return ModelFormatFetchResult(
+        df,
+        skipped=skipped,
+        total_records=total_records,
+    )
+
+
 def fetch_model_format_dataframe(
     *,
     model_format: str,
@@ -114,17 +199,10 @@ def fetch_model_format_dataframe(
     scaffold_name: Optional[FilterValue] = None,
     evaluation: bool = False,
 ) -> pd.DataFrame:
-    from pe_common.splits import select_evaluation_partition
-
-    if records is not None:
-        df = pd.DataFrame(records)
-        if evaluation and split.split_strategy != "none":
-            return select_evaluation_partition(df, require_test=True)
-        return df
-
-    params = build_pe_db_filter_params(
+    return fetch_model_format_result(
         model_format=model_format,
         split=split,
+        records=records,
         study=study,
         dataset=dataset,
         cell_line=cell_line,
@@ -137,16 +215,17 @@ def fetch_model_format_dataframe(
         experimental_method=experimental_method,
         target_context=target_context,
         scaffold_name=scaffold_name,
-    )
-    payload = request_pe_db_filtered(params)
-    df = filtered_payload_to_dataframe(payload)
-    if evaluation and split.split_strategy != "none":
-        return select_evaluation_partition(df, require_test=True)
-    return df
+        evaluation=evaluation,
+    ).df
 
 
-def fetch_training_dataframe(request: TrainingRequest, model_format: str) -> pd.DataFrame:
-    return fetch_model_format_dataframe(
+def fetch_training_dataframe(
+    request: TrainingRequest,
+    model_format: str,
+    *,
+    progress_log: Optional[Callable[[str], None]] = None,
+) -> pd.DataFrame:
+    return fetch_model_format_result(
         model_format=model_format,
         split=request.split,
         records=request.records,
@@ -163,4 +242,5 @@ def fetch_training_dataframe(request: TrainingRequest, model_format: str) -> pd.
         target_context=request.target_context,
         scaffold_name=request.scaffold_name,
         evaluation=False,
-    )
+        progress_log=progress_log,
+    ).df

@@ -5,10 +5,15 @@ dataset formats (DeepPrime, PRIDICT, PRIDICT2, etc.) to a standardized format.
 """
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 import logging
 
 from pe_common.constants import DATA_ROOT
+from .formatted_cache import (
+    FORMATTED_MODEL_FORMATS,
+    load_formatted_cache,
+    save_formatted_cache,
+)
 from .utils.convert_data import (
     is_standardized_dataframe,
     standardized_to_pridict_dataframe,
@@ -18,6 +23,8 @@ from .utils.convert_data import (
 from .utils.standardize_data import export_original_data, standardize_pe_data
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[str], None]
 
 
 class DataConverter:
@@ -42,6 +49,8 @@ class DataConverter:
         self.std_dir.mkdir(parents=True, exist_ok=True)
         self.exported_dir = self.datasets_dir / 'exported'
         self.exported_dir.mkdir(parents=True, exist_ok=True)
+        self.formatted_dir = self.datasets_dir / 'formatted'
+        self.formatted_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"DataConverter initialized with datasets_dir: {self.datasets_dir}")
 
@@ -93,6 +102,8 @@ class DataConverter:
         pe_system: str,
         target_format: str,
         output_file: Optional[Path] = None,
+        *,
+        progress_callback: Optional[ProgressCallback] = None,
     ) -> pd.DataFrame:
         """
         Convert standardized data into a model-specific format.
@@ -115,11 +126,20 @@ class DataConverter:
             if not is_standardized_dataframe(df):
                 raise ValueError("Input dataframe is not in standardized schema.")
             if target_format == "deepprime":
-                converted = standardized_to_deepprime_dataframe(df)
+                converted = standardized_to_deepprime_dataframe(
+                    df,
+                    progress_callback=progress_callback,
+                )
             elif target_format in {"pridict", "pridict2"}:
-                converted = standardized_to_pridict_dataframe(df)
+                converted = standardized_to_pridict_dataframe(
+                    df,
+                    progress_callback=progress_callback,
+                )
             elif target_format == "oped":
-                converted = standardized_to_oped_dataframe(df)
+                converted = standardized_to_oped_dataframe(
+                    df,
+                    progress_callback=progress_callback,
+                )
             else:
                 raise ValueError(f"Unsupported target format: {target_format}")
 
@@ -131,4 +151,64 @@ class DataConverter:
                 converted.to_csv(output_file, index=False)
             logger.info(f"Converted standardized data to {target_format}: {output_file}")
 
+        return converted
+
+    def load_or_convert_formatted(
+        self,
+        source: pd.DataFrame,
+        *,
+        study: str,
+        dataset: str,
+        cell_line: str,
+        pe_system: str,
+        target_format: str,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> pd.DataFrame:
+        """Return model-format rows for a full standardized datasheet, using disk cache."""
+        if target_format == "std":
+            return source.copy()
+        if target_format not in FORMATTED_MODEL_FORMATS:
+            raise ValueError(f"Unsupported target format: {target_format}")
+
+        cached = load_formatted_cache(
+            target_format,
+            study,
+            dataset,
+            cell_line,
+            pe_system,
+            datasets_dir=self.datasets_dir,
+            expected_rows=len(source),
+        )
+        if cached is not None:
+            if progress_callback is not None:
+                progress_callback(
+                    f"Loaded formatted cache for {target_format} "
+                    f"({study}/{dataset} · {cell_line} · {pe_system}, {len(cached)} rows)"
+                )
+            return cached
+
+        if progress_callback is not None:
+            progress_callback(
+                f"Converting {len(source)} standardized rows to {target_format} "
+                f"for {study}/{dataset} · {cell_line} · {pe_system}"
+            )
+
+        converted = self.convert_from_standardized(
+            source,
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            target_format=target_format,
+            progress_callback=progress_callback,
+        )
+        save_formatted_cache(
+            converted,
+            target_format,
+            study,
+            dataset,
+            cell_line,
+            pe_system,
+            datasets_dir=self.datasets_dir,
+        )
         return converted

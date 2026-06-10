@@ -453,9 +453,15 @@ export default function BenchmarkPage() {
                   <span className="font-medium">Device:</span> {jobStatus.device_assigned}
                 </p>
               )}
-              {jobStatus?.result?.n_samples != null && (
+              {jobStatus?.result?.n_samples != null && !jobStatus?.result?.skipped && (
                 <p>
                   <span className="font-medium">Test samples:</span> {jobStatus.result.n_samples}
+                </p>
+              )}
+              {jobStatus?.status === 'skipped' && (
+                <p className="text-amber-700">
+                  <span className="font-medium">Skipped:</span>{' '}
+                  {jobStatus.result?.skip_reason ?? jobStatus.error ?? 'No evaluable test data.'}
                 </p>
               )}
               {metrics && (
@@ -470,7 +476,7 @@ export default function BenchmarkPage() {
                   ))}
                 </div>
               )}
-              {jobStatus?.error && (
+              {jobStatus?.error && jobStatus.status !== 'skipped' && (
                 <p className="text-red-600">
                   <span className="font-medium">Error:</span> {jobStatus.error}
                 </p>

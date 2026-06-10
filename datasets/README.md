@@ -14,6 +14,7 @@ datasets/
 │   └── deeppe/
 ├── exported/         # Generated CSV per datasheet (gitignored)
 ├── standardized/     # Generated parquet in shared schema (gitignored)
+├── formatted/        # Generated model-format parquet cache (gitignored)
 ├── catalog/          # SQLite catalog DB pe_database.db (gitignored)
 └── dataprep/         # Legacy one-off prep scripts
 ```
@@ -37,6 +38,8 @@ Key columns (hyphenated in parquet):
 | `original-fold` | Author train/test assignment when available |
 
 Model-specific columns are produced on demand by `GET /api/filter?format=…`.
+Converted outputs for each model format are cached under ``formatted/{format}/…``
+and cleared when data is rebuilt via ``force_reexport`` or ``force_standardize``.
 
 ## Studies
 

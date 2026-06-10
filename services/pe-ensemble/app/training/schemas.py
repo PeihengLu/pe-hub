@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
 FilterScalar = Union[str, int]
 FilterValue = Union[FilterScalar, List[FilterScalar]]
-JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled"]
+JobStatus = Literal["queued", "running", "succeeded", "failed", "cancelled", "skipped"]
 
 
 def default_training_split() -> "SplitQueryParams":

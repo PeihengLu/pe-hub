@@ -123,7 +123,11 @@ class TestPRIDICT2Evaluation:
         df = pd.read_csv(_require_testdata("pridict2_small.csv"))
         ModelFactory = _model_factory()
         model = ModelFactory.create_model("pridict2", device=device)
-        weight_name = model.list_available_weights()[0]
+        weight_name = next(
+            name
+            for name in model.list_available_weights()
+            if name.endswith("__HEK")
+        )
 
         metrics = model.evaluate(df, weights=weight_name)
         _assert_common_metrics(

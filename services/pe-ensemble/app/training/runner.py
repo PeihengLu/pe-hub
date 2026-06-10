@@ -112,7 +112,11 @@ def execute_training(
 
         try:
             _raise_if_cancelled()
-            train_df = fetch_training_dataframe(request, MODEL_FORMAT[model_name])
+            train_df = fetch_training_dataframe(
+                request,
+                MODEL_FORMAT[model_name],
+                progress_log=_log,
+            )
             if train_df.empty:
                 raise TrainingError("No training data resolved.")
 

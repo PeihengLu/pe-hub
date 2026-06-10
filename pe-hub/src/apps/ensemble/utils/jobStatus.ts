@@ -1,5 +1,5 @@
 export const ACTIVE_JOB_STATUSES = new Set(['queued', 'running'])
-export const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
+export const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'skipped'])
 
 export function jobStatusRefetchInterval(
   data: { data?: { status?: string } } | undefined

@@ -72,12 +72,26 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
         self.model_components = None
         self.loaded_model_dir: Optional[str] = None
+        self.selected_cell_type: Optional[str] = None
 
     def _default_outcomes(self) -> List[str]:
         # Original PRIDICT1 base models were mostly used for intended edits.
         if self.model_name_str in {None, "base_90k", "base_390k"}:
             return ["averageedited"]
         return ["averageedited", "averageunedited", "averageindel"]
+
+    @staticmethod
+    def _normalize_cell_type(name: str) -> str:
+        return "".join(str(name).split("_"))
+
+    @staticmethod
+    def _cell_types_from_run_dir(model_path: str) -> List[str]:
+        """Return prediction heads available on disk for a run directory."""
+        state_dict_dir = Path(model_path) / "model_statedict"
+        return sorted(
+            PRIDICT2ModelWrapper._normalize_cell_type(path.stem.replace("decoder_", ""))
+            for path in state_dict_dir.glob("decoder_*.pkl")
+        )
 
     def _cell_types_from_loaded_config(self) -> List[str]:
         """Return prediction-head cell types from the loaded weight run config."""
@@ -88,7 +102,105 @@ class PRIDICT2ModelWrapper(BasePEModel):
         mconfig_dir = os.path.join(self.loaded_model_dir, "config")
         _, options = self.prieml_model._load_model_config(mconfig_dir)
         datasets = options.get("datasets_name") or []
-        return ["".join(str(name).split("_")) for name in datasets]
+        return [self._normalize_cell_type(name) for name in datasets]
+
+    @staticmethod
+    def _registered_base_weight_ids() -> List[str]:
+        return weights_registry.list_weight_ids("pridict2")
+
+    @staticmethod
+    def _split_weight_name(name: str) -> tuple[str, Optional[str]]:
+        """Split ``{base_run_id}`` or ``{base_run_id}__{cell_type}``."""
+        candidate = name.strip()
+        if not candidate:
+            raise ValueError("PRIDICT2 weight name is empty.")
+
+        base_ids = PRIDICT2ModelWrapper._registered_base_weight_ids()
+        for base_id in sorted(base_ids, key=len, reverse=True):
+            if candidate == base_id:
+                return base_id, None
+            prefix = f"{base_id}__"
+            if candidate.startswith(prefix):
+                cell_type = candidate[len(prefix):]
+                if cell_type:
+                    return base_id, cell_type
+                break
+
+        if Path(candidate).expanduser().is_dir():
+            return candidate, None
+
+        raise ValueError(
+            f"Unknown PRIDICT2 weights '{name}'. "
+            f"Available: {PRIDICT2ModelWrapper.list_available_weights()}"
+        )
+
+    @staticmethod
+    def resolve_weight_selection(name: str) -> tuple[Path, Optional[str]]:
+        """Resolve a weight selection to a run directory and optional cell-type head."""
+        candidate = name.strip()
+        cell_type: Optional[str] = None
+        base_ref = candidate
+
+        if "__" in candidate:
+            maybe_base, maybe_cell = PRIDICT2ModelWrapper._split_weight_name(candidate)
+            base_ref = maybe_base
+            cell_type = maybe_cell
+
+        base_path = Path(base_ref).expanduser()
+        if base_path.is_dir() and (base_path / "model_statedict").is_dir():
+            run_dir = base_path.resolve()
+        else:
+            registry_id = base_ref.replace("/", "__")
+            try:
+                run_dir = weights_registry.resolve_dir("pridict2", registry_id)
+            except ValueError:
+                trained_root = resolve_vendor_models_path("pridict2", "trained_models")
+                parts = base_ref.replace("\\", "/").split("/")
+                if len(parts) == 3:
+                    legacy = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
+                elif "__" in registry_id:
+                    legacy_parts = registry_id.split("__")
+                    if len(legacy_parts) == 3:
+                        legacy = (
+                            trained_root
+                            / legacy_parts[0]
+                            / legacy_parts[1]
+                            / "train_val"
+                            / legacy_parts[2]
+                        )
+                    else:
+                        legacy = trained_root / registry_id
+                else:
+                    legacy = trained_root / registry_id
+                if (legacy / "model_statedict").is_dir():
+                    run_dir = legacy.resolve()
+                else:
+                    raise ValueError(
+                        f"Unknown PRIDICT2 weights '{name}'. "
+                        f"Available: {PRIDICT2ModelWrapper.list_available_weights()}"
+                    ) from None
+
+        PRIDICT2ModelWrapper._validate_run_dir(str(run_dir))
+        available = PRIDICT2ModelWrapper._cell_types_from_run_dir(str(run_dir))
+        if not available:
+            raise ValueError(f"PRIDICT2 run has no decoder heads: {run_dir}")
+
+        if cell_type is None:
+            if len(available) == 1:
+                return run_dir, available[0]
+            raise ValueError(
+                "PRIDICT2 weight selection must include a cell-type head suffix "
+                f"for multi-head runs. Choose one of: "
+                f"{[f'{base_ref}__{head}' for head in available]}"
+            )
+
+        normalized = PRIDICT2ModelWrapper._normalize_cell_type(cell_type)
+        if normalized not in available:
+            raise ValueError(
+                f"PRIDICT2 head '{cell_type}' is not available for '{base_ref}'. "
+                f"Available heads: {available}"
+            )
+        return run_dir, normalized
 
     def _to_pridict_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Validate that ``df`` is already in PRIDICT's native schema.
@@ -98,7 +210,12 @@ class PRIDICT2ModelWrapper(BasePEModel):
         passing standardized rows here.
         """
         if self.PRIDICT_REQUIRED_COLUMNS.issubset(df.columns):
-            return df.copy()
+            out = df.copy()
+            if "Correction_Length" in out.columns:
+                out["Correction_Length"] = pd.to_numeric(
+                    out["Correction_Length"], errors="raise"
+                ).astype(int)
+            return out
         missing = sorted(self.PRIDICT_REQUIRED_COLUMNS.difference(df.columns))
         raise ValueError(
             "PRIDICT2 expects native input columns; missing: "
@@ -109,6 +226,12 @@ class PRIDICT2ModelWrapper(BasePEModel):
     def _predict_from_loaded_or_current_model(
         self, dloader: Any, y_ref: List[str]
     ) -> pd.DataFrame:
+        if self.selected_cell_type and self.loaded_model_dir:
+            return self.prieml_model.predict_from_dloader(
+                dloader=dloader,
+                model_dir=self.loaded_model_dir,
+                y_ref=y_ref,
+            )
         if self.model_components is not None:
             # PRIDICT2 wrapper exposes a "loaded-models" prediction entrypoint.
             return self.prieml_model.predict_from_dloader_using_loaded_models(
@@ -125,42 +248,126 @@ class PRIDICT2ModelWrapper(BasePEModel):
         raise ValueError("Model not loaded. Call load_model() first.")
     
     @staticmethod
+    def _dataset_component_names(
+        datasets_name: List[str],
+        *,
+        separate_attention_layers: bool,
+        separate_seqlevel_embedder: bool,
+    ) -> List[str]:
+        """Return dataset-specific statedict filenames expected for a run config."""
+        names: List[str] = []
+        for raw_name in datasets_name:
+            dname = "".join(str(raw_name).split("_"))
+            names.append(f"decoder_{dname}.pkl")
+            if separate_seqlevel_embedder:
+                names.append(f"seqlevel_featembeder_{dname}.pkl")
+            if separate_attention_layers:
+                for seq_type in ("init", "mut"):
+                    for attn_type in ("local", "global"):
+                        names.append(f"{attn_type}_featemb_{seq_type}_attn_{dname}.pkl")
+        return names
+
+    @staticmethod
+    def _validate_run_dir(model_path: str) -> None:
+        """Ensure run config datasets match on-disk statedict component names."""
+        import os
+        import pickle
+
+        config_dir = os.path.join(model_path, "config")
+        state_dict_dir = os.path.join(model_path, "model_statedict")
+        if not os.path.isdir(config_dir) or not os.path.isdir(state_dict_dir):
+            raise ValueError(f"Invalid PRIDICT2 run directory: {model_path}")
+
+        exp_options_path = os.path.join(config_dir, "exp_options.pkl")
+        if not os.path.isfile(exp_options_path):
+            raise ValueError(f"PRIDICT2 run config missing exp_options.pkl: {model_path}")
+
+        with open(exp_options_path, "rb") as handle:
+            options = pickle.load(handle)
+
+        datasets = options.get("datasets_name") or []
+        required = PRIDICT2ModelWrapper._dataset_component_names(
+            datasets,
+            separate_attention_layers=bool(options.get("separate_attention_layers")),
+            separate_seqlevel_embedder=bool(options.get("separate_seqlevel_embedder")),
+        )
+        missing = [
+            name
+            for name in required
+            if not os.path.isfile(os.path.join(state_dict_dir, name))
+        ]
+        if not missing:
+            return
+
+        on_disk = sorted(
+            path.name
+            for path in Path(state_dict_dir).glob("*.pkl")
+            if path.name != "best_epoch.pkl"
+            and any(
+                token in path.name
+                for token in ("decoder_", "seqlevel_featembeder_", "_featemb_")
+            )
+        )
+        raise ValueError(
+            "PRIDICT2 weight bundle is incomplete: "
+            f"config expects datasets {datasets} but statedict is missing "
+            f"{missing}. On-disk dataset-specific files: {on_disk}. "
+            "This usually means the wrong model_statedict was packaged with the "
+            "run config. Re-migrate from vendor or choose a compatible weight set."
+        )
+
+    @staticmethod
     def list_available_weights() -> List[str]:
-        """List registered PRIDICT2 weight set IDs."""
-        return weights_registry.list_weight_ids("pridict2")
+        """List registered PRIDICT2 weight IDs, with cell-type head suffix when needed."""
+        return [entry["id"] for entry in PRIDICT2ModelWrapper.list_available_weight_entries()]
+
+    @staticmethod
+    def list_available_weight_entries() -> List[Dict[str, Any]]:
+        """List loadable PRIDICT2 weight entries for API/UI selection."""
+        registry_by_id = {
+            entry["id"]: entry for entry in weights_registry.list_entries("pridict2")
+        }
+        entries: List[Dict[str, Any]] = []
+        for base_id in PRIDICT2ModelWrapper._registered_base_weight_ids():
+            run_dir = weights_registry.resolve_dir("pridict2", base_id)
+            try:
+                PRIDICT2ModelWrapper._validate_run_dir(str(run_dir))
+            except ValueError:
+                continue
+
+            manifest = dict(registry_by_id.get(base_id, {}))
+            base_label = manifest.get("label", base_id.replace("__", " / "))
+            cell_types = PRIDICT2ModelWrapper._cell_types_from_run_dir(str(run_dir))
+            if len(cell_types) == 1:
+                entries.append(
+                    {
+                        **manifest,
+                        "id": base_id,
+                        "model": "pridict2",
+                        "label": base_label,
+                        "cell_type": cell_types[0],
+                    }
+                )
+                continue
+
+            for cell_type in cell_types:
+                weight_id = f"{base_id}__{cell_type}"
+                entries.append(
+                    {
+                        **manifest,
+                        "id": weight_id,
+                        "model": "pridict2",
+                        "label": f"{base_label} / {cell_type}",
+                        "cell_type": cell_type,
+                    }
+                )
+        return entries
 
     def _resolve_weights_dir(self, name: str) -> Path:
         """Resolve a weight set ID (or directory path) to a run directory."""
-        candidate = Path(name).expanduser()
-        if candidate.is_dir() and (candidate / "model_statedict").is_dir():
-            return candidate
-
-        registry_id = name.replace("/", "__")
-        try:
-            return weights_registry.resolve_dir("pridict2", registry_id)
-        except ValueError:
-            pass
-
-        if "__" in name:
-            parts = name.split("__")
-            if len(parts) == 3:
-                trained_root = resolve_vendor_models_path("pridict2", "trained_models")
-                legacy = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
-                if (legacy / "model_statedict").is_dir():
-                    return legacy
-
-        trained_root = resolve_vendor_models_path("pridict2", "trained_models")
-        parts = name.split("/")
-        if len(parts) == 3:
-            resolved = trained_root / parts[0] / parts[1] / "train_val" / parts[2]
-        else:
-            resolved = trained_root / name
-        if (resolved / "model_statedict").is_dir():
-            return resolved
-        raise ValueError(
-            f"Unknown PRIDICT2 weights '{name}'. "
-            f"Available: {self.list_available_weights()}"
-        )
+        run_dir, cell_type = self.resolve_weight_selection(name)
+        self.selected_cell_type = cell_type
+        return run_dir
 
     def load_weights_by_name(self, name: str) -> None:
         """Load a named pre-trained PRIDICT2 weight set.
@@ -178,6 +385,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Args:
             model_path: Path to the trained model directory
         """
+        self._validate_run_dir(model_path)
         self.loaded_model_dir = model_path
         self.model_components = self.prieml_model.build_retrieve_models(model_path)
         self.model = self.model_components
@@ -201,7 +409,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
         y_ref = kwargs.get('y_ref', self._default_outcomes())
         batch_size = kwargs.get('batch_size', 500)
         cell_types = kwargs.get('cell_types')
-        if cell_types is None and self.is_trained and self.loaded_model_dir:
+        if cell_types is None and self.selected_cell_type:
+            cell_types = [self.selected_cell_type]
+        elif cell_types is None and self.is_trained and self.loaded_model_dir:
             cell_types = self._cell_types_from_loaded_config()
         model_name = self.model_name_str or kwargs.get('model_name', 'base_390k')
 
@@ -453,6 +663,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
         
         # Make predictions
         pred_df = self._predict_from_loaded_or_current_model(dloader=dloader, y_ref=outcomes)
+        if self.selected_cell_type and "dataset_name" in pred_df.columns:
+            pred_df = pred_df[
+                pred_df["dataset_name"] == self.selected_cell_type
+            ].reset_index(drop=True)
         
         results = {}
         n_samples = 0
@@ -522,4 +736,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
         })
         if self.is_trained and self.loaded_model_dir:
             info['cell_types_from_config'] = self._cell_types_from_loaded_config()
+        if self.selected_cell_type:
+            info['selected_cell_type'] = self.selected_cell_type
         return info

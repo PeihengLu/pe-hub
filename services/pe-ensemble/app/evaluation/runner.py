@@ -8,9 +8,9 @@ from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 
 from ..models.model_factory import ModelFactory
 from ..training.config import MODEL_FORMAT, SUPPORTED_MODELS
-from ..training.data import fetch_model_format_dataframe
+from ..training.data import ModelFormatFetchResult, fetch_model_format_result
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
-from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
+from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
 from .schemas import EvaluationRequest
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,25 @@ logger = logging.getLogger(__name__)
 
 class EvaluationError(Exception):
     """Raised when evaluation input or execution fails."""
+
+
+def _format_skipped_datasheet(entry: Dict[str, Any]) -> str:
+    return (
+        f"{entry.get('study')}/{entry.get('dataset')} "
+        f"({entry.get('cell_line')}-{entry.get('pe_system')}): "
+        f"{entry.get('reason', 'skipped')}"
+    )
+
+
+def _evaluation_skip_reason(fetch: ModelFormatFetchResult) -> Optional[str]:
+    """Return a user-facing skip reason when no test rows can be evaluated."""
+    if fetch.skipped:
+        return "; ".join(_format_skipped_datasheet(entry) for entry in fetch.skipped)
+    if fetch.partition_error:
+        return fetch.partition_error
+    if fetch.total_records > 0:
+        return "Converted records exist but the test partition is empty."
+    return None
 
 
 def execute_evaluation(
@@ -54,7 +73,7 @@ def execute_evaluation(
 
         try:
             _raise_if_cancelled()
-            test_df = fetch_model_format_dataframe(
+            fetch = fetch_model_format_result(
                 model_format=model_format,
                 split=request.split,
                 records=request.records,
@@ -71,8 +90,28 @@ def execute_evaluation(
                 target_context=request.target_context,
                 scaffold_name=request.scaffold_name,
                 evaluation=True,
+                progress_log=_log,
             )
+            test_df = fetch.df
             if test_df.empty:
+                skip_reason = _evaluation_skip_reason(fetch)
+                if skip_reason:
+                    message = f"Skipped evaluation: {skip_reason}"
+                    _log(message)
+                    payload = {
+                        "model": model_name,
+                        "benchmark_name": request.benchmark_name,
+                        "weights": request.weights,
+                        "device": resolved_device_id,
+                        "skipped": True,
+                        "skip_reason": skip_reason,
+                        "skipped_datasheets": fetch.skipped,
+                        "n_samples": 0,
+                        "metrics": None,
+                    }
+                    if job_id:
+                        mark_skipped(job_id, payload, reason=skip_reason)
+                    return payload
                 raise EvaluationError("No test data resolved for evaluation.")
 
             _log(f"Resolved {len(test_df)} test rows")

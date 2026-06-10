@@ -104,6 +104,10 @@ def export_original_data(study: Optional[str] = None, force_reexport: bool = Fal
     }
 
     target_studies = sorted(exporters) if study is None else [study]
+    if force_reexport:
+        from ..formatted_cache import clear_formatted_cache
+
+        clear_formatted_cache(study=study)
     for study_name in target_studies:
         if study_name not in exporters:
             raise ValueError(f"Study={study_name} not supported")
@@ -138,6 +142,10 @@ def standardize_exported_data(
         return 0
 
     studies = sorted(SUPPORTED_STUDIES) if study is None else [study.strip().lower()]
+    if force:
+        from ..formatted_cache import clear_formatted_cache
+
+        clear_formatted_cache(study=study)
     count = 0
     for study_key in studies:
         study_dir = exported_root / study_key

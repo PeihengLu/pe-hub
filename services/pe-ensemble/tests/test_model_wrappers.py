@@ -150,8 +150,23 @@ class TestWeightSelection:
 
         names = PRIDICT2ModelWrapper.list_available_weights()
         assert isinstance(names, list) and len(names) > 0
-        # Names use the compact '<model_id>/<experiment>/run_<n>' form.
-        assert all("/train_val/" not in n and n.count("/") == 2 for n in names)
+        assert all("__HEK" in n or "__K562" in n or n.endswith("__HEK") or n.endswith("__K562") for n in names)
+
+    @pytest.mark.skipif(
+        not VENDOR_MODELS.joinpath("pridict2", "trained_models").is_dir(),
+        reason="PRIDICT2 weights not available",
+    )
+    def test_pridict2_evaluate_requires_cell_type_suffix(self):
+        from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+
+        model = ModelFactory.create_model("pridict2", device=torch.device("cpu"))
+        base_id = next(
+            weight_id
+            for weight_id in PRIDICT2ModelWrapper.list_available_weights()
+            if weight_id.endswith("__HEK")
+        ).rsplit("__", 1)[0]
+        with pytest.raises(ValueError, match="cell-type head suffix"):
+            model.evaluate(pd.DataFrame(), weights=base_id)
 
     @pytest.mark.skipif(
         not VENDOR_MODELS.joinpath("pridict2", "trained_models").is_dir(),
@@ -160,7 +175,7 @@ class TestWeightSelection:
     def test_pridict2_evaluate_unknown_weights_raises(self):
         model = ModelFactory.create_model("pridict2", device=torch.device("cpu"))
         with pytest.raises(ValueError):
-            model.evaluate(pd.DataFrame(), weights="nope/nope/run_0")
+            model.evaluate(pd.DataFrame(), weights="nope/nope/run_0__HEK")
 
 
 class TestBasePEModel:

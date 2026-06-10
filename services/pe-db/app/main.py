@@ -107,6 +107,8 @@ def _filter_data_sync(
     format_: Optional[str],
     split_config: Any,
     merge: bool,
+    summary_only: bool,
+    progress_callback: Any = None,
 ) -> dict[str, Any]:
     with get_session() as session:
         return CatalogRepository(session).filter_all(
@@ -125,6 +127,8 @@ def _filter_data_sync(
             target_format=format_,
             split_config=split_config,
             merge_groups=merge,
+            summary_only=summary_only,
+            progress_callback=progress_callback,
         )
 
 
@@ -248,6 +252,22 @@ async def filter_data(
             "Reassigns group_id by shared protospacer after merge."
         ),
     ),
+    summary_only: bool = Query(
+        False,
+        description=(
+            "When true, return standardized-data counts and split summaries only. "
+            "Skips model-format conversion and omits per-row records for faster preview."
+        ),
+    ),
+    progress_token: Optional[str] = Query(
+        None,
+        min_length=8,
+        max_length=64,
+        description=(
+            "Optional progress token. When set, coarse conversion progress lines are "
+            "appended to a shared progress log file for the caller to tail."
+        ),
+    ),
 ):
     """Filter datasheets by catalog/edit metadata; optionally emit model-format data.
 
@@ -255,7 +275,12 @@ async def filter_data(
     With ``format``, only datasets flagged ``standardizable`` are converted from
     standardized data into the requested format and returned as grouped records.
     ``split_strategy`` must be supplied explicitly when exporting formatted data.
+    With ``summary_only=true``, ``format`` defaults to ``std`` and only record
+    counts are returned (no model conversion).
     """
+    if summary_only and format_ is None:
+        format_ = "std"
+
     if format_ is not None and split_strategy is None:
         raise HTTPException(
             status_code=422,
@@ -263,6 +288,13 @@ async def filter_data(
         )
 
     split_config = None
+    progress_callback = None
+    if progress_token:
+        from pe_common.conversion_progress import append_progress, clear_progress
+
+        clear_progress(progress_token)
+        progress_callback = lambda message, token=progress_token: append_progress(token, message)
+
     if format_ is not None:
         from pe_common.splits import split_config_from_params
 
@@ -298,6 +330,8 @@ async def filter_data(
             format_=format_,
             split_config=split_config,
             merge=merge,
+            summary_only=summary_only,
+            progress_callback=progress_callback,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

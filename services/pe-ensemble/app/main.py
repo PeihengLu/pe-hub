@@ -262,6 +262,12 @@ async def list_model_weights(model_name: str):
     """List registered weight sets available for a model."""
     if model_name not in SUPPORTED_MODELS:
         raise HTTPException(status_code=400, detail="Invalid model name")
+    if model_name == "pridict2":
+        from .models.pridict2_wrapper import PRIDICT2ModelWrapper
+
+        entries = PRIDICT2ModelWrapper.list_available_weight_entries()
+        return {"model": model_name, "weights": entries, "count": len(entries)}
+
     entries = weights_registry.list_entries(model_name)
     return {"model": model_name, "weights": entries, "count": len(entries)}
 
@@ -414,7 +420,12 @@ async def evaluate_model(request: EvaluationRequest):
     if not weight_id:
         raise HTTPException(status_code=400, detail="weights is required")
     try:
-        weights_registry.resolve_dir(model_name, weight_id)
+        if model_name == "pridict2":
+            from .models.pridict2_wrapper import PRIDICT2ModelWrapper
+
+            PRIDICT2ModelWrapper.resolve_weight_selection(weight_id)
+        else:
+            weights_registry.resolve_dir(model_name, weight_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
