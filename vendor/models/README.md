@@ -55,11 +55,15 @@ python -m app.models.convert_oped_weights \
 
 
 ### OPED
+
 - For inferencing, OPED only requires three columns in a dataframe:
-  - 'Target(47bp)'
-  - 'PBS'
-  - 'RT'
-- Path to the trained weights:
-  - `/home/peiheng/development/pe-db/models/OPED/pegRNA_PredictingCodes`
-- The pickled model was training using pytorch 1.18.1, compatibility issue will occur with pytorch 2.0.0 and above.
+  - `Target(47bp)`
+  - `PBS`
+  - `RT`
+- Runtime weights live in `services/pe-ensemble/weights/oped/` (state_dict
+  `pegRNA_Model_Merged_saved.order3_decoder_weights`). Source training code
+  remains under `oped/pegRNA_PredictingCodes/`.
+- Do **not** load the legacy full-pickle checkpoints (`*.order3_decoder.pt`);
+  the PE Ensemble wrapper rejects them. Use `python -m app.models.convert_oped_weights`
+  to regenerate the state_dict if needed.
 

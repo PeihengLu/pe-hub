@@ -58,12 +58,28 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/studies` | List studies |
-| GET | `/api/datasets` | List datasets |
+| GET | `/api/datasets` | List datasets (optional `?study=` filter) |
 | GET | `/api/datasheets` | List datasheet catalog entries |
 | GET | `/api/scaffolds` | List pegRNA scaffolds |
-| GET | `/api/data` | Load edit records (Pandas) |
+| GET | `/api/data` | Load standardized edit records for one datasheet |
+| GET | `/api/filter` | Filter catalog and/or export model-format data with train/val/test splits |
+| GET | `/api/statistics` | Aggregate statistics (edit type, length, delivery method, …) |
 | POST | `/api/export` | Export (+ optional standardize) |
 | POST | `/api/convert` | Standardize one sheet |
+| GET | `/health` | Health check |
+
+### Filter and export
+
+`GET /api/filter` serves two modes:
+
+- **Without `format`** — returns matching datasheet metadata (catalog browse).
+- **With `format`** (`std`, `deepprime`, `pridict`, `pridict2`, `oped`) — converts
+  standardizable datasets from parquet into the requested model schema. Requires
+  `split_strategy` (`none`, `holdout_2`, `holdout_3`, `cv`). Supports multi-value
+  filters (`cell_line=HEK293T&cell_line=A549`), efficiency bounds, scaffold name,
+  and `merge=true` to combine datasheets before split assignment.
+
+PE Ensemble and PE Hub call this endpoint (Ensemble proxies it at `GET /data/filter`).
 
 ## Run locally
 

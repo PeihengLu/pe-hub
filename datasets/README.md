@@ -1,28 +1,77 @@
-[//]: # (data/Readme)
-# Data 
+# Datasets
 
-## OPED
+Prime editing experimental data for the PE Database service.
 
-### Training
+## Directory layout
 
-- With a lack of training script, the training format was defined by myself
+```
+datasets/
+├── raw/              # Original study files (checked in or restored locally)
+│   ├── deepprime/
+│   ├── pridict1/
+│   ├── pridict2/
+│   ├── minsepie/
+│   └── deeppe/
+├── exported/         # Generated CSV per datasheet (gitignored)
+├── standardized/     # Generated parquet in shared schema (gitignored)
+├── catalog/          # SQLite catalog DB pe_database.db (gitignored)
+└── dataprep/         # Legacy one-off prep scripts
+```
 
-### Inferencing
+The PE Database service generates `exported/`, `standardized/`, and `catalog/` on
+startup via `initialize_database()` (see `services/pe-db/README.md`).
 
-- For inferencing, OPED only requires three columns in a dataframe:
-- `Target(47bp)`: Starting from 4bp upstream of the spacer
-- `PBS`
-- `RT`
-- All sequences were read from $5'$ to $3'$ end of the PE, with the 47bp sequence being the wildtype sequence.
-- The PBS and RT sequences are the reverse complement to the target sequence.
+## Standardized format
 
-## Standardized Format
+The shared schema stores essential sequence and outcome fields for each edit.
+Key columns (hyphenated in parquet):
 
-- It is the uniformed format storing only the essential sequence information of the PE system and the target loci.
+| Column | Description |
+|--------|-------------|
+| `wt-sequence` | Target locus before editing |
+| `mut-sequence` | Target locus after editing |
+| `edit-efficiency` | Editing efficiency (fraction or percent per source) |
+| `group-id` | Stable group key for train/test splits (same locus) |
+| `edit-type` | `sub`, `ins`, or `del` |
+| `edit-length` | Edit size |
+| `original-fold` | Author train/test assignment when available |
 
-### Columns
+Model-specific columns are produced on demand by `GET /api/filter?format=…`.
 
-- `wt-sequence`: The target loci before edits, can be various length, depends on the source data
-- `mut-sequence`: The target loci after edits are installed
-- 
-- 
+## Studies
+
+Registered in `services/pe-db/app/catalog/studies.py`:
+
+| Study | Raw path | Notes |
+|-------|----------|-------|
+| `deepprime` | `raw/deepprime/` | DeepPrime benchmark sets |
+| `pridict1` | `raw/pridict1/` | PRIDICT library and endogenous data |
+| `pridict2` | `raw/pridict2/` | PRIDICT2 libraries and TRIP analysis |
+| `minsepie` | `raw/minsepie/` | MinsePIE insert libraries |
+| `deeppe` | `raw/deeppe/` | DeepPE benchmark sets |
+
+Some datasets are **partially standardizable** (metadata-only conversion). See
+`PARTIAL_STANDARDIZABLE_DATASETS` in `services/pe-db/app/utils/standardize_data.py`.
+
+## Model-specific notes
+
+### OPED
+
+Inference expects three columns (produced by `format=oped` export):
+
+- `Target(47bp)` — 47 bp wild-type window starting 4 bp upstream of the spacer
+- `PBS` — reverse complement of the primer binding site
+- `RT` — reverse complement of the reverse transcriptase template
+
+All sequences are 5′→3′ on the edited strand.
+
+### DeepPrime / PRIDICT
+
+Use `format=deepprime`, `format=pridict`, or `format=pridict2` on `/api/filter`.
+Column names match each vendor model's training scripts.
+
+## Legacy prep
+
+`datasets/dataprep/` contains older standalone scripts (`restore_pridict.py`,
+`standarzied_data.py`). The supported path is PE Database startup export +
+standardize. `bash setup.sh` still runs these for backward compatibility.

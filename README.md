@@ -1,185 +1,211 @@
 # PE-DB: Prime Editing Database and Model Ensemble
 
-A comprehensive platform for prime editing efficiency data management and model evaluation.
+A platform for prime editing efficiency data management, model evaluation, and training.
 
-## Project Overview
+## Components
 
-This project consists of two main services:
+| Component | Port | Role |
+|-----------|------|------|
+| **PE Database** (`services/pe-db`) | 8000 | Catalog metadata (SQLite) + standardized edit records (parquet/CSV) |
+| **PE Ensemble** (`services/pe-ensemble`) | 8001 | Model wrappers, training jobs, evaluation, weight registry |
+| **PE Hub** (`pe-hub`) | 5173 | Unified React UI for catalog browsing, export, training, and evaluation |
 
-### 1. PE Database Service
-A standalone FastAPI application that serves and converts prime editing efficiency data into standardized or model-specific formats.
+Shared Python utilities live in `packages/pe-common`.
 
-**Features:**
-- Load data from multiple datasets (DeepPrime, PRIDICT, PRIDICT2, etc.)
-- Convert between different data formats
-- Standardize data from various sources
-- REST API for easy data access
-
-### 2. PE Ensemble Service
-A web service for evaluating, training, and creating ensembles of prime editing efficiency prediction models.
-
-**Features:**
-- Model evaluation, training, and ensemble creation endpoints
-- Supports vendor model repositories under `vendor/models/`
-- Conventional ML baselines (for example, XGBoost) alongside deep models
-- Automatic data fetching from PE Database
-
-## Project Structure
-
-```
-pe-db/
-├── packages/
-│   └── pe-common/              # Shared utilities package
-│       ├── pe_common/
-│       │   ├── constants.py    # Project-wide constants
-│       │   ├── sequence_utils.py  # Sequence manipulation
-│       │   └── features.py     # Feature calculations
-│       └── setup.py
-├── pe-hub/                     # Unified web UI (Database + Ensemble)
-├── services/
-│   ├── pe-db/                  # PE Database service
-│   │   ├── app/
-│   │   │   ├── main.py         # FastAPI application
-│   │   │   └── data_prep/      # Data conversion modules
-│   │   └── requirements.txt
-│   └── pe-ensemble/            # PE Ensemble API service
-├── datasets/                    # Data directory
-│   ├── raw/                    # Original datasets
-│   └── standardized/           # Converted standardized data
-├── vendor/models/              # Third-party model code (subdirectories)
-└── setup-dev.sh               # Development setup script
-```
-
-## Quick Start
-
-### Option 1: Local Development
-
-1. **Setup environment:**
-```bash
-./setup-dev.sh
-```
-
-2. **Activate virtual environment:**
-```bash
-source venv/bin/activate
-```
-
-3. **Run PE Database service:**
-```bash
-cd services/pe-db
-uvicorn app.main:app --reload
-```
-
-Access the API at: http://localhost:8000
-API documentation: http://localhost:8000/docs
-
-### PE Hub (web UI)
+## Quick start
 
 From the repository root:
 
 ```bash
-./start-all.sh --install   # first time
+./start-all.sh --install   # first time: install Python + npm deps
 ./start-all.sh
 ```
 
-Open http://localhost:5173 for the unified UI, or run only the frontend with:
+- PE Hub: http://localhost:5173
+- PE Database API docs: http://localhost:8000/docs
+- PE Ensemble API docs: http://localhost:8001/docs
+
+### Manual setup
 
 ```bash
+make setup && source venv/bin/activate
+make install          # editable installs for root, pe-common, pe-ensemble
+bash setup.sh         # optional legacy dataset prep scripts
+```
+
+Run backends individually:
+
+```bash
+# PE Database
+cd services/pe-db
+pip install -r requirements.txt
+pip install -e ../../packages/pe-common --no-deps
+uvicorn app.main:app --reload --port 8000
+
+# PE Ensemble
+cd services/pe-ensemble
+pip install -e .
+PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
+
+# PE Hub
 cd pe-hub && npm install && npm run dev
 ```
 
-## PE Database API Usage
+Vendor model source code is under `vendor/models/` (git submodules). Pretrained
+weights are versioned in `services/pe-ensemble/weights/` — see
+`services/pe-ensemble/weights/README.md`.
 
-### Get Data
+## Project structure
+
+```
+pe-db/
+├── packages/pe-common/       # Shared constants, splits, devices, training helpers
+├── pe-hub/                   # Unified web UI
+├── services/
+│   ├── pe-db/                # FastAPI catalog + data service
+│   │   └── app/
+│   │       ├── catalog/      # Study/dataset/scaffold registries (seeded)
+│   │       ├── converter.py  # Export + standardize pipeline
+│   │       ├── db/           # SQLAlchemy catalog repository
+│   │       └── utils/        # Standardization and format conversion
+│   └── pe-ensemble/          # FastAPI model service
+│       ├── app/
+│       │   ├── models/       # DeepPrime, OPED, PRIDICT2 wrappers
+│       │   └── training/     # Job queue, device scheduler, runner
+│       ├── jobs/             # Filesystem-backed training job state
+│       └── weights/          # Registered pretrained + trained checkpoints
+├── datasets/
+│   ├── raw/                  # Original study files (Excel, CSV, …)
+│   ├── exported/             # Normalized CSV per datasheet (generated)
+│   ├── standardized/         # Parquet in shared schema (generated)
+│   └── catalog/              # SQLite catalog DB (generated)
+├── vendor/models/            # Third-party model code (submodules)
+├── start-all.sh              # Start all three services
+└── Makefile                  # install, test, lint, format
+```
+
+## Data pipeline
+
+On PE Database startup, `initialize_database()` runs three steps:
+
+1. **Seed** — create SQL tables; insert studies, datasets, and scaffolds from Python registries (`app/catalog/`)
+2. **Export** — write `datasets/exported/` from raw files; register **Datasheet** rows in the catalog
+3. **Standardize** — write `datasets/standardized/` parquet from exported CSVs
+
+Edit-level measurements are **not** stored in SQL. They are loaded with Pandas from parquet/CSV behind the API. Catalog tables (`study`, `dataset`, `scaffold`, `datasheet`) are described in `services/pe-db/README.md` and `diagrams/illustration/database_er.mmd`.
+
+Supported studies include DeepPrime, PRIDICT1, PRIDICT2, MinsePIE, and DeepPE (see `app/catalog/studies.py`).
+
+### Output formats
+
+| Format | Use |
+|--------|-----|
+| `std` | Shared standardized schema (default for `/api/data`) |
+| `deepprime` | DeepPrime native columns |
+| `pridict` / `pridict2` | PRIDICT native columns |
+| `oped` | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
+
+Model-format conversion is owned by **PE Database** (`GET /api/filter?format=…`). PE Ensemble proxies the same contract at `GET /data/filter` and uses it for training and evaluation.
+
+## PE Database API (overview)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/studies` | List studies |
+| GET | `/api/datasets` | List datasets |
+| GET | `/api/datasheets` | List datasheet catalog entries |
+| GET | `/api/scaffolds` | List pegRNA scaffolds |
+| GET | `/api/data` | Load standardized rows for one datasheet |
+| GET | `/api/filter` | Filter catalog and/or export model-format data with splits |
+| GET | `/api/statistics` | Aggregate edit statistics |
+| POST | `/api/export` | Re-export and/or re-standardize |
+| POST | `/api/convert` | Standardize one sheet |
+| GET | `/health` | Health check |
+
+### Examples
+
 ```bash
-# Get data in standardized format
-curl "http://localhost:8000/api/data?cell_line=HEK293T&pe_system=PE2&source_model=dp&target_format=std"
+# Catalog browse
+curl "http://localhost:8000/api/studies"
+curl "http://localhost:8000/api/datasets?study=deepprime"
 
-# Get data in DeepPrime format
-curl "http://localhost:8000/api/data?cell_line=A549&pe_system=PE2max&source_model=dp_ft&target_format=deepprime"
+# Standardized rows for one datasheet
+curl "http://localhost:8000/api/data?study=deepprime&dataset=deepprime-clinvar&cell_line=HEK293T&pe_system=PE2max"
+
+# Export DeepPrime-format training data with an 80/20 holdout split
+curl "http://localhost:8000/api/filter?format=deepprime&study=pridict1&dataset=library2&cell_line=HEK293T&pe_system=PE2max&split_strategy=holdout_2&train_pct=0.8&test_pct=0.2"
 ```
 
-### List Available Datasets
-```bash
-curl "http://localhost:8000/api/datasets"
-```
+## PE Ensemble API (overview)
 
-### Convert Data
-```bash
-curl -X POST "http://localhost:8000/api/convert?source=deepprime&cell_line=HEK293T&pe_system=PE2"
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/models` | List supported models |
+| GET | `/models/{name}/weights` | List registered weight sets |
+| GET | `/data/filter` | Proxy to PE-DB filter/export |
+| POST | `/evaluate` | Queue an asynchronous benchmark job |
+| GET | `/evaluate/status/{job_id}` | Benchmark job status and metrics |
+| GET | `/evaluate/logs/{job_id}` | Benchmark job logs |
+| GET | `/evaluate/jobs` | List recent benchmark jobs |
+| POST | `/train` | Queue an asynchronous training job |
+| GET | `/train/status/{job_id}` | Job status and result |
+| GET | `/train/logs/{job_id}` | Incremental training logs |
+| GET | `/train/jobs` | Recent jobs |
+| GET | `/devices` | Available compute devices |
+| GET | `/train/devices` | Per-device queue occupancy |
+| POST | `/predict` | Prediction endpoint (stub) |
+| GET | `/health` | Health check |
 
-## Data Organization
+Models: **DeepPrime**, **PRIDICT2**, **OPED**. Training supports per-device queuing (CUDA, MPS, CPU, …). See `services/pe-ensemble/README.md` and `services/pe-ensemble/jobs/README.md` for CLI and SLURM usage.
 
-The database contains curated data from various studies on prime editing efficiency: 
+## PE Hub
 
-### Datasets Directory Structure
-```
-datasets/
-├── raw/                    # Original data files
-│   ├── deepprime/
-│   ├── minsepie/
-│   ├── pridict1/
-│   └── pridict2/
-└── standardized/          # Converted standardized format
-    ├── deepprime/
-    ├── pridict1/
-    └── pridict2/
-```
+Single-site UI with live backend health indicators:
 
-### Data Formats Supported
-- **Standard Format**: Unified format for all datasets
-- **DeepPrime Format**: Compatible with DeepPrime model
-- **PRIDICT Format**: Compatible with PRIDICT model
-- **PRIDICT2 Format**: Compatible with PRIDICT 2.0 model
-- **OPED Format**: Compatible with OPED model
+- **Database** — catalog browser, multi-filter export to CSV
+- **Ensemble** — model evaluation, training job monitor, ensemble tool, inline API docs
 
-## Shared Package: pe-common
+Environment variables (`.env` in `pe-hub/`):
 
-The `pe-common` package provides shared utilities used by both services:
+| Variable | Default |
+|----------|---------|
+| `VITE_PE_DB_URL` | `http://localhost:8000` |
+| `VITE_ENSEMBLE_API_URL` | `http://localhost:8001` |
 
-### Constants
+## Shared package: pe-common
+
 ```python
 from pe_common import DATA_ROOT, MODEL_ROOT, DEVICE
+from pe_common.devices import list_devices, resolve_device
+from pe_common.splits import SplitConfig, assign_splits
+from pe_common.sequence_utils import align_wt_mut_sequences
+from pe_common.features import calculate_gc_content  # lazy-loaded
+from pe_common import run_supervised_training_loop   # lazy-loaded (requires torch)
 ```
 
-### Sequence Utilities
-```python
-from pe_common.sequence_utils import align_wt_mut_sequences, remove_padding
-```
-
-### Feature Calculations
-```python
-from pe_common.features import calculate_mfe, calculate_mt_wallace, calculate_gc_content
-```
+Install: `pip install -e packages/pe-common`. Details in `packages/pe-common/README.md`.
 
 ## Development
 
-### Installing in Development Mode
-
-Install the shared package:
 ```bash
-pip install -e packages/pe-common
+make test           # pytest
+make format         # black
+make lint           # flake8
 ```
 
-### Module Imports
+Re-export or re-standardize data:
 
-With this structure, you can now reliably import modules:
-
-```python
-# Instead of relative imports
-from pe_common import DATA_ROOT, DEVICE
-from pe_common.sequence_utils import align_wt_mut_sequences
-from pe_common.features import calculate_gc_content
+```bash
+PE_DB_FORCE_EXPORT=1 ./start-pe-db-backend.sh
+# or
+curl -X POST 'http://localhost:8000/api/export?force_standardize=true'
 ```
 
-No more unstable relative path imports!
-
-## Contributing to the Database
+## Contributing data
 
 Although I am trying my best to scour the internet for all the relevant data, I am sure there are many studies that I have missed. If you have data that you would like to contribute to the database, please convert it to the format specified below and submit a pull request.
 
-#### Contribution Format
+### Contribution format
 
 To start with, the metadata of the study should be included in the pull request, containing the following information for advanced search and filtering:
 
@@ -207,46 +233,8 @@ The rest of the columns are optional, but can be included if available:
 - `Chromatin State`: The chromatin state of the target loci
 - `Indel Percentage`: The percentage of indels in the total sequence
 
-## Tables
+To add a new study to the catalog, also register it in `services/pe-db/app/catalog/studies.py` and add raw files under `datasets/raw/<study>/`.
 
-The database is organized as follows:
-
-### Studies
-
-Storing high level information about the study that the dataset originated from
-
-- `Study ID` (P): A unique identifier for the study originating a set of datasets 
-- `Published Time`: the time that the originating study was published, in YYYYMM format
-- `Authors`: the contributing authors of the study
-
-### Datasets
-
-High level information about each dataset
-
-- `Dataset ID` (P): the unique identifier of the dataset
-- `Study ID` (F): the name of the study that the dataset originated from
-- `PE System`: the version of the prime editor used in the study
-- `Cell Line`: the cell line used in the study
-- `Study Type`: the type of study, which can be `Library`(0), `Off-target`(1), `Endogenous`(2)
-
-### Sequence Tables
-
-
-
-The target as well as the corresponding pegRNA sequence
-
-- `Dataset ID` (F): the unique identifier of the dataset
-- `Sequence ID` (P): the unique identifier of the sequence, hashed from the target loci sequence
-- `Loci ID`: the unique identifier of the target loci, hashed from the protospacer sequence, useful for train-test-val split as pegRNA targeting the same loci are grouped 
-
-Rest of the columns are the same as specified in the contribution format, including `WT Sequence`, `MT Sequence`, `protospacer Location`, `PBS Location`, `RT Location WT`, `RT Location MT`, `Efficiency`
-
-# PE Ensemble
-
-To try out the complete version of our app and create ensembles of your own, additional steps should be taken:
-
-The included models need to be downloaded with `git submodule update --remote`
-
-# Citation
+## Citation
 
 If you found this data repo useful in your study, please consider citing our publication:

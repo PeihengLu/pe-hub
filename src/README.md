@@ -1,47 +1,56 @@
 # Legacy Source Files
 
-⚠️ **This directory contains legacy code that will be migrated to services.**
+This directory previously held monolithic scripts and utilities. Most code has
+been migrated into services and `packages/pe-common/`.
 
-## Status
+## Migration status
 
-### ✅ Migrated to `packages/pe-common/`
-- ~~`constants.py`~~ → `packages/pe-common/pe_common/constants.py`
-- ~~`sequence_utils.py`~~ → `packages/pe-common/pe_common/sequence_utils.py`
-- ~~`features.py`~~ → `packages/pe-common/pe_common/features.py`
+### Migrated to `packages/pe-common/`
 
-### 🔄 Partially Migrated
-- `data.py` - Some functions migrated to `services/pe-db/app/data_prep/converter.py`
-  - Still contains additional utility functions not yet migrated
+- `constants.py` → `packages/pe-common/pe_common/constants.py`
+- `sequence_utils.py` → `packages/pe-common/pe_common/sequence_utils.py`
+- `features.py` → `packages/pe-common/pe_common/features.py`
+- Device discovery → `packages/pe-common/pe_common/devices.py`
+- Split assignment → `packages/pe-common/pe_common/splits.py`
+- Training helpers → `packages/pe-common/pe_common/training.py`
+- Model interface → `packages/pe-common/pe_common/model_interface.py`
 
-### 📦 To Be Migrated to `services/pe-ensemble/`
-- `run_models.py` - Will move to `services/pe-ensemble/app/models/runner.py`
-- `train_models.py` - Will move to `services/pe-ensemble/app/models/trainer.py`
-- `utils.py` - Will move to `packages/pe-common/` or `services/pe-ensemble/`
+### Migrated to `services/pe-db/`
 
-## Migration Guide
+- Data conversion → `app/converter.py`, `app/utils/standardize_data.py`, `app/utils/convert_data.py`
+- Catalog metadata → `app/catalog/`
 
-To use the new structure, update your imports:
+### Migrated to `services/pe-ensemble/`
 
-### Old (Legacy)
+- Model runners → `app/models/` (wrappers + `model_factory.py`)
+- Training pipeline → `app/training/` (jobs, runner, device scheduler)
+- CLI entry → `app/train_models.py`
+
+### Remaining here
+
+Any files still under `src/` are deprecated. New code should import from
+`pe_common` or the relevant service package.
+
+## Import guide
+
+### Old (legacy)
+
 ```python
 from src.constants import DATA_ROOT
 from src.sequence_utils import align_wt_mut_sequences
-from src.features import calculate_gc_content
 ```
 
-### New (Recommended)
+### New (recommended)
+
 ```python
 from pe_common import DATA_ROOT
 from pe_common.sequence_utils import align_wt_mut_sequences
-from pe_common.features import calculate_gc_content
 ```
 
-## When to Remove
+## When to remove
 
-These files should be kept until:
-1. PE Ensemble service is fully implemented
-2. All data conversion logic is extracted and tested
-3. All dependent scripts are updated
-4. No external scripts depend on these files
+This directory can be deleted once no external scripts depend on it. Check with:
 
-See [MIGRATION.md](../MIGRATION.md) for detailed migration instructions.
+```bash
+rg "from src\\." --glob '*.py'
+```
