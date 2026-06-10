@@ -8,7 +8,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Deque, Dict, List, Literal, Optional, Tuple
 
-from pe_common.devices import AUTO_DEVICE, list_device_ids, resolve_device_id
+from pe_common.devices import AUTO_DEVICE, list_accelerator_ids, list_device_ids, resolve_device_id
 
 from .job_cancel import (
     JobCancelledError,
@@ -66,6 +66,14 @@ class ComputeDeviceScheduler:
         with self._lock:
             self._refresh_device_map()
             self._update_job_locked(kind, job_id, device_requested=requested, device_assigned=None, queue_position=None)
+            if requested in (None, AUTO_DEVICE) and not list_accelerator_ids():
+                error = "No accelerator devices available; auto assignment does not use CPU"
+                if kind == "train":
+                    mark_train_failed(job_id, error)
+                else:
+                    mark_eval_failed(job_id, error)
+                logger.error("Job %s/%s rejected: %s", kind, job_id, error)
+                return
             device_id = self._try_assign_locked(queued, requested)
             if device_id is None:
                 self._wait_queue.append(queued)
@@ -118,12 +126,17 @@ class ComputeDeviceScheduler:
                     "queued_jobs": sum(
                         1
                         for kind, queued_id in self._wait_queue
-                        if self._get_job_manifest(kind, queued_id).get("device_requested")
-                        in (device_id, AUTO_DEVICE, None)
+                        if self._job_waits_for_device(device_id, kind, queued_id)
                     ),
                 }
                 for device_id in list_device_ids(include_cpu=True)
             ]
+
+    def _job_waits_for_device(self, device_id: str, kind: JobKind, queued_id: str) -> bool:
+        requested = self._get_job_manifest(kind, queued_id).get("device_requested")
+        if requested in (None, AUTO_DEVICE):
+            return device_id in list_device_ids(include_cpu=False)
+        return requested == device_id
 
     def _format_job_id(self, queued: Optional[QueuedJob]) -> Optional[str]:
         if queued is None:
@@ -155,10 +168,6 @@ class ComputeDeviceScheduler:
                 self._running_on_device[device_id] = queued
                 self._job_device[queued] = device_id
                 return device_id
-        if self._running_on_device.get("cpu") is None:
-            self._running_on_device["cpu"] = queued
-            self._job_device[queued] = "cpu"
-            return "cpu"
         return None
 
     def _launch_locked(self, queued: QueuedJob, device_id: str) -> None:

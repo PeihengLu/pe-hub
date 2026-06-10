@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import Card from '@components/Card'
 import KillJobConfirmDialog, {
   persistSkipKillJobConfirm,
   shouldSkipKillJobConfirm,
 } from '@components/KillJobConfirmDialog'
+import { formatJobListTitle, sortJobsByCreatedAt } from '@apps/ensemble/utils/jobStatus'
 
 export interface ComputeJobListItem {
   job_id: string
   status: string
+  created_at?: string
   model_name?: string
   dataset_name?: string
   benchmark_name?: string
@@ -27,9 +29,26 @@ interface ComputeJobListProps {
   emptyMessage?: string
 }
 
+interface PendingKill {
+  jobIds: string[]
+  label: string
+}
+
 function statusLabel(status: string, queuePosition?: number | null) {
   if (status === 'queued' && queuePosition) return `queued (#${queuePosition})`
   return status
+}
+
+function buildKillLabel(jobs: ComputeJobListItem[], getJobTitle: (job: ComputeJobListItem) => string): string {
+  if (jobs.length === 1) {
+    const job = jobs[0]
+    return formatJobListTitle(getJobTitle(job), job.created_at)
+  }
+  const preview = jobs.slice(0, 3).map((job) => formatJobListTitle(getJobTitle(job), job.created_at))
+  if (jobs.length > 3) {
+    preview.push(`…and ${jobs.length - 3} more`)
+  }
+  return preview.join('\n')
 }
 
 export default function ComputeJobList({
@@ -42,84 +61,208 @@ export default function ComputeJobList({
   killJob,
   emptyMessage = 'No jobs yet.',
 }: ComputeJobListProps) {
-  const [pendingKill, setPendingKill] = useState<{ jobId: string; label: string } | null>(null)
-  const [killingJobId, setKillingJobId] = useState<string | null>(null)
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(() => new Set())
+  const [pendingKill, setPendingKill] = useState<PendingKill | null>(null)
+  const [killingJobIds, setKillingJobIds] = useState<Set<string>>(() => new Set())
+  const sortedJobs = useMemo(() => sortJobsByCreatedAt(jobs ?? []), [jobs])
+  const visibleJobIds = useMemo(() => new Set(sortedJobs.map((job) => job.job_id)), [sortedJobs])
 
-  const executeKill = async (jobId: string) => {
-    setKillingJobId(jobId)
-    try {
-      await killJob(jobId)
-      onJobKilled(jobId)
-      setPendingKill(null)
-    } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        (err as Error)?.message ||
-        'Failed to delete job'
-      onKillError(message)
-    } finally {
-      setKillingJobId(null)
-    }
+  useEffect(() => {
+    setSelectedJobIds((current) => {
+      const next = new Set([...current].filter((jobId) => visibleJobIds.has(jobId)))
+      return next.size === current.size ? current : next
+    })
+  }, [visibleJobIds])
+
+  const selectedCount = selectedJobIds.size
+  const allSelected = sortedJobs.length > 0 && selectedCount === sortedJobs.length
+  const isKilling = killingJobIds.size > 0
+
+  const jobLabelFor = (job: ComputeJobListItem) => formatJobListTitle(getJobTitle(job), job.created_at)
+
+  const toggleJobSelected = (jobId: string) => {
+    setSelectedJobIds((current) => {
+      const next = new Set(current)
+      if (next.has(jobId)) {
+        next.delete(jobId)
+      } else {
+        next.add(jobId)
+      }
+      return next
+    })
   }
 
-  const requestKill = (job: ComputeJobListItem) => {
-    const label = getJobTitle(job)
-    if (shouldSkipKillJobConfirm()) {
-      void executeKill(job.job_id)
+  const toggleSelectAll = () => {
+    setSelectedJobIds((current) => {
+      if (allSelected) {
+        return new Set()
+      }
+      return new Set(sortedJobs.map((job) => job.job_id))
+    })
+  }
+
+  const executeKill = async (jobIds: string[]) => {
+    if (jobIds.length === 0) {
       return
     }
-    setPendingKill({ jobId: job.job_id, label })
+
+    setKillingJobIds(new Set(jobIds))
+    const failures: string[] = []
+
+    for (const jobId of jobIds) {
+      try {
+        await killJob(jobId)
+        onJobKilled(jobId)
+        setSelectedJobIds((current) => {
+          if (!current.has(jobId)) {
+            return current
+          }
+          const next = new Set(current)
+          next.delete(jobId)
+          return next
+        })
+      } catch (err: unknown) {
+        const message =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          (err as Error)?.message ||
+          'Failed to delete job'
+        failures.push(message)
+      }
+    }
+
+    if (failures.length > 0) {
+      onKillError(
+        failures.length === 1
+          ? failures[0]
+          : `Failed to delete ${failures.length} jobs. ${failures[0]}`
+      )
+    } else {
+      setPendingKill(null)
+    }
+
+    setKillingJobIds(new Set())
+  }
+
+  const requestKill = (targetJobs: ComputeJobListItem[]) => {
+    if (targetJobs.length === 0) {
+      return
+    }
+
+    const jobIds = targetJobs.map((job) => job.job_id)
+    const label = buildKillLabel(targetJobs, getJobTitle)
+
+    if (shouldSkipKillJobConfirm()) {
+      void executeKill(jobIds)
+      return
+    }
+
+    setPendingKill({ jobIds, label })
+  }
+
+  const requestKillJob = (job: ComputeJobListItem) => {
+    requestKill([job])
+  }
+
+  const requestKillSelected = () => {
+    const targetJobs = sortedJobs.filter((job) => selectedJobIds.has(job.job_id))
+    requestKill(targetJobs)
   }
 
   return (
     <>
       <Card title="Jobs">
-        {!jobs?.length ? (
+        {!sortedJobs.length ? (
           <p className="text-slate-500 py-4 text-center text-sm">{emptyMessage}</p>
         ) : (
-          <ul className="divide-y divide-slate-200 max-h-96 overflow-y-auto">
-            {jobs.map((job) => (
-              <li key={job.job_id} className="flex items-stretch">
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  disabled={isKilling}
+                  className="rounded border-slate-300"
+                />
+                <span>{allSelected ? 'Deselect all' : 'Select all'}</span>
+                {selectedCount > 0 && (
+                  <span className="text-slate-500">({selectedCount} selected)</span>
+                )}
+              </label>
+              {selectedCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => onSelectJob(job.job_id)}
-                  className={`flex-1 text-left px-3 py-2 text-sm hover:bg-slate-50 ${
-                    selectedJobId === job.job_id
-                      ? 'bg-primary-50 border-l-4 border-primary-500'
-                      : ''
-                  }`}
-                >
-                  <p className="font-medium truncate">{getJobTitle(job)}</p>
-                  <p className="text-slate-500 text-xs">
-                    {statusLabel(job.status, job.queue_position)}
-                    {job.device_assigned ? ` on ${job.device_assigned}` : ''}
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  title="Kill and delete job"
-                  aria-label={`Kill and delete ${getJobTitle(job)}`}
-                  disabled={killingJobId === job.job_id}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    requestKill(job)
-                  }}
-                  className="px-3 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  onClick={requestKillSelected}
+                  disabled={isKilling}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
                 >
                   <Trash2 className="w-4 h-4" />
+                  Delete selected ({selectedCount})
                 </button>
-              </li>
-            ))}
-          </ul>
+              )}
+            </div>
+
+            <ul className="divide-y divide-slate-200 max-h-96 overflow-y-auto">
+              {sortedJobs.map((job) => {
+                const jobLabel = jobLabelFor(job)
+                const isRowSelected = selectedJobIds.has(job.job_id)
+                const isRowKilling = killingJobIds.has(job.job_id)
+
+                return (
+                  <li key={job.job_id} className="flex items-stretch">
+                    <label className="flex items-center px-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isRowSelected}
+                        onChange={() => toggleJobSelected(job.job_id)}
+                        disabled={isKilling}
+                        aria-label={`Select ${jobLabel}`}
+                        className="rounded border-slate-300"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => onSelectJob(job.job_id)}
+                      className={`flex-1 text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                        selectedJobId === job.job_id
+                          ? 'bg-primary-50 border-l-4 border-primary-500'
+                          : ''
+                      }`}
+                    >
+                      <p className="font-medium truncate">{jobLabel}</p>
+                      <p className="text-slate-500 text-xs">
+                        {statusLabel(job.status, job.queue_position)}
+                        {job.device_assigned ? ` on ${job.device_assigned}` : ''}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      title="Kill and delete job"
+                      aria-label={`Kill and delete ${jobLabel}`}
+                      disabled={isRowKilling}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        requestKillJob(job)
+                      }}
+                      className="px-3 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
         )}
       </Card>
 
       <KillJobConfirmDialog
         open={pendingKill !== null}
         jobLabel={pendingKill?.label ?? ''}
-        isLoading={killingJobId !== null}
+        jobCount={pendingKill?.jobIds.length ?? 1}
+        isLoading={isKilling}
         onCancel={() => {
-          if (killingJobId === null) {
+          if (!isKilling) {
             setPendingKill(null)
           }
         }}
@@ -128,7 +271,7 @@ export default function ComputeJobList({
             persistSkipKillJobConfirm(true)
           }
           if (pendingKill) {
-            void executeKill(pendingKill.jobId)
+            void executeKill(pendingKill.jobIds)
           }
         }}
       />

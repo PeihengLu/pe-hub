@@ -25,6 +25,7 @@ export function persistSkipKillJobConfirm(skip: boolean): void {
 interface KillJobConfirmDialogProps {
   open: boolean
   jobLabel: string
+  jobCount?: number
   isLoading?: boolean
   onConfirm: (neverShowAgain: boolean) => void
   onCancel: () => void
@@ -33,10 +34,12 @@ interface KillJobConfirmDialogProps {
 export default function KillJobConfirmDialog({
   open,
   jobLabel,
+  jobCount = 1,
   isLoading = false,
   onConfirm,
   onCancel,
 }: KillJobConfirmDialogProps) {
+  const isBulk = jobCount > 1
   const [neverShowAgain, setNeverShowAgain] = useState(false)
 
   useEffect(() => {
@@ -64,13 +67,25 @@ export default function KillJobConfirmDialog({
         className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
       >
         <h3 id="kill-job-dialog-title" className="text-lg font-semibold text-slate-900">
-          Kill and delete job?
+          {isBulk ? `Kill and delete ${jobCount} jobs?` : 'Kill and delete job?'}
         </h3>
         <p className="mt-3 text-sm text-slate-600">
-          This will stop <span className="font-medium text-slate-900">{jobLabel}</span> if it is
-          still queued or running, then permanently delete its log files and other artifacts from
-          this run.
+          {isBulk ? (
+            <>
+              This will stop the selected jobs if any are still queued or running, then permanently
+              delete their log files and other artifacts:
+            </>
+          ) : (
+            <>
+              This will stop <span className="font-medium text-slate-900">{jobLabel}</span> if it is
+              still queued or running, then permanently delete its log files and other artifacts from
+              this run.
+            </>
+          )}
         </p>
+        {isBulk && (
+          <p className="mt-2 text-sm font-medium text-slate-900 whitespace-pre-wrap">{jobLabel}</p>
+        )}
         <p className="mt-2 text-sm text-slate-600">
           Registered model weights from a completed training job are kept in the weights registry
           and are not removed.
@@ -99,7 +114,7 @@ export default function KillJobConfirmDialog({
             disabled={isLoading}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-slate-400"
           >
-            {isLoading ? 'Deleting…' : 'Kill & delete'}
+            {isLoading ? 'Deleting…' : isBulk ? `Kill & delete ${jobCount}` : 'Kill & delete'}
           </button>
         </div>
       </div>

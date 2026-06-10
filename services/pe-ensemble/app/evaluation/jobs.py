@@ -80,7 +80,7 @@ def list_jobs(*, limit: int = 50) -> List[Dict[str, Any]]:
     if not root.is_dir():
         return []
     manifests: List[Dict[str, Any]] = []
-    for entry in sorted(root.iterdir(), reverse=True):
+    for entry in root.iterdir():
         if not entry.is_dir():
             continue
         manifest_path = entry / MANIFEST_FILENAME
@@ -88,9 +88,8 @@ def list_jobs(*, limit: int = 50) -> List[Dict[str, Any]]:
             continue
         with open(manifest_path, encoding="utf-8") as handle:
             manifests.append(json.load(handle))
-        if len(manifests) >= limit:
-            break
-    return manifests
+    manifests.sort(key=lambda manifest: manifest.get("created_at", ""), reverse=True)
+    return manifests[:limit]
 
 
 def update_job(job_id: str, **fields: Any) -> Dict[str, Any]:

@@ -11,9 +11,11 @@ from app.training.jobs import (
     create_job,
     get_job,
     job_summary,
+    list_jobs,
     mark_running,
     mark_succeeded,
     read_logs,
+    update_job,
     wait_for_job,
 )
 from app.training.schemas import TrainingRequest
@@ -58,6 +60,21 @@ def test_create_job_and_logs(jobs_root: Path):
     assert request_path.is_file()
     saved = json.loads(request_path.read_text(encoding="utf-8"))
     assert saved["dataset_name"] == "library2"
+
+
+def test_list_jobs_sorted_by_created_at(jobs_root: Path):
+    request = TrainingRequest(
+        model_name="deepprime",
+        dataset_source="pe-db",
+        dataset_name="library2",
+    )
+    older_id = create_job(request, job_id="older-job")
+    newer_id = create_job(request, job_id="newer-job")
+    update_job(older_id, created_at="2020-01-01T00:00:00Z")
+    update_job(newer_id, created_at="2025-01-01T00:00:00Z")
+
+    listed = list_jobs()
+    assert [job["job_id"] for job in listed] == [newer_id, older_id]
 
 
 def test_wait_for_job(jobs_root: Path):
