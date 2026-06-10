@@ -185,12 +185,19 @@ async def filter_data(
         False,
         description="When true, use author original_fold assignments where available.",
     ),
+    original_fold_test_value: float = Query(
+        -1.0,
+        description=(
+            "original_fold value treated as the test partition when use_original_fold is true "
+            "(-1 for DeepPrime-style held-out test; 0–4 for PRIDICT2 CV test folds)."
+        ),
+    ),
     split_random_state: int = Query(42, ge=0),
     merge: bool = Query(
         False,
         description=(
             "When true, merge all matching datasheets before split assignment. "
-            "Uses composite group keys to avoid group_id collisions across datasheets."
+            "Reassigns group_id by shared protospacer after merge."
         ),
     ),
 ):
@@ -219,6 +226,7 @@ async def filter_data(
                 test_pct=test_pct,
                 cv_folds=cv_folds,
                 use_original_fold=use_original_fold,
+                original_fold_test_value=original_fold_test_value,
                 random_state=split_random_state,
             )
         except ValueError as exc:

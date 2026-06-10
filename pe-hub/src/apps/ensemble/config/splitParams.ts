@@ -7,6 +7,7 @@ export interface SplitExportParams {
   test_pct?: number
   cv_folds?: number
   use_original_fold?: boolean
+  original_fold_test_value?: number
   split_random_state?: number
   merge?: boolean
 }
@@ -16,6 +17,7 @@ export const DEFAULT_EVAL_SPLIT: SplitExportParams = {
   train_pct: 0.8,
   test_pct: 0.2,
   use_original_fold: true,
+  original_fold_test_value: -1,
   split_random_state: 42,
   merge: false,
 }

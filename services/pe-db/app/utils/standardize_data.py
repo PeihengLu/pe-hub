@@ -1709,6 +1709,12 @@ def _standardize_pridict2_library_diverse(
         pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r,
         spcas9_score, editing_efficiency, original_fold)
 
+    from .convert_data import PRIDICT2_STANDARDIZED_OPTIONAL_COLUMNS
+
+    for colname in PRIDICT2_STANDARDIZED_OPTIONAL_COLUMNS:
+        if colname in df.columns:
+            output_df[colname] = pd.to_numeric(df[colname], errors="coerce")
+
     output_path = DATA_ROOT / 'standardized' / 'pridict2' / dataset / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

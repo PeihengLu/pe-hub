@@ -34,6 +34,7 @@ def _build_request(args: argparse.Namespace) -> TrainingRequest:
         test_pct=args.test_pct,
         cv_folds=args.cv_folds,
         use_original_fold=args.use_original_fold,
+        original_fold_test_value=args.original_fold_test_value,
         split_random_state=args.split_random_state,
         merge=args.merge,
     )
@@ -100,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-pct", type=float, default=0.15)
     parser.add_argument("--cv-folds", type=int, default=None)
     parser.add_argument("--use-original-fold", action="store_true")
+    parser.add_argument(
+        "--original-fold-test-value",
+        type=float,
+        default=-1.0,
+        help="original_fold value treated as test when --use-original-fold is set",
+    )
     parser.add_argument("--split-random-state", type=int, default=42)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--hyperparameters-json", default=None, help="Training hyperparameters as JSON object")

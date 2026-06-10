@@ -333,8 +333,10 @@ if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, app.main"); then
     exit 1
 fi
 
-if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn"); then
-    echo "Error: PE Ensemble dependencies missing. Run: $(basename "$0") --install" >&2
+if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn, prettytable"); then
+    echo "Error: PE Ensemble dependencies missing (need uvicorn and prettytable for PRIDICT2)." >&2
+    echo "Run: $(basename "$0") --install" >&2
+    echo "Active Python: ${PYTHON}" >&2
     exit 1
 fi
 

@@ -16,6 +16,7 @@ def default_evaluation_split() -> SplitQueryParams:
         train_pct=0.8,
         test_pct=0.2,
         use_original_fold=True,
+        original_fold_test_value=-1.0,
     )
 
 

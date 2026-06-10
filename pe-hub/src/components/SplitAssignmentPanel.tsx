@@ -16,6 +16,8 @@ interface SplitAssignmentPanelProps {
   onCvFoldsChange: (value: string) => void
   useOriginalFold: boolean
   onUseOriginalFoldChange: (value: boolean) => void
+  originalFoldTestValue: string
+  onOriginalFoldTestValueChange: (value: string) => void
   splitRandomState: string
   onSplitRandomStateChange: (value: string) => void
   description?: string
@@ -35,6 +37,8 @@ export default function SplitAssignmentPanel({
   onCvFoldsChange,
   useOriginalFold,
   onUseOriginalFoldChange,
+  originalFoldTestValue,
+  onOriginalFoldTestValueChange,
   splitRandomState,
   onSplitRandomStateChange,
   description,
@@ -151,14 +155,33 @@ export default function SplitAssignmentPanel({
       )}
 
       {splitStrategy !== 'none' && splitStrategy !== 'holdout_3' && (
-        <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={useOriginalFold}
-            onChange={(e) => onUseOriginalFoldChange(e.target.checked)}
-          />
-          Use author original_fold when available
-        </label>
+        <div className="space-y-3">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useOriginalFold}
+              onChange={(e) => onUseOriginalFoldChange(e.target.checked)}
+            />
+            Use author original_fold when available
+          </label>
+          {useOriginalFold && (
+            <label className="block text-sm text-slate-700 max-w-xs">
+              Designate test fold
+              <input
+                type="number"
+                step={1}
+                value={originalFoldTestValue}
+                onChange={(e) => onOriginalFoldTestValueChange(e.target.value)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                Rows with this original_fold value become the test partition. Use -1 for
+                DeepPrime-style held-out test; use 0–4 for PRIDICT2 CV test folds (match run_N
+                weights).
+              </span>
+            </label>
+          )}
+        </div>
       )}
 
       {splitStrategy !== 'none' && (

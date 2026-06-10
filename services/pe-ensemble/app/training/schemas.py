@@ -27,6 +27,7 @@ class SplitQueryParams(BaseModel):
     test_pct: Optional[float] = None
     cv_folds: Optional[int] = None
     use_original_fold: bool = False
+    original_fold_test_value: float = -1.0
     split_random_state: int = 42
     merge: bool = False
 

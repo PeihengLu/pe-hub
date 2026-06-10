@@ -40,6 +40,7 @@ export default function TrainingPage() {
   const [testPct, setTestPct] = useState('0.15')
   const [cvFolds, setCvFolds] = useState('5')
   const [useOriginalFold, setUseOriginalFold] = useState(false)
+  const [originalFoldTestValue, setOriginalFoldTestValue] = useState('-1')
   const [splitRandomState, setSplitRandomState] = useState('42')
   const [batchTraining, setBatchTraining] = useState(false)
   const [previewData, setPreviewData] = useState<ExportResponse | undefined>()
@@ -92,7 +93,7 @@ export default function TrainingPage() {
 
   useEffect(() => {
     setPreviewData(undefined)
-  }, [modelName, filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, splitRandomState, batchTraining])
+  }, [modelName, filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, originalFoldTestValue, splitRandomState, batchTraining])
 
   useEffect(() => {
     if (!selectedJobId) return undefined
@@ -144,6 +145,7 @@ export default function TrainingPage() {
       testPct,
       cvFolds,
       useOriginalFold,
+      originalFoldTestValue,
       randomState: splitRandomState,
       batchTraining,
     })
@@ -254,6 +256,8 @@ export default function TrainingPage() {
           onCvFoldsChange={setCvFolds}
           useOriginalFold={useOriginalFold}
           onUseOriginalFoldChange={setUseOriginalFold}
+          originalFoldTestValue={originalFoldTestValue}
+          onOriginalFoldTestValueChange={setOriginalFoldTestValue}
           splitRandomState={splitRandomState}
           onSplitRandomStateChange={setSplitRandomState}
           batchMode={batchTraining}

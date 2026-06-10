@@ -51,7 +51,7 @@ const MODE_COPY: Record<
     intro:
       'Select held-out test data from the PE Database catalog. Only rows assigned to the test split are evaluated.',
     splitDescription:
-      'Split assignment determines which rows count as test data. Datasheets can be merged or benchmarked separately. DeepPrime groups rows by protospacer; if author folds disagree within a group, uncheck "Use author original_fold" to assign splits synthetically.',
+      'Split assignment determines which rows count as test data. Datasheets can be merged or benchmarked separately. DeepPrime uses original_fold -1 for held-out test; PRIDICT2 uses 0–4 (set Designate test fold to match run_N weights). Uncheck "Use author original_fold" for synthetic holdout splits.',
     singleLabel: 'Single merged benchmark',
     batchLabel: 'Batch benchmark (one job per datasheet)',
     singleHelp:
@@ -80,6 +80,8 @@ interface ModelDataPanelProps {
   onCvFoldsChange: (value: string) => void
   useOriginalFold: boolean
   onUseOriginalFoldChange: (value: boolean) => void
+  originalFoldTestValue: string
+  onOriginalFoldTestValueChange: (value: string) => void
   splitRandomState: string
   onSplitRandomStateChange: (value: string) => void
   batchMode: boolean
@@ -105,6 +107,8 @@ export default function ModelDataPanel({
   onCvFoldsChange,
   useOriginalFold,
   onUseOriginalFoldChange,
+  originalFoldTestValue,
+  onOriginalFoldTestValueChange,
   splitRandomState,
   onSplitRandomStateChange,
   batchMode,
@@ -132,6 +136,7 @@ export default function ModelDataPanel({
       testPct,
       cvFolds,
       useOriginalFold,
+      originalFoldTestValue,
       randomState: splitRandomState,
       batchTraining: batchMode,
     })
@@ -183,6 +188,8 @@ export default function ModelDataPanel({
           onCvFoldsChange={onCvFoldsChange}
           useOriginalFold={useOriginalFold}
           onUseOriginalFoldChange={onUseOriginalFoldChange}
+          originalFoldTestValue={originalFoldTestValue}
+          onOriginalFoldTestValueChange={onOriginalFoldTestValueChange}
           splitRandomState={splitRandomState}
           onSplitRandomStateChange={onSplitRandomStateChange}
           excludeNone

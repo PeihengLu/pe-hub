@@ -33,6 +33,7 @@ export default function ExportPage() {
   const [testPct, setTestPct] = useState('0.2')
   const [cvFolds, setCvFolds] = useState('5')
   const [useOriginalFold, setUseOriginalFold] = useState(false)
+  const [originalFoldTestValue, setOriginalFoldTestValue] = useState('-1')
   const [splitRandomState, setSplitRandomState] = useState('42')
 
   const { optionsByAttribute, getOptionsForRow, isLoading: optionsLoading, error: optionsError } =
@@ -47,6 +48,7 @@ export default function ExportPage() {
       testPct,
       cvFolds,
       useOriginalFold,
+      originalFoldTestValue,
       randomState: splitRandomState,
       merge: downloadMode === 'merged',
     })
@@ -155,7 +157,8 @@ export default function ExportPage() {
         <p className="mb-4 text-sm text-slate-600">
           Required for formatted exports. Splits are group-aware on{' '}
           <code className="text-xs">group_id</code>. When downloading a merged CSV,
-          datasheets are merged server-side with composite group keys before splitting.
+          datasheets are merged server-side and <code className="text-xs">group_id</code> is
+          reassigned by shared protospacer before splitting.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {SPLIT_STRATEGIES.map((item) => (
@@ -258,14 +261,32 @@ export default function ExportPage() {
         )}
 
         {splitStrategy !== 'none' && splitStrategy !== 'holdout_3' && (
-          <label className="mt-4 inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useOriginalFold}
-              onChange={(e) => setUseOriginalFold(e.target.checked)}
-            />
-            Use author original_fold when available
-          </label>
+          <div className="mt-4 space-y-3">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useOriginalFold}
+                onChange={(e) => setUseOriginalFold(e.target.checked)}
+              />
+              Use author original_fold when available
+            </label>
+            {useOriginalFold && (
+              <label className="block text-sm text-slate-700 max-w-xs">
+                Designate test fold
+                <input
+                  type="number"
+                  step={1}
+                  value={originalFoldTestValue}
+                  onChange={(e) => setOriginalFoldTestValue(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Rows with this original_fold value become the test partition (-1 for DeepPrime;
+                  0–4 for PRIDICT2 CV test folds).
+                </span>
+              </label>
+            )}
+          </div>
         )}
 
         {splitStrategy !== 'none' && (

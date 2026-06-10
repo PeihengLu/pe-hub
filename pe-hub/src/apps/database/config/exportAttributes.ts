@@ -36,6 +36,7 @@ export interface SplitExportParams {
   test_pct?: number
   cv_folds?: number
   use_original_fold?: boolean
+  original_fold_test_value?: number
   split_random_state?: number
   merge?: boolean
 }
@@ -47,12 +48,14 @@ export function buildSplitParams(config: {
   testPct: string
   cvFolds: string
   useOriginalFold: boolean
+  originalFoldTestValue: string
   randomState: string
   merge: boolean
 }): SplitExportParams {
   const params: SplitExportParams = {
     split_strategy: config.strategy,
     use_original_fold: config.useOriginalFold,
+    original_fold_test_value: Number(config.originalFoldTestValue),
     split_random_state: Number(config.randomState) || 0,
     merge: config.merge,
   }

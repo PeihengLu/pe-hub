@@ -72,6 +72,135 @@ def _resolve_correction_type(type_sub: bool, type_ins: bool, type_del: bool) -> 
     return "Replacement"
 
 
+# Continuous columns normalized by PRIDICT2's MinMaxNormalizer (dataset.py).
+PRIDICT2_NORMALIZER_COLUMNS = (
+    "Correction_Length",
+    "RToverhangmatches",
+    "RToverhanglength",
+    "RTlength",
+    "PBSlength",
+    "MFE_protospacer",
+    "MFE_protospacer_scaffold",
+    "MFE_extension",
+    "MFE_extension_scaffold",
+    "MFE_protospacer_extension_scaffold",
+    "MFE_rt",
+    "MFE_pbs",
+    "RTmt",
+    "RToverhangmt",
+    "PBSmt",
+    "protospacermt",
+    "extensionmt",
+    "original_base_mt",
+    "edited_base_mt",
+    "Tm1",
+    "Tm2",
+    "Tm2new",
+    "Tm3",
+    "Tm4",
+    "TmD",
+    "nGCcnt1",
+    "nGCcnt2",
+    "nGCcnt3",
+    "fGCcont1",
+    "fGCcont2",
+    "fGCcont3",
+)
+
+# Optional standardized / export columns mapped to PRIDICT2 feature names.
+PRIDICT2_FEATURE_ALIASES: dict[str, tuple[str, ...]] = {
+    "RToverhangmatches": ("RToverhangmatches",),
+    "RToverhanglength": ("RToverhanglength", "RTToverhanglength"),
+    "RTlength": ("RTlength", "RTTlength"),
+    "PBSlength": ("PBSlength",),
+    "deepcas9": ("deepcas9", "spcas9_score"),
+    "MFE_protospacer": ("MFE_protospacer",),
+    "MFE_protospacer_scaffold": ("MFE_protospacer_scaffold",),
+    "MFE_extension": ("MFE_extension",),
+    "MFE_extension_scaffold": ("MFE_extension_scaffold",),
+    "MFE_protospacer_extension_scaffold": ("MFE_protospacer_extension_scaffold",),
+    "MFE_rt": ("MFE_rt",),
+    "MFE_pbs": ("MFE_pbs",),
+    "RTmt": ("RTmt",),
+    "RToverhangmt": ("RToverhangmt",),
+    "PBSmt": ("PBSmt",),
+    "protospacermt": ("protospacermt",),
+    "extensionmt": ("extensionmt",),
+    "original_base_mt": ("original_base_mt",),
+    "edited_base_mt": ("edited_base_mt",),
+    "original_base_mt_nan": ("original_base_mt_nan",),
+    "edited_base_mt_nan": ("edited_base_mt_nan",),
+    "Tm1": ("Tm1",),
+    "Tm2": ("Tm2",),
+    "Tm2new": ("Tm2new",),
+    "Tm3": ("Tm3",),
+    "Tm4": ("Tm4",),
+    "TmD": ("TmD",),
+    "nGCcnt1": ("nGCcnt1",),
+    "nGCcnt2": ("nGCcnt2",),
+    "nGCcnt3": ("nGCcnt3",),
+    "fGCcont1": ("fGCcont1",),
+    "fGCcont2": ("fGCcont2",),
+    "fGCcont3": ("fGCcont3",),
+}
+
+# Author-provided PRIDICT2 features preserved in standardized parquet when available.
+PRIDICT2_STANDARDIZED_OPTIONAL_COLUMNS = tuple(
+    {
+        alias
+        for aliases in PRIDICT2_FEATURE_ALIASES.values()
+        for alias in aliases
+        if alias != "spcas9_score"
+    }
+)
+
+
+def _first_present_series(df: pd.DataFrame, colnames: tuple[str, ...], default: Any = 0) -> pd.Series | None:
+    for colname in colnames:
+        if colname in df.columns:
+            return _col_as_series(df, colname, default)
+    return None
+
+
+def _enrich_pridict2_features(source: pd.DataFrame, out: pd.DataFrame) -> pd.DataFrame:
+    """Add PRIDICT2 continuous features required by vendor preprocessing."""
+    pbs_l = _safe_int_series(_col_as_series(source, "pbs_location_l", 0))
+    pbs_r = _safe_int_series(_col_as_series(source, "pbs_location_r", 0))
+    rtt_l = _safe_int_series(_col_as_series(source, "rtt_location_l", 0))
+    rtt_r = _safe_int_series(_col_as_series(source, "rtt_location_r", 0))
+    rha_l = _safe_int_series(_col_as_series(source, "rha_location_l", 0))
+    rha_r = _safe_int_series(_col_as_series(source, "rha_location_r", 0))
+
+    computed_lengths = {
+        "PBSlength": (pbs_r - pbs_l).clip(lower=0),
+        "RTlength": (rtt_r - rtt_l).clip(lower=0),
+        "RToverhanglength": (rha_r - rha_l).clip(lower=0),
+    }
+
+    for target, aliases in PRIDICT2_FEATURE_ALIASES.items():
+        series = _first_present_series(source, aliases)
+        if series is not None:
+            out[target] = _safe_float_series(series, default=0.0)
+        elif target in computed_lengths and target not in out.columns:
+            out[target] = computed_lengths[target].astype(float)
+        elif target not in out.columns:
+            out[target] = 0.0
+
+    if "Correction_Length" not in out.columns:
+        out["Correction_Length"] = _safe_int_series(_edit_length_series(source), default=0).astype(float)
+
+    # Correction_Length_effective is derived during vendor sequence alignment.
+    for colname in PRIDICT2_NORMALIZER_COLUMNS:
+        if colname not in out.columns:
+            out[colname] = 0.0
+
+    for colname in ("original_base_mt_nan", "edited_base_mt_nan"):
+        if colname not in out.columns:
+            out[colname] = 0.0
+
+    return out
+
+
 def standardized_to_pridict_dataframe(
     df: pd.DataFrame,
     *,
@@ -116,7 +245,7 @@ def standardized_to_pridict_dataframe(
     for optional_col in ("averageunedited", "averageindel"):
         if optional_col in df.columns:
             out[optional_col] = _safe_float_series(_col_as_series(df, optional_col, 0.0), default=0.0)
-    return out
+    return _enrich_pridict2_features(df, out)
 
 
 def standardized_to_deepprime_dataframe(df: pd.DataFrame, *, spcas9_column: str = "spcas9_score") -> pd.DataFrame:

@@ -15,6 +15,7 @@ export function buildTrainingSplitParams(config: {
   testPct: string
   cvFolds: string
   useOriginalFold: boolean
+  originalFoldTestValue: string
   randomState: string
   batchTraining: boolean
 }): SplitExportParams {
@@ -25,6 +26,7 @@ export function buildTrainingSplitParams(config: {
     testPct: config.testPct,
     cvFolds: config.cvFolds,
     useOriginalFold: config.useOriginalFold,
+    originalFoldTestValue: config.originalFoldTestValue,
     randomState: config.randomState,
     merge: !config.batchTraining,
   })

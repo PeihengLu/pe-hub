@@ -40,6 +40,7 @@ def build_pe_db_filter_params(
         "format": model_format,
         "split_strategy": split.split_strategy,
         "use_original_fold": split.use_original_fold,
+        "original_fold_test_value": split.original_fold_test_value,
         "split_random_state": split.split_random_state,
         "merge": split.merge,
     }

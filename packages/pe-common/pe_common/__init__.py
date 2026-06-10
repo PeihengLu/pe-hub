@@ -17,7 +17,11 @@ from .devices import (
     resolve_device_id,
 )
 from .sequence_utils import align_wt_mut_sequences, remove_padding
-from .data_utils import build_test_mask_from_group_id
+from .data_utils import (
+    build_test_mask_from_group_id,
+    reassign_group_ids_by_target_location,
+    target_location_group_series,
+)
 from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
 
 # NOTE: standardized -> model-format conversion lives in the PE-DB service
@@ -44,6 +48,8 @@ __all__ = [
     "align_wt_mut_sequences",
     "remove_padding",
     "build_test_mask_from_group_id",
+    "reassign_group_ids_by_target_location",
+    "target_location_group_series",
     "SplitConfig",
     "assign_splits",
     "split_config_from_params",

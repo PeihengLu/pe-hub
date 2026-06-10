@@ -37,6 +37,9 @@ export default function BenchmarkPage() {
   const [useOriginalFold, setUseOriginalFold] = useState(
     DEFAULT_EVAL_SPLIT.use_original_fold ?? true
   )
+  const [originalFoldTestValue, setOriginalFoldTestValue] = useState(
+    String(DEFAULT_EVAL_SPLIT.original_fold_test_value ?? -1)
+  )
   const [splitRandomState, setSplitRandomState] = useState(
     String(DEFAULT_EVAL_SPLIT.split_random_state ?? 42)
   )
@@ -107,7 +110,7 @@ export default function BenchmarkPage() {
 
   useEffect(() => {
     setPreviewData(undefined)
-  }, [filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, splitRandomState, batchBenchmark])
+  }, [filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, originalFoldTestValue, splitRandomState, batchBenchmark])
 
   useEffect(() => {
     if (!selectedJobId) return undefined
@@ -165,6 +168,7 @@ export default function BenchmarkPage() {
       testPct,
       cvFolds,
       useOriginalFold,
+      originalFoldTestValue,
       randomState: splitRandomState,
       batchTraining: batchBenchmark,
     })
@@ -276,6 +280,8 @@ export default function BenchmarkPage() {
           onCvFoldsChange={setCvFolds}
           useOriginalFold={useOriginalFold}
           onUseOriginalFoldChange={setUseOriginalFold}
+          originalFoldTestValue={originalFoldTestValue}
+          onOriginalFoldTestValueChange={setOriginalFoldTestValue}
           splitRandomState={splitRandomState}
           onSplitRandomStateChange={setSplitRandomState}
           batchMode={batchBenchmark}

@@ -8,7 +8,7 @@ from typing import Any, Literal, Mapping, Optional
 import numpy as np
 import pandas as pd
 
-from .data_utils import _stable_group_sort_key
+from .data_utils import _stable_group_sort_key, target_location_group_series
 
 SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
 SplitSource = Literal["original_fold", "group_id"]
@@ -200,22 +200,40 @@ def _resolve_group_series(
     return pd.Series(df[group_col], copy=False)
 
 
-def _group_level_original_folds(
-    df: pd.DataFrame,
-    group_series: pd.Series,
-    fold_col: str,
-) -> dict[Any, set[float]]:
-    if fold_col not in df.columns:
-        return {}
+_AuthorFoldGroupKey = tuple[str, float]
+_SyntheticGroupKey = tuple[str, Any]
+_SplitGroupKey = _AuthorFoldGroupKey | _SyntheticGroupKey | Any
 
-    fold_values = pd.to_numeric(df[fold_col], errors="coerce")
-    grouped: dict[Any, set[float]] = {}
-    for group, fold in zip(group_series.tolist(), fold_values.tolist()):
-        if pd.isna(fold):
-            continue
-        bucket = grouped.setdefault(group, set())
-        bucket.add(float(fold))
-    return grouped
+
+def _resolve_split_group_series(
+    df: pd.DataFrame,
+    config: SplitConfig,
+    *,
+    composite_group_prefix: Optional[str] = None,
+) -> pd.Series:
+    """Build per-row split group keys for assignment."""
+    if config.use_original_fold and config.original_fold_col in df.columns:
+        fold_values = pd.to_numeric(df[config.original_fold_col], errors="coerce")
+        author_mask = fold_values.notna()
+        row_groups = pd.Series(index=df.index, dtype=object)
+
+        if author_mask.any():
+            for idx in df.index[author_mask]:
+                row_groups.loc[idx] = ("author_fold", float(fold_values.loc[idx]))
+
+        if (~author_mask).any():
+            target_groups = target_location_group_series(df.loc[~author_mask])
+            for idx in df.index[~author_mask]:
+                row_groups.loc[idx] = ("target_location", target_groups.loc[idx])
+
+        return row_groups
+
+    return _resolve_group_series(
+        df,
+        config.group_col,
+        composite_group_prefix,
+        config.group_scope_col,
+    )
 
 
 def _map_original_fold_to_split(
@@ -252,14 +270,16 @@ def assign_splits(
     """
     Assign ``split`` and ``split_source`` columns according to ``config``.
 
-    When ``use_original_fold=True``, groups with author fold metadata are assigned
-    first at group granularity; remaining groups receive synthetic assignments.
+    When ``use_original_fold=True``, author ``original_fold`` values drive assignment
+    and stored ``group_id`` values are ignored. Rows without author folds fall back to
+    target-location grouping (protospacer). After merging datasheets, callers should
+    reassign ``group_id`` via ``reassign_group_ids_by_target_location`` before calling
+    this function with ``use_original_fold=False``.
 
     Args:
         df: Input dataframe with ``group_col`` and optionally ``original_fold_col``.
         config: Split configuration (validated in ``SplitConfig.__post_init__``).
-        composite_group_prefix: When set (merged multi-datasheet export), synthetic
-            grouping uses ``group_id@prefix`` and CV fold labels are prefixed.
+        composite_group_prefix: Deprecated; retained for backward compatibility.
 
     Returns:
         Copy of ``df`` with ``split`` / ``split_source`` columns, plus summary metadata.
@@ -290,49 +310,33 @@ def assign_splits(
         )
 
     output = df.copy()
-    group_series = _resolve_group_series(
+    group_series = _resolve_split_group_series(
         output,
-        config.group_col,
-        composite_group_prefix,
-        config.group_scope_col,
+        config,
+        composite_group_prefix=composite_group_prefix,
     )
     unique_groups = group_series.dropna().unique().tolist()
 
     fold_prefix = config.fold_namespace_prefix
-    if config.group_scope_col and config.group_scope_col in output.columns:
-        fold_prefix = None
-    elif composite_group_prefix and fold_prefix is None:
+    if composite_group_prefix and fold_prefix is None:
         fold_prefix = composite_group_prefix
 
-    group_to_split: dict[Any, str] = {}
-    group_to_source: dict[Any, SplitSource] = {}
+    group_to_split: dict[_SplitGroupKey, str] = {}
+    group_to_source: dict[_SplitGroupKey, SplitSource] = {}
 
-    original_by_group = _group_level_original_folds(
-        output,
-        group_series,
-        config.original_fold_col,
-    )
-
-    synthetic_groups: list[Any] = []
+    synthetic_groups: list[_SplitGroupKey] = []
     for group in unique_groups:
-        fold_set = original_by_group.get(group, set())
-        if config.use_original_fold and fold_set:
-            if len(fold_set) > 1:
-                raise ValueError(
-                    f"Conflicting original_fold values for group {group!r}: {sorted(fold_set)}"
-                )
-            fold_value = next(iter(fold_set))
+        if (
+            isinstance(group, tuple)
+            and len(group) == 2
+            and group[0] == "author_fold"
+        ):
+            fold_value = float(group[1])
             group_to_split[group] = _map_original_fold_to_split(
                 fold_value,
                 strategy=config.strategy,
                 test_value=config.original_fold_test_value,
-                fold_namespace_prefix=(
-                    str(output.loc[group_series == group, config.group_scope_col].iloc[0])
-                    if config.group_scope_col
-                    and config.group_scope_col in output.columns
-                    and bool((group_series == group).any())
-                    else (fold_prefix if config.strategy == "cv" else None)
-                ),
+                fold_namespace_prefix=fold_prefix if config.strategy == "cv" else None,
             )
             group_to_source[group] = "original_fold"
         else:
@@ -362,22 +366,7 @@ def assign_splits(
                 test_pct=config.test_pct,
                 random_state=config.random_state,
             )
-            if config.group_scope_col and config.group_scope_col in output.columns:
-                scope_by_group = (
-                    output.assign(_effective_group=group_series)
-                    .groupby("_effective_group", sort=False)[config.group_scope_col]
-                    .first()
-                    .to_dict()
-                )
-                synthetic_map = {
-                    group: (
-                        _fold_label(int(label.split("_", 1)[1]), str(scope_by_group[group]))
-                        if label.startswith("fold_")
-                        else label
-                    )
-                    for group, label in synthetic_map.items()
-                }
-            elif fold_prefix:
+            if fold_prefix:
                 synthetic_map = {
                     group: (
                         _fold_label(int(label.split("_", 1)[1]), fold_prefix)

@@ -164,6 +164,7 @@ async def export_filtered_data(
     test_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
     cv_folds: Optional[int] = Query(None, ge=2),
     use_original_fold: bool = Query(False),
+    original_fold_test_value: float = Query(-1.0),
     split_random_state: int = Query(42, ge=0),
     merge: bool = Query(False),
 ):
@@ -182,6 +183,7 @@ async def export_filtered_data(
             test_pct=test_pct,
             cv_folds=cv_folds,
             use_original_fold=use_original_fold,
+            original_fold_test_value=original_fold_test_value,
             split_random_state=split_random_state,
             merge=merge,
         ),

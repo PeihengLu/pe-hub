@@ -22,10 +22,24 @@ from pe_common.splits import (
 
 
 def _sample_df() -> pd.DataFrame:
+    protospacers = [
+        "A" * 20,
+        "A" * 20,
+        "C" * 20,
+        "C" * 20,
+        "G" * 20,
+        "G" * 20,
+        "T" * 20,
+        "T" * 19 + "A",
+    ]
+    wt_sequences = [f"{'N' * 4}{protospacer}{'N' * 10}" for protospacer in protospacers]
     return pd.DataFrame(
         {
             "group_id": [0, 0, 1, 1, 2, 2, 3, 3],
             "original_fold": [0.0, 0.0, 0.0, 0.0, -1.0, -1.0, pd.NA, pd.NA],
+            "wt_sequence": wt_sequences,
+            "protospacer_location_l": [4] * 8,
+            "protospacer_location_r": [24] * 8,
             "value": list(range(8)),
         }
     )
@@ -80,6 +94,7 @@ def test_use_original_fold_assigns_test_fold():
         train_pct=0.5,
         test_pct=0.5,
         use_original_fold=True,
+        original_fold_test_value=-1.0,
         random_state=1,
     )
     out, summary = assign_splits(df, config)
@@ -110,10 +125,14 @@ def test_holdout_3_errors_when_original_fold_present():
 
 
 def test_cv_with_original_fold_maps_folds():
+    protospacers = ["A" * 20, "A" * 20, "C" * 20, "C" * 20, "G" * 20, "G" * 20]
     df = pd.DataFrame(
         {
             "group_id": [0, 0, 1, 1, 2, 2],
             "original_fold": [0.0, 0.0, 1.0, 1.0, -1.0, -1.0],
+            "wt_sequence": [f"{'N' * 4}{protospacer}{'N' * 10}" for protospacer in protospacers],
+            "protospacer_location_l": [4] * 6,
+            "protospacer_location_r": [24] * 6,
         }
     )
     config = split_config_from_params(strategy="cv", cv_folds=3, use_original_fold=True)
@@ -124,7 +143,16 @@ def test_cv_with_original_fold_maps_folds():
 
 
 def test_composite_group_prefix_applied_on_merge():
-    df = pd.DataFrame({"group_id": [0, 0, 1, 1], "original_fold": pd.NA})
+    protospacers = ["A" * 20, "A" * 20, "C" * 20, "C" * 20]
+    df = pd.DataFrame(
+        {
+            "group_id": [0, 0, 1, 1],
+            "original_fold": pd.NA,
+            "wt_sequence": [f"{'N' * 4}{protospacer}{'N' * 10}" for protospacer in protospacers],
+            "protospacer_location_l": [4] * 4,
+            "protospacer_location_r": [24] * 4,
+        }
+    )
     config = split_config_from_params(strategy="cv", cv_folds=2, random_state=3)
     out_a, _ = assign_splits(df, config, composite_group_prefix="sheet-a")
     out_b, _ = assign_splits(df, config, composite_group_prefix="sheet-b")
@@ -156,13 +184,74 @@ def test_select_evaluation_partition():
     assert test_df["value"].tolist() == [2, 3]
 
 
-def test_conflicting_original_fold_within_group_raises():
-    df = pd.DataFrame({"group_id": [0, 0], "original_fold": [0.0, 1.0]})
+def test_use_original_fold_ignores_group_id_conflicts():
+    df = pd.DataFrame(
+        {
+            "group_id": [0, 0],
+            "original_fold": [0.0, 1.0],
+            "wt_sequence": ["A" * 30, "A" * 30],
+            "protospacer_location_l": [4, 4],
+            "protospacer_location_r": [24, 24],
+        }
+    )
+    config = split_config_from_params(
+        strategy="cv",
+        cv_folds=2,
+        use_original_fold=True,
+    )
+    out, _ = assign_splits(df, config)
+    assert set(out.loc[out["original_fold"] == 0.0, "split"]) == {"fold_0"}
+    assert set(out.loc[out["original_fold"] == 1.0, "split"]) == {"fold_1"}
+    assert out["split_source"].eq("original_fold").all()
+
+
+def test_custom_original_fold_test_value_for_pridict2_style_folds():
+    df = pd.DataFrame(
+        {
+            "group_id": [0, 0, 1, 1, 2, 2],
+            "original_fold": [0.0, 0.0, 1.0, 1.0, 2.0, 2.0],
+            "wt_sequence": [f"{'N' * 4}{'A' * 20}{'N' * 10}"] * 6,
+            "protospacer_location_l": [4] * 6,
+            "protospacer_location_r": [24] * 6,
+        }
+    )
     config = split_config_from_params(
         strategy="holdout_2",
         train_pct=0.5,
         test_pct=0.5,
         use_original_fold=True,
+        original_fold_test_value=1.0,
     )
-    with pytest.raises(ValueError, match="Conflicting original_fold"):
-        assign_splits(df, config)
+    out, _ = assign_splits(df, config)
+    assert set(out.loc[out["group_id"] == 1, "split"]) == {"test"}
+    assert set(out.loc[out["group_id"] == 0, "split"]) == {"train"}
+    assert set(out.loc[out["group_id"] == 2, "split"]) == {"train"}
+
+
+def test_merged_group_ids_reassigned_by_protospacer():
+    from pe_common.data_utils import reassign_group_ids_by_target_location
+
+    shared_protospacer = "A" * 20
+    distinct_protospacer = "C" * 20
+    df = pd.DataFrame(
+        {
+            "group_id": [0, 1, 2, 3],
+            "wt_sequence": [
+                f"{'N' * 4}{shared_protospacer}{'N' * 10}",
+                f"{'N' * 4}{shared_protospacer}{'N' * 10}",
+                f"{'N' * 4}{distinct_protospacer}{'N' * 10}",
+                f"{'N' * 4}{distinct_protospacer}{'N' * 10}",
+            ],
+            "protospacer_location_l": [4, 4, 4, 4],
+            "protospacer_location_r": [24, 24, 24, 24],
+            "original_fold": pd.NA,
+        }
+    )
+    reassigned = reassign_group_ids_by_target_location(df)
+    assert reassigned["group_id"].tolist() == [0, 0, 1, 1]
+
+    config = split_config_from_params(strategy="holdout_2", train_pct=0.5, test_pct=0.5, random_state=3)
+    out, _ = assign_splits(reassigned, config)
+    assert out.loc[out["group_id"] == 0, "split"].nunique() == 1
+    assert out.loc[out["group_id"] == 1, "split"].nunique() == 1
+    assert out["split"].nunique() == 2

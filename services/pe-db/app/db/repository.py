@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..loaders import PEDataLoader
 from ..utils.json_utils import dataframe_to_json_records
+from pe_common.data_utils import reassign_group_ids_by_target_location
 from pe_common.splits import SplitConfig, assign_splits
 from .models import Dataset, Datasheet, Scaffold, Study
 from .schemas import (
@@ -30,16 +31,6 @@ from .schemas import (
 )
 
 _EDIT_TYPE_CODES: dict[str, int] = {"sub": 0, "ins": 1, "del": 2}
-_SPLIT_GROUP_SCOPE_COL = "_split_group_scope"
-
-
-def _datasheet_scope_key(descriptor: dict[str, Any]) -> str:
-    return (
-        f"{descriptor['study']}|{descriptor['dataset']}|"
-        f"{descriptor['cell_line']}|{descriptor['pe_system']}"
-    )
-
-
 def _attach_split_metadata(converted: pd.DataFrame, standardized: pd.DataFrame) -> pd.DataFrame:
     output = converted.copy()
     for column in ("split", "split_source"):
@@ -53,34 +44,9 @@ def _attach_split_metadata(converted: pd.DataFrame, standardized: pd.DataFrame) 
 def _apply_export_split(
     standardized: pd.DataFrame,
     split_config: SplitConfig,
-    *,
-    merge_groups: bool,
-    group_scope: Optional[str] = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     if split_config.strategy == "none":
         return standardized, {"strategy": "none"}
-
-    if merge_groups:
-        scoped = standardized.copy()
-        if _SPLIT_GROUP_SCOPE_COL not in scoped.columns:
-            scoped[_SPLIT_GROUP_SCOPE_COL] = group_scope or "merged"
-        merged_config = SplitConfig(
-            strategy=split_config.strategy,
-            train_pct=split_config.train_pct,
-            val_pct=split_config.val_pct,
-            test_pct=split_config.test_pct,
-            cv_folds=split_config.cv_folds,
-            use_original_fold=split_config.use_original_fold,
-            original_fold_test_value=split_config.original_fold_test_value,
-            original_fold_col=split_config.original_fold_col,
-            group_col=split_config.group_col,
-            random_state=split_config.random_state,
-            fold_namespace_prefix=split_config.fold_namespace_prefix,
-            group_scope_col=_SPLIT_GROUP_SCOPE_COL,
-        )
-        split_df, summary = assign_splits(scoped, merged_config)
-        return split_df.drop(columns=[_SPLIT_GROUP_SCOPE_COL], errors="ignore"), summary
-
     return assign_splits(standardized, split_config)
 
 
@@ -364,23 +330,19 @@ class CatalogRepository:
             pending.append((descriptor, filtered))
 
         if merge_groups and pending:
-            merged_frames: list[pd.DataFrame] = []
+            merged_frames = [filtered.copy() for _, filtered in pending]
+            merged_std = pd.concat(merged_frames, ignore_index=True)
+            merged_std = reassign_group_ids_by_target_location(merged_std)
             merged_descriptor = {
                 "study": "merged",
                 "dataset": "merged",
                 "cell_line": "merged",
                 "pe_system": "merged",
             }
-            for descriptor, filtered in pending:
-                scoped = filtered.copy()
-                scoped[_SPLIT_GROUP_SCOPE_COL] = _datasheet_scope_key(descriptor)
-                merged_frames.append(scoped)
-            merged_std = pd.concat(merged_frames, ignore_index=True)
             try:
                 split_std, split_summary = _apply_export_split(
                     merged_std,
                     split_config,
-                    merge_groups=True,
                 )
                 converted = converter.convert_from_standardized(
                     split_std,
@@ -409,7 +371,6 @@ class CatalogRepository:
                     split_std, split_summary = _apply_export_split(
                         filtered,
                         split_config,
-                        merge_groups=False,
                     )
                     converted = converter.convert_from_standardized(
                         split_std,
@@ -446,6 +407,7 @@ class CatalogRepository:
             payload["split"] = {
                 "strategy": split_config.strategy,
                 "use_original_fold": split_config.use_original_fold,
+                "original_fold_test_value": split_config.original_fold_test_value,
                 "random_state": split_config.random_state,
                 "summaries": split_summaries,
             }

@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "pe-common"))
 
 from app.utils.convert_data import (  # noqa: E402
+    PRIDICT2_NORMALIZER_COLUMNS,
     is_standardized_dataframe,
     standardized_to_deepprime_dataframe,
     standardized_to_oped_dataframe,
@@ -78,6 +79,24 @@ def test_pridict_correction_length_matches_edit_len():
     out = standardized_to_pridict_dataframe(df)
     assert PRIDICT_REQUIRED.issubset(out.columns)
     assert out["Correction_Length"].tolist() == [1, 3]
+
+
+def test_pridict_includes_vendor_normalizer_columns():
+    df = _standardized_df("edit_len")
+    out = standardized_to_pridict_dataframe(df)
+    assert "RToverhangmatches" in out.columns
+    for colname in PRIDICT2_NORMALIZER_COLUMNS:
+        assert colname in out.columns
+    assert "Correction_Length_effective" not in out.columns
+
+
+def test_pridict_passes_through_preserved_author_features():
+    df = _standardized_df("edit_len")
+    df["RToverhangmatches"] = [2.0, 5.0]
+    df["MFE_protospacer"] = [-35.5, -36.0]
+    out = standardized_to_pridict_dataframe(df)
+    assert out["RToverhangmatches"].tolist() == [2.0, 5.0]
+    assert out["MFE_protospacer"].tolist() == [-35.5, -36.0]
 
 
 def test_oped_schema_and_target_length():
