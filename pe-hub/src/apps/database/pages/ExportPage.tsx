@@ -260,7 +260,7 @@ export default function ExportPage() {
           </div>
         )}
 
-        {splitStrategy !== 'none' && splitStrategy !== 'holdout_3' && (
+        {splitStrategy !== 'none' && (
           <div className="mt-4 space-y-3">
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input

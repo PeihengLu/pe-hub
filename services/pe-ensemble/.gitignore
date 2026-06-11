@@ -7,3 +7,4 @@ jobs/**
 !jobs/README.md
 eval_jobs/**
 !eval_jobs/README.md
+checkpoints/**

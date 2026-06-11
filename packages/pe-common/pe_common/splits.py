@@ -66,11 +66,6 @@ def validate_split_config(config: SplitConfig) -> None:
                 "test": config.test_pct,
             }
         )
-        if config.use_original_fold:
-            raise ValueError(
-                "holdout_3 is incompatible with use_original_fold=True; "
-                "use holdout_2, cv, or set use_original_fold=False"
-            )
         return
 
     if strategy == "cv":
@@ -150,6 +145,101 @@ def _assign_holdout_groups(
     for group in ordered[offset:]:
         assignment[group] = "train"
     return assignment
+
+
+def _assign_train_val_groups(
+    groups: list[Any],
+    *,
+    train_pct: float,
+    val_pct: float,
+    random_state: int,
+) -> dict[Any, str]:
+    """Split groups into train and val partitions (fractions must sum to 1)."""
+    if not groups:
+        return {}
+
+    _require_fraction_sum({"train": train_pct, "val": val_pct})
+    ordered = _shuffled_groups(groups, random_state)
+    n = len(ordered)
+    n_val = max(1, int(np.ceil(n * val_pct))) if n > 1 else 1
+    n_val = min(n_val, max(1, n - 1))
+    n_train = n - n_val
+    if n_train < 1:
+        raise ValueError("Not enough groups for the requested train/val fractions")
+
+    assignment: dict[Any, str] = {}
+    for group in ordered[:n_val]:
+        assignment[group] = "val"
+    for group in ordered[n_val:]:
+        assignment[group] = "train"
+    return assignment
+
+
+def _assign_holdout_3_groups(
+    unique_groups: list[_SplitGroupKey],
+    config: SplitConfig,
+) -> tuple[dict[_SplitGroupKey, str], dict[_SplitGroupKey, SplitSource]]:
+    """
+    Three-way holdout: assign test like holdout_2, then split the remainder train/val.
+    """
+    group_to_split: dict[_SplitGroupKey, str] = {}
+    group_to_source: dict[_SplitGroupKey, SplitSource] = {}
+    train_val_pool: list[_SplitGroupKey] = []
+    synthetic_groups: list[_SplitGroupKey] = []
+
+    for group in unique_groups:
+        if (
+            config.use_original_fold
+            and isinstance(group, tuple)
+            and len(group) == 2
+            and group[0] == "author_fold"
+        ):
+            fold_value = float(group[1])
+            if np.isclose(fold_value, config.original_fold_test_value):
+                group_to_split[group] = "test"
+                group_to_source[group] = "original_fold"
+            else:
+                train_val_pool.append(group)
+        else:
+            synthetic_groups.append(group)
+
+    if synthetic_groups:
+        test_map = _assign_holdout_groups(
+            synthetic_groups,
+            train_pct=float(config.train_pct),
+            val_pct=None,
+            test_pct=float(config.test_pct),
+            random_state=config.random_state,
+        )
+        for group, label in test_map.items():
+            if label == "test":
+                group_to_split[group] = "test"
+                group_to_source[group] = "group_id"
+            else:
+                train_val_pool.append(group)
+
+    if train_val_pool:
+        train_pool_pct = float(config.train_pct)
+        val_pool_pct = float(config.val_pct)
+        pool_total = train_pool_pct + val_pool_pct
+        tv_map = _assign_train_val_groups(
+            train_val_pool,
+            train_pct=train_pool_pct / pool_total,
+            val_pct=val_pool_pct / pool_total,
+            random_state=config.random_state,
+        )
+        for group, label in tv_map.items():
+            group_to_split[group] = label
+            if (
+                isinstance(group, tuple)
+                and len(group) == 2
+                and group[0] == "author_fold"
+            ):
+                group_to_source[group] = "original_fold"
+            else:
+                group_to_source[group] = "group_id"
+
+    return group_to_split, group_to_source
 
 
 def _assign_cv_groups(
@@ -246,7 +336,7 @@ def _map_original_fold_to_split(
     if np.isclose(fold_value, test_value):
         return "test"
 
-    if strategy == "holdout_2":
+    if strategy in ("holdout_2", "holdout_3"):
         return "train"
 
     if strategy == "cv":
@@ -293,22 +383,6 @@ def assign_splits(
         empty["split_source"] = pd.Series(dtype="string")
         return empty, {"strategy": config.strategy, "by_partition": {}, "by_source": {}}
 
-    if config.strategy == "holdout_3" and config.use_original_fold:
-        raise ValueError(
-            "holdout_3 is incompatible with use_original_fold=True; "
-            "use holdout_2, cv, or set use_original_fold=False"
-        )
-
-    if (
-        config.strategy == "holdout_3"
-        and config.original_fold_col in df.columns
-        and bool(pd.to_numeric(df[config.original_fold_col], errors="coerce").notna().any())
-    ):
-        raise ValueError(
-            "holdout_3 cannot be applied when original_fold metadata is present; "
-            "use holdout_2, cv, or set use_original_fold=False"
-        )
-
     output = df.copy()
     group_series = _resolve_split_group_series(
         output,
@@ -324,63 +398,58 @@ def assign_splits(
     group_to_split: dict[_SplitGroupKey, str] = {}
     group_to_source: dict[_SplitGroupKey, SplitSource] = {}
 
-    synthetic_groups: list[_SplitGroupKey] = []
-    for group in unique_groups:
-        if (
-            isinstance(group, tuple)
-            and len(group) == 2
-            and group[0] == "author_fold"
-        ):
-            fold_value = float(group[1])
-            group_to_split[group] = _map_original_fold_to_split(
-                fold_value,
-                strategy=config.strategy,
-                test_value=config.original_fold_test_value,
-                fold_namespace_prefix=fold_prefix if config.strategy == "cv" else None,
-            )
-            group_to_source[group] = "original_fold"
-        else:
-            synthetic_groups.append(group)
+    if config.strategy == "holdout_3":
+        group_to_split, group_to_source = _assign_holdout_3_groups(unique_groups, config)
+    else:
+        synthetic_groups: list[_SplitGroupKey] = []
+        for group in unique_groups:
+            if (
+                isinstance(group, tuple)
+                and len(group) == 2
+                and group[0] == "author_fold"
+            ):
+                fold_value = float(group[1])
+                group_to_split[group] = _map_original_fold_to_split(
+                    fold_value,
+                    strategy=config.strategy,
+                    test_value=config.original_fold_test_value,
+                    fold_namespace_prefix=fold_prefix if config.strategy == "cv" else None,
+                )
+                group_to_source[group] = "original_fold"
+            else:
+                synthetic_groups.append(group)
 
-    if synthetic_groups:
-        if config.strategy == "holdout_2":
-            synthetic_map = _assign_holdout_groups(
-                synthetic_groups,
-                train_pct=float(config.train_pct),
-                val_pct=None,
-                test_pct=float(config.test_pct),
-                random_state=config.random_state,
-            )
-        elif config.strategy == "holdout_3":
-            synthetic_map = _assign_holdout_groups(
-                synthetic_groups,
-                train_pct=float(config.train_pct),
-                val_pct=float(config.val_pct),
-                test_pct=float(config.test_pct),
-                random_state=config.random_state,
-            )
-        elif config.strategy == "cv":
-            synthetic_map = _assign_cv_groups(
-                synthetic_groups,
-                cv_folds=int(config.cv_folds),
-                test_pct=config.test_pct,
-                random_state=config.random_state,
-            )
-            if fold_prefix:
-                synthetic_map = {
-                    group: (
-                        _fold_label(int(label.split("_", 1)[1]), fold_prefix)
-                        if label.startswith("fold_")
-                        else label
-                    )
-                    for group, label in synthetic_map.items()
-                }
-        else:
-            raise ValueError(f"Unsupported split strategy: {config.strategy!r}")
+        if synthetic_groups:
+            if config.strategy == "holdout_2":
+                synthetic_map = _assign_holdout_groups(
+                    synthetic_groups,
+                    train_pct=float(config.train_pct),
+                    val_pct=None,
+                    test_pct=float(config.test_pct),
+                    random_state=config.random_state,
+                )
+            elif config.strategy == "cv":
+                synthetic_map = _assign_cv_groups(
+                    synthetic_groups,
+                    cv_folds=int(config.cv_folds),
+                    test_pct=config.test_pct,
+                    random_state=config.random_state,
+                )
+                if fold_prefix:
+                    synthetic_map = {
+                        group: (
+                            _fold_label(int(label.split("_", 1)[1]), fold_prefix)
+                            if label.startswith("fold_")
+                            else label
+                        )
+                        for group, label in synthetic_map.items()
+                    }
+            else:
+                raise ValueError(f"Unsupported split strategy: {config.strategy!r}")
 
-        for group, split_label in synthetic_map.items():
-            group_to_split[group] = split_label
-            group_to_source[group] = "group_id"
+            for group, split_label in synthetic_map.items():
+                group_to_split[group] = split_label
+                group_to_source[group] = "group_id"
 
     split_values = group_series.map(group_to_split)
     source_values = group_series.map(group_to_source)

@@ -69,7 +69,9 @@ Even when the edited strand is ligated in, the resulting heteroduplex still cont
 Because MMR can copy from either strand, it may reject the edit and rebuild the original allele, again resetting the locus and permitting re-binding of the PE--pegRNA complex as long as the PAM site remains intact~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
 These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
 
-On top of the competing repair outcomes, the editing efficiency is also heavily affected by target context and pegRNA design.
+% TODO: finish this paragraph
+On top of the competing repair outcomes, the editing efficiency is also heavily affected by target context and pegRNA design. 
+
 
 These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design
 
@@ -174,15 +176,16 @@ Instead of a persistent DB object, the data are stored in their original tsv, cs
 
 \subsubsection{Data Formatting}
 
-Since only raw data directly acquired from the studies are stored in the repository, some preprocessing is required to convert the data into more uniformly usable format.
+As discussed in the last section, only raw data directly acquired from the studies are stored in the repository, some preprocessing is required to convert the data into more uniformly usable format.
 
 The first step is data exportation, where the original data was broken down into individual experiments(a 'datasheet') corresponding to one PE system operating on one cell-line with minimum processing. The original columns are respected to as much as this hierarchical design allows, pending further operations.
 
-The exported data can be used to construct the MySQL database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
+The exported data can be used to construct the SQLite database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
 
 As briefly mentioned above, a standardized format was devised as a mediator to simply conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
 
-The standardization process for most datasets are straightforward, as they provides all necessary information in either the publication or supplementary files. 
+The standardization process for most datasets are straightforward, as they provides all necessary information in either the publication or supplementary files. MinsePIE however requires some additional effort in locating the target context sequence as they did not use conventional genome reference coordinate system.
+% TODO: more on MinsePIE
 
 
 \subsubsection{Database Design}
@@ -217,11 +220,17 @@ Additionally, for easier benchmarking of new machine learning systems with exist
 
 \subsubsection{Database Usage}
 
-Docker was chosen for its exceptiIntrinsically disordered proteinsonal portability and hassle free setup. 
+A number of Python FastAPI endpoints were exposed, and can be used by PyTorch dataloaders during training and evaluation. See \autoref{app:api} for more details. A web portal was also developed for users trying to do some lightweight data exploration and exportation, and it is described in \autoref{sec:pe-hub-web-portal}.
 
-A number of Python FastAPI endpoints were exposed, the most important endpoint is GetData, can be used by PyTorch dataloaders during training and evaluation.
+\subsection{PE Ensemble}
 
-\subsection{Models}
+To showcase the usability of PE-DB, we developed another tool for easy benchmarking and training of deep learning models, as well as creating custom ensembles trying to achieve the best overall performance.
+
+Leveraging the PE-DB data conversion and exportation functionality, 
+
+PE Ensemble also exposes APIs for model evaluation and training, which are mostly used by the frontend user interface, but can also be called directly for easier retraining or finetuning.
+
+\subsubsection{Models}
 
 We are only considering models with general prime editing efficiency prediction capability, so various models in DeepPE, as well as MinsePIE, who are only designed to work on specific editing types are not included in this study. Additionally, PRIDICTv1 and PRIDICTv2 has minimal changes in term of architecture, thus only the more up to date PRIDICTv2 model is studied. This leaves us with three current state of the art deep learning models - OPED\cite{liuDesignPrimeeditingGuide2023}, DeepPrime\cite{yuPredictionEfficienciesDiverse2023} and PRIDICTv2\cite{mathisMachineLearningPrediction2024}. 
 
@@ -259,20 +268,15 @@ For a more consistent evaluation of model architectures, techniques such as tran
 PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED fine-tuning within this environment, providing a consistent optimizer and learning-rate scheduler interface without re-implementing each vendor's original training scripts.
 
 
-\subsection{PE Ensemble}
-
-PE Ensemble also exposes APIs for model evaluation and training, which are mostly used by the frontend user interface, but can also be called directly for easier retraining or finetuning.
-
-\subsubsection{Software Architecture}
+\subsection{PE Hub Web Portal}
+\label{sec:pe-hub-web-portal}
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.5\linewidth]{diagrams/illustration/pe-ensemble-software-stack.png}
-    \caption{Software Stack of PE Ensemble}
-    \label{fig:pe-ensemble-architecture}
+    \includegraphics[width=0.8\linewidth]{diagrams/illustration/pe-platform-software-stack.png}
+    \caption{Software Stack of PE Hub}
+    \label{fig:pe-hub-architecture}
 \end{figure}
-
-While PE Ensemble consumes PE DB’s API endpoints for data preprocessing, it also exposes its own set of endpoints that interface directly with the frontend built in TypeScript and React. The frontend is styled using Tailwind CSS, with Vite serving as the project’s build tool.
 
 
 \section{Result}
@@ -439,5 +443,146 @@ Diverse-library pegRNAs validated at endogenous mouse liver loci (PRIDICT2 suppl
 
 \paragraph{\nolinkurl{trip-analysis}.}
 TRIP library editing survey at endogenous genomic integrations in K562 (supplementary table 12; Fig.~3 / Ext. Fig.~4--5; PE2). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; partial standardization.
+
+\section{PE Database API and deployment}
+\label{app:api}
+
+\subsection{Service architecture}
+
+PE DB is one of three cooperating services in the repository:
+
+\begin{itemize}
+    \item \textbf{PE Database} (\nolinkurl{services/pe-db}, port~8000) --- catalog metadata in SQLite and edit records on disk; owns export, standardization, filtering, and model-format conversion.
+    \item \textbf{PE Ensemble} (\nolinkurl{services/pe-ensemble}, port~8001) --- vendored model wrappers, asynchronous training and evaluation jobs, and a proxy to PE Database's filter API.
+    \item \textbf{PE Hub} (\nolinkurl{pe-hub}, port~5173) --- React UI for catalog browsing, export, training, and evaluation.
+\end{itemize}
+
+Shared split logic and constants live in \nolinkurl{packages/pe-common}. Vendor model code is vendored under \nolinkurl{vendor/models/} as git submodules.
+
+\subsection{On-disk data layout}
+
+\begin{verbatim}
+datasets/
+  raw/           # original study files (CSV, TSV, XLSX)
+  exported/      # one CSV per datasheet (generated at startup)
+  standardized/  # shared-schema parquet (generated at startup)
+  formatted/     # cached model-format parquet (generated on demand)
+  catalog/       # pe_database.db (SQLite; metadata only)
+\end{verbatim}
+
+Edit-level rows are never stored in SQL. The catalog records file paths and experiment metadata (\nolinkurl{cell\_line}, \nolinkurl{pe\_system}, scaffold, sample counts); measurements are read with Pandas when an endpoint is called.
+
+\subsection{Initialization pipeline}
+
+\nolinkurl{initialize\_database()} runs when PE Database starts (unless artifacts already exist):
+
+\begin{enumerate}
+    \item \textbf{Seed} --- create SQL tables; insert Study, Dataset, and Scaffold rows from \nolinkurl{app/catalog/studies.py} and \nolinkurl{scaffolds.py}.
+    \item \textbf{Export} --- write \nolinkurl{datasets/exported/} from raw files; register Datasheet rows with CSV paths.
+    \item \textbf{Standardize} --- write \nolinkurl{datasets/standardized/} parquet in the shared schema.
+\end{enumerate}
+
+Administrators can re-run this pipeline with \nolinkurl{POST /api/export} or standardize a single sheet with \nolinkurl{POST /api/convert}. Environment variables \nolinkurl{PE\_DB\_FORCE\_EXPORT} and \nolinkurl{PE\_DB\_FORCE\_STANDARDIZE} force regeneration.
+
+\subsection{REST endpoints}
+
+\begin{longtable}{@{}p{0.12\textwidth}p{0.28\textwidth}p{0.52\textwidth}@{}}
+    \caption{PE Database HTTP API.} \label{tab:app-api} \\
+    \hline
+    Method & Path & Purpose \\
+    \hline
+    \endfirsthead
+    \multicolumn{3}{l}{\textit{(continued)}} \\
+    \hline
+    Method & Path & Purpose \\
+    \hline
+    \endhead
+    \hline
+    \endlastfoot
+    GET & \nolinkurl{/api/studies} & List seeded studies. \\
+    GET & \nolinkurl{/api/datasets} & List datasets; optional \nolinkurl{?study=}. \\
+    GET & \nolinkurl{/api/datasheets} & List datasheet catalog entries. \\
+    GET & \nolinkurl{/api/scaffolds} & List pegRNA scaffold definitions. \\
+    GET & \nolinkurl{/api/data} & Point lookup: standardized rows for one datasheet (\nolinkurl{study}, \nolinkurl{dataset}, \nolinkurl{cell\_line}, \nolinkurl{pe\_system}); optional \nolinkurl{limit}. Returns \nolinkurl{format=std} only. \\
+    GET & \nolinkurl{/api/filter} & Catalog browse (no \nolinkurl{format}) or model-format export with splits (with \nolinkurl{format}). \\
+    GET & \nolinkurl{/api/statistics} & Aggregate edit statistics with optional catalog filters. \\
+    POST & \nolinkurl{/api/export} & Re-run export and optional standardization. \\
+    POST & \nolinkurl{/api/convert} & Standardize one datasheet on demand. \\
+    GET & \nolinkurl{/health} & Health check and catalog path. \\
+\end{longtable}
+
+PE Ensemble exposes a compatible proxy at \nolinkurl{GET /data/filter} (same query parameters as \nolinkurl{/api/filter}) for PE Hub and training jobs.
+
+\subsection{Filtering and model-format export}
+
+\nolinkurl{GET /api/filter} operates in two modes:
+
+\paragraph{Catalog browse (\nolinkurl{format} omitted).}
+Returns matching Datasheet metadata after applying catalog-level filters. Supported multi-value query parameters include \nolinkurl{study}, \nolinkurl{dataset}, \nolinkurl{cell\_line}, \nolinkurl{pe\_system}, \nolinkurl{edit\_scope}, \nolinkurl{experimental\_method}, \nolinkurl{target\_context}, and \nolinkurl{scaffold\_name}.
+
+\paragraph{Model-format export (\nolinkurl{format} set).}
+Loads standardized parquet for each matching, standardizable datasheet, applies per-edit filters (\nolinkurl{edit\_type}, \nolinkurl{edit\_length}, \nolinkurl{edit\_efficiency\_min/max}), converts to the requested schema, and optionally assigns splits. \nolinkurl{split\_strategy} is required when \nolinkurl{format} is set:
+
+\begin{itemize}
+    \item \nolinkurl{none} --- no partition labels;
+    \item \nolinkurl{holdout\_2} --- train/test;
+    \item \nolinkurl{holdout\_3} --- train/validation/test (default 70/15/15 in PE Ensemble);
+    \item \nolinkurl{cv} --- $K$-fold cross-validation, with optional held-out test partition via \nolinkurl{original\_fold}.
+\end{itemize}
+
+Splits are \textbf{group-aware}: rows sharing a \nolinkurl{group\_id} (protospacer group) stay in the same partition. Setting \nolinkurl{merge=true} concatenates multiple datasheets and reassigns \nolinkurl{group\_id} before splitting. \nolinkurl{summary\_only=true} returns counts and split summaries without row payloads.
+
+\subsection{Output formats}
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{@{}llp{0.55\textwidth}@{}}
+        \hline
+        Format & Consumer & Key fields \\
+        \hline
+        \nolinkurl{std} & General / preview &
+        \nolinkurl{wt\_sequence}, \nolinkurl{mut\_sequence}, edit location, \nolinkurl{editing\_efficiency}, edit-type flags, \nolinkurl{group\_id}, \nolinkurl{original\_fold}. \\
+        \nolinkurl{deepprime} & DeepPrime~\cite{yuPredictionEfficienciesDiverse2023} &
+        74~bp target windows, PBS/RT lengths, thermodynamic features (\nolinkurl{Tm1}--\nolinkurl{TmD}, MFE), \nolinkurl{DeepSpCas9\_score}. \\
+        \nolinkurl{pridict} / \nolinkurl{pridict2} & PRIDICT family~\cite{schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024} &
+        Location strings, correction length, RT overhang features; PRIDICT2 adds normalized continuous inputs. \\
+        \nolinkurl{oped} & OPED~\cite{liuDesignPrimeeditingGuide2023} &
+        \nolinkurl{Target(47bp)}, \nolinkurl{PBS}, \nolinkurl{RT}, \nolinkurl{Efficiency}. \\
+        \hline
+    \end{tabular}
+    \caption{Model-format schemas produced by \nolinkurl{/api/filter}.}
+    \label{tab:app-formats}
+\end{table}
+
+Expensive conversions (notably DeepPrime thermodynamics) are cached under \nolinkurl{datasets/formatted/{format}/...} and invalidated when export or standardization is forced. Datasets with \nolinkurl{standardizable=False} are listed in the response \nolinkurl{skipped} array with a reason.
+
+\subsection{Integration with PyTorch training}
+
+PE Database does not instantiate \nolinkurl{torch.utils.data.DataLoader}. The data path for training and evaluation is:
+
+\begin{enumerate}
+    \item A client posts to PE Ensemble \nolinkurl{POST /train} or \nolinkurl{POST /evaluate} with dataset filters and split parameters.
+    \item PE Ensemble calls \nolinkurl{GET /api/filter} on PE Database with the model's native \nolinkurl{format} and \nolinkurl{split\_strategy}.
+    \item Records are assembled into a Pandas DataFrame; training excludes the test partition (\nolinkurl{exclude\_test\_partition}), evaluation selects it (\nolinkurl{select\_evaluation\_partition}).
+    \item Each model wrapper encodes rows into tensors and builds a PyTorch \nolinkurl{DataLoader} (DeepPrime and OPED via PyTorch Lightning; PRIDICT2 via the vendor \nolinkurl{prepare\_data} pipeline).
+\end{enumerate}
+
+Long-running filter requests support a \nolinkurl{progress\_token} query parameter; PE Ensemble tails the corresponding log file into the job log stream. The default HTTP read timeout is 600~s (\nolinkurl{PE\_DB\_FILTER\_TIMEOUT\_SECONDS}).
+
+\subsection{Local deployment}
+
+From the repository root:
+
+\begin{verbatim}
+./start-all.sh --install   # first run: install Python and npm dependencies
+./start-all.sh             # start all three services
+\end{verbatim}
+
+API documentation is served at \nolinkurl{http://localhost:8000/docs} (PE Database) and \nolinkurl{http://localhost:8001/docs} (PE Ensemble). Individual backends can also be started with \nolinkurl{uvicorn} after \nolinkurl{make install}; see the repository README.
+
+
+\section{PE Hub Web Portal Introduction}
+
 
 \end{document}

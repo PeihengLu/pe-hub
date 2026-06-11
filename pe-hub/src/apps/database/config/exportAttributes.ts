@@ -20,7 +20,8 @@ export const SPLIT_STRATEGIES: {
   {
     value: 'holdout_3',
     label: 'Train / val / test',
-    description: 'Group-aware three-way holdout (incompatible with original_fold).',
+    description:
+      'Group-aware three-way holdout: test rows use the same logic as Train / test, then val is carved from the remaining training pool.',
   },
   {
     value: 'cv',

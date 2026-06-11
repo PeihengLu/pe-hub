@@ -64,6 +64,31 @@ class LightningTrainerConfig:
     deterministic: bool = True
 
 
+def _normalize_log_prefix(prefix: str) -> str:
+    cleaned = prefix.strip()
+    while cleaned.endswith("|"):
+        cleaned = cleaned[:-1].strip()
+    return cleaned
+
+
+def format_epoch_metrics_row(row: Dict[str, float], *, prefix: str = "") -> str:
+    """Format one epoch of training metrics for job logs."""
+    epoch = int(row.get("epoch", -1))
+    parts: List[str] = []
+    if prefix:
+        parts.append(_normalize_log_prefix(prefix))
+    if "model_index" in row and np.isfinite(row["model_index"]):
+        parts.append(f"model {int(row['model_index'])}")
+    parts.append(f"epoch {epoch}")
+    for key in ("train_loss", "val_loss", "val_pearson", "val_spearman"):
+        if key not in row:
+            continue
+        value = float(row[key])
+        if np.isfinite(value):
+            parts.append(f"{key}={value:.6g}")
+    return " | ".join(parts)
+
+
 def fit_lightning_module(
     module: Any,
     *,
@@ -71,6 +96,7 @@ def fit_lightning_module(
     val_loader: DataLoader,
     device: torch.device,
     config: LightningTrainerConfig,
+    on_epoch_end: Optional[Callable[[Dict[str, float]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Fit a LightningModule and return shared training diagnostics.
@@ -80,8 +106,9 @@ def fit_lightning_module(
     ensure_lightning_available()
 
     class _LightningHistoryCallback(Callback):
-        def __init__(self) -> None:
+        def __init__(self, epoch_callback: Optional[Callable[[Dict[str, float]], None]]) -> None:
             super().__init__()
+            self._epoch_callback = epoch_callback
             self.history: List[Dict[str, float]] = []
             self.best_val_loss: float = float("inf")
             self.best_epoch: int = -1
@@ -110,6 +137,8 @@ def fit_lightning_module(
                 if key in metrics:
                     row[key] = self._as_float(metrics, key)
             self.history.append(row)
+            if self._epoch_callback is not None:
+                self._epoch_callback(dict(row))
 
             if np.isfinite(val_loss) and val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
@@ -119,7 +148,7 @@ def fit_lightning_module(
                     for key, tensor in pl_module.model.state_dict().items()
                 }
 
-    history_callback = _LightningHistoryCallback()
+    history_callback = _LightningHistoryCallback(on_epoch_end)
     callbacks: List[Any] = [history_callback]
     if config.patience is not None and config.patience > 0:
         callbacks.append(
@@ -259,6 +288,39 @@ def pearson_spearman(y_true: Sequence[float], y_pred: Sequence[float]) -> Dict[s
     return {"pearson": pearson, "spearman": spearman}
 
 
+def regression_metrics(
+    y_true: Sequence[float],
+    y_pred: Sequence[float],
+    *,
+    prefix: str = "",
+) -> Dict[str, float]:
+    """Standard regression metrics after dropping NaN pairs."""
+    y_true_arr = np.asarray(y_true, dtype=float)
+    y_pred_arr = np.asarray(y_pred, dtype=float)
+    if y_true_arr.shape != y_pred_arr.shape:
+        raise ValueError("y_true and y_pred must have the same length")
+    mask = ~(np.isnan(y_true_arr) | np.isnan(y_pred_arr))
+    y_true_clean = y_true_arr[mask]
+    y_pred_clean = y_pred_arr[mask]
+    n = int(y_true_clean.size)
+    nan = float("nan")
+    if n < 2:
+        base = {"pearson": nan, "spearman": nan, "mse": nan, "mae": nan, "n_samples": n}
+    else:
+        corr = pearson_spearman(y_true_clean.tolist(), y_pred_clean.tolist())
+        diff = y_true_clean - y_pred_clean
+        base = {
+            "pearson": corr["pearson"],
+            "spearman": corr["spearman"],
+            "mse": float(np.mean(diff**2)),
+            "mae": float(np.mean(np.abs(diff))),
+            "n_samples": n,
+        }
+    if not prefix:
+        return base
+    return {f"{prefix}_{key}": value for key, value in base.items() if key != "n_samples"}
+
+
 def run_supervised_training_loop(
     model: torch.nn.Module,
     *,
@@ -267,6 +329,7 @@ def run_supervised_training_loop(
     validate_epoch_fn: Callable[[int], Dict[str, float]],
     scheduler: Optional[Any] = None,
     early_stopping: Optional[EarlyStopping] = None,
+    on_epoch_end: Optional[Callable[[Dict[str, float]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Run a model training loop with reusable control flow.
@@ -286,6 +349,8 @@ def run_supervised_training_loop(
         for key, value in val_info.items():
             row[key] = float(value)
         history.append(row)
+        if on_epoch_end is not None:
+            on_epoch_end(dict(row))
 
         is_best = val_loss < best_val_loss
         if early_stopping is not None:

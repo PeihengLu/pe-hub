@@ -150,7 +150,11 @@ UVICORN_ARGS=(
     --timeout-graceful-shutdown 5
 )
 if [[ "${RELOAD}" == true ]]; then
-    UVICORN_ARGS+=(--reload)
+    UVICORN_ARGS+=(
+        --reload
+        --reload-dir "${SERVICE_DIR}/app"
+        --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
+    )
 fi
 
 echo "======================================"

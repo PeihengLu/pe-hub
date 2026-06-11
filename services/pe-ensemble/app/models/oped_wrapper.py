@@ -544,6 +544,12 @@ class OPEDModelWrapper(BasePEModel):
     ) -> Tuple[torch.nn.Module, Dict[str, Any]]:
         batch_size = int(hparams.get("batch_size", 128))
         num_epochs = int(hparams.get("epoch_num", hparams.get("epochs", 100)))
+        if progress_log is not None:
+            label = f"{run_label} " if run_label else ""
+            progress_log(
+                f"{label}training {len(train_df)} train / {len(val_df)} val rows "
+                f"(batch_size={batch_size}, max_epochs={num_epochs})"
+            )
         grad_clip = float(hparams.get("grad_clip", 1.0))
         early_stopping_patience = int(hparams.get("early_stopping_patience", 10))
         early_stopping_delta = float(hparams.get("early_stopping_min_delta", 0.0))

@@ -59,19 +59,6 @@ def test_holdout_2_rejects_cv_folds():
         )
 
 
-def test_holdout_3_rejects_use_original_fold():
-    with pytest.raises(ValueError, match="incompatible"):
-        validate_split_config(
-            SplitConfig(
-                strategy="holdout_3",
-                train_pct=0.7,
-                val_pct=0.15,
-                test_pct=0.15,
-                use_original_fold=True,
-            )
-        )
-
-
 def test_cv_rejects_train_and_val_pct():
     with pytest.raises(ValueError, match="only test_pct"):
         validate_split_config(
@@ -111,17 +98,44 @@ def test_use_original_fold_assigns_test_fold():
     assert summary["by_source"]["group_id"] == 2
 
 
-def test_holdout_3_errors_when_original_fold_present():
+def test_holdout_3_without_original_fold_splits_test_then_train_val():
     df = _sample_df()
     config = split_config_from_params(
         strategy="holdout_3",
         train_pct=0.7,
         val_pct=0.15,
         test_pct=0.15,
+        use_original_fold=False,
         random_state=1,
     )
-    with pytest.raises(ValueError, match="original_fold metadata is present"):
-        assign_splits(df, config)
+    out, summary = assign_splits(df, config)
+    assert set(out["split"]) == {"train", "val", "test"}
+    assert out["split_source"].eq("group_id").all()
+    assert summary["by_source"]["group_id"] == len(df)
+    train, val = resolve_train_val_from_splits(out)
+    assert len(train) > 0
+    assert len(val) > 0
+
+
+def test_holdout_3_with_original_fold_uses_holdout_2_test_then_splits_train_val():
+    df = _sample_df()
+    config = split_config_from_params(
+        strategy="holdout_3",
+        train_pct=0.7,
+        val_pct=0.15,
+        test_pct=0.15,
+        use_original_fold=True,
+        original_fold_test_value=-1.0,
+        random_state=1,
+    )
+    out, summary = assign_splits(df, config)
+    assert out.loc[out["group_id"] == 2, "split"].eq("test").all()
+    assert out.loc[out["group_id"] == 2, "split_source"].eq("original_fold").all()
+    assert set(out["split"]) == {"train", "val", "test"}
+    assert summary["by_source"]["original_fold"] == 6
+    train, val = resolve_train_val_from_splits(out)
+    assert len(train) > 0
+    assert len(val) > 0
 
 
 def test_cv_with_original_fold_maps_folds():

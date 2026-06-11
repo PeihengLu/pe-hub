@@ -36,7 +36,7 @@ const MODE_COPY: Record<
     intro:
       'Select PE Database records using the same attribute filters as Export. Output format is fixed by the model you train.',
     splitDescription:
-      'Splits are group-aware on group_id. For a single merged training run, datasheets are merged server-side before splitting.',
+      'Splits are group-aware on group_id. For a single merged training run, datasheets are merged server-side before splitting. With "Use author original_fold", test rows follow the same rule as Train / test (DeepPrime -1; PRIDICT2 0–4 to match run_N weights); remaining rows are split into train and val.',
     singleLabel: 'Single merged training run',
     batchLabel: 'Batch training (one job per datasheet)',
     singleHelp:

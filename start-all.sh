@@ -270,7 +270,11 @@ start_pe_db() {
         --timeout-graceful-shutdown 5
     )
     if [[ "${RELOAD}" == true ]]; then
-        uvicorn_args+=(--reload)
+        uvicorn_args+=(
+            --reload
+            --reload-dir "${PE_DB_DIR}/app"
+            --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
+        )
     fi
 
     (
@@ -288,7 +292,11 @@ start_pe_ensemble() {
         --timeout-graceful-shutdown 5
     )
     if [[ "${RELOAD}" == true ]]; then
-        uvicorn_args+=(--reload)
+        uvicorn_args+=(
+            --reload
+            --reload-dir "${PE_ENSEMBLE_DIR}/app"
+            --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
+        )
     fi
 
     (

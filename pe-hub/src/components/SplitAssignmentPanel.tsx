@@ -154,7 +154,7 @@ export default function SplitAssignmentPanel({
         </div>
       )}
 
-      {splitStrategy !== 'none' && splitStrategy !== 'holdout_3' && (
+      {splitStrategy !== 'none' && (
         <div className="space-y-3">
           <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
             <input
@@ -177,7 +177,7 @@ export default function SplitAssignmentPanel({
               <span className="mt-1 block text-xs text-slate-500">
                 Rows with this original_fold value become the test partition. Use -1 for
                 DeepPrime-style held-out test; use 0–4 for PRIDICT2 CV test folds (match run_N
-                weights).
+                weights). For Train / val / test, non-test rows are then split into train and val.
               </span>
             </label>
           )}

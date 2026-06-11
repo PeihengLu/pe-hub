@@ -138,7 +138,9 @@ def execute_training(
                 **(request.model_kwargs or {}),
             )
             if model_name == "oped":
+                _progress_log(f"Tokenizing {len(train_df)} OPED sequences for training...")
                 train_df = model.prepare_data(train_df)
+                _progress_log(f"Encoded {len(train_df)} rows; starting training loop")
 
             hyperparameters = _merge_hyperparameters(request, device)
             hyperparameters[JOB_PROGRESS_LOG_KEY] = _progress_log
