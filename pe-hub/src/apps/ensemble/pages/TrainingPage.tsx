@@ -425,7 +425,9 @@ export default function TrainingPage() {
                 className="bg-slate-900 text-slate-100 p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"
               >
                 {logText ||
-                  (jobStatus?.status === 'queued' || jobStatus?.status === 'running'
+                  (jobStatus?.status === 'queued' ||
+                  jobStatus?.status === 'running' ||
+                  jobStatus?.status === 'stopping'
                     ? 'Waiting for log output...'
                     : 'No log output yet.')}
               </pre>

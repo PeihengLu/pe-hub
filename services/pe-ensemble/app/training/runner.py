@@ -15,6 +15,7 @@ from .config import MODEL_FORMAT, SUPPORTED_MODELS
 from .data import fetch_training_dataframe, normalize_filter_param
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
+from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, tee_stream_to_log
 from .schemas import TrainingRequest
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,10 @@ def execute_training(
         if job_id and is_cancel_requested("train", job_id):
             raise JobCancelledError(f"Training job {job_id} cancelled")
 
+    def _progress_log(message: str) -> None:
+        _raise_if_cancelled()
+        _log(message)
+
     context = job_log_context(job_id) if job_id else _null_context()
     with context:
         if job_id:
@@ -115,7 +120,7 @@ def execute_training(
             train_df = fetch_training_dataframe(
                 request,
                 MODEL_FORMAT[model_name],
-                progress_log=_log,
+                progress_log=_progress_log,
             )
             if train_df.empty:
                 raise TrainingError("No training data resolved.")
@@ -136,8 +141,17 @@ def execute_training(
                 train_df = model.prepare_data(train_df)
 
             hyperparameters = _merge_hyperparameters(request, device)
+            hyperparameters[JOB_PROGRESS_LOG_KEY] = _progress_log
+            hyperparameters[JOB_CANCEL_CHECK_KEY] = _raise_if_cancelled
             _raise_if_cancelled()
-            result = model.train(train_df, hyperparameters=hyperparameters)
+            if model_name == "pridict2":
+                with tee_stream_to_log(
+                    _progress_log if job_id else None,
+                    cancel_check=_raise_if_cancelled if job_id else None,
+                ):
+                    result = model.train(train_df, hyperparameters=hyperparameters)
+            else:
+                result = model.train(train_df, hyperparameters=hyperparameters)
             metadata = _training_metadata_from_request(
                 request,
                 n_rows=int(len(train_df)),

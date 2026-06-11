@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..compute.job_cancel import JobCancelledError
 from .config import eval_jobs_root
 from .schemas import EvaluationJobSummary, EvaluationRequest
 
@@ -100,7 +101,14 @@ def update_job(job_id: str, **fields: Any) -> Dict[str, Any]:
 
 
 def mark_running(job_id: str) -> Dict[str, Any]:
+    manifest = get_job(job_id)
+    if manifest.get("status") == "stopping":
+        raise JobCancelledError(f"Evaluation job {job_id} stop requested")
     return update_job(job_id, status="running", started_at=_utc_now_iso())
+
+
+def mark_stopping(job_id: str, *, reason: str = "Stop requested") -> Dict[str, Any]:
+    return update_job(job_id, status="stopping", error=reason)
 
 
 def mark_succeeded(job_id: str, result: Dict[str, Any]) -> Dict[str, Any]:

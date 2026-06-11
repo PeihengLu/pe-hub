@@ -62,6 +62,10 @@ def execute_evaluation(
         if job_id and is_cancel_requested("evaluate", job_id):
             raise JobCancelledError(f"Evaluation job {job_id} cancelled")
 
+    def _progress_log(message: str) -> None:
+        _raise_if_cancelled()
+        _log(message)
+
     context = job_log_context(job_id) if job_id else _null_context()
     with context:
         if job_id:
@@ -90,7 +94,7 @@ def execute_evaluation(
                 target_context=request.target_context,
                 scaffold_name=request.scaffold_name,
                 evaluation=True,
-                progress_log=_log,
+                progress_log=_progress_log,
             )
             test_df = fetch.df
             if test_df.empty:

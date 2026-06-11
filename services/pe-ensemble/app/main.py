@@ -25,7 +25,7 @@ from .training.data import (
     request_pe_db_filtered,
 )
 from .compute.device_scheduler import get_scheduler
-from .compute.job_lifecycle import kill_and_remove_job
+from .compute.job_lifecycle import begin_job_kill, finalize_job_kill
 from .evaluation.jobs import (
     create_job as create_eval_job,
     delete_job as delete_eval_job,
@@ -386,7 +386,7 @@ async def get_training_status(job_id: str):
     return summary
 
 
-@app.delete("/train/jobs/{job_id}")
+@app.delete("/train/jobs/{job_id}", status_code=202)
 async def delete_training_job(job_id: str):
     """Stop a queued or running training job and remove its on-disk artifacts."""
     try:
@@ -394,13 +394,21 @@ async def delete_training_job(job_id: str):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    kill_and_remove_job(
-        "train",
-        job_id,
-        get_job=get_job,
-        delete_job=delete_train_job,
+    manifest = begin_job_kill("train", job_id, get_job=get_job)
+    asyncio.create_task(
+        asyncio.to_thread(
+            finalize_job_kill,
+            "train",
+            job_id,
+            get_job=get_job,
+            delete_job=delete_train_job,
+        )
     )
-    return {"job_id": job_id, "deleted": True}
+    return {
+        "job_id": job_id,
+        "accepted": True,
+        "status": manifest.get("status") if manifest else "deleted",
+    }
 
 
 @app.get("/train/logs/{job_id}")
@@ -478,7 +486,7 @@ async def get_evaluation_status(job_id: str):
     return summary
 
 
-@app.delete("/evaluate/jobs/{job_id}")
+@app.delete("/evaluate/jobs/{job_id}", status_code=202)
 async def delete_evaluation_job(job_id: str):
     """Stop a queued or running evaluation job and remove its on-disk artifacts."""
     try:
@@ -486,13 +494,21 @@ async def delete_evaluation_job(job_id: str):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    kill_and_remove_job(
-        "evaluate",
-        job_id,
-        get_job=get_eval_job,
-        delete_job=delete_eval_job,
+    manifest = begin_job_kill("evaluate", job_id, get_job=get_eval_job)
+    asyncio.create_task(
+        asyncio.to_thread(
+            finalize_job_kill,
+            "evaluate",
+            job_id,
+            get_job=get_eval_job,
+            delete_job=delete_eval_job,
+        )
     )
-    return {"job_id": job_id, "deleted": True}
+    return {
+        "job_id": job_id,
+        "accepted": True,
+        "status": manifest.get("status") if manifest else "deleted",
+    }
 
 
 @app.get("/evaluate/logs/{job_id}")

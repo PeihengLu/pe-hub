@@ -83,7 +83,20 @@ export interface PredictionResponse {
   message?: string
 }
 
-export type TrainingJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped'
+export type TrainingJobStatus =
+  | 'queued'
+  | 'running'
+  | 'stopping'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped'
+
+export interface JobDeleteAcceptedResponse {
+  job_id: string
+  accepted: boolean
+  status: TrainingJobStatus | 'deleted'
+}
 
 export interface TrainingRequest {
   model_name: string
@@ -272,7 +285,9 @@ export const api = {
   listTrainingJobs: (limit = 20) =>
     apiClient.get<TrainingJobsListResponse>('/train/jobs', { params: { limit } }),
   deleteTrainingJob: (jobId: string) =>
-    apiClient.delete<{ job_id: string; deleted: boolean }>(`/train/jobs/${jobId}`),
+    apiClient.delete<JobDeleteAcceptedResponse>(`/train/jobs/${jobId}`, {
+      validateStatus: (status) => status === 202,
+    }),
   benchmark: (request: EvaluationRequest) =>
     apiClient.post<BenchmarkJobCreatedResponse>('/evaluate', request),
   getBenchmarkStatus: (jobId: string) =>
@@ -282,7 +297,9 @@ export const api = {
   listBenchmarkJobs: (limit = 20) =>
     apiClient.get<BenchmarkJobsListResponse>('/evaluate/jobs', { params: { limit } }),
   deleteBenchmarkJob: (jobId: string) =>
-    apiClient.delete<{ job_id: string; deleted: boolean }>(`/evaluate/jobs/${jobId}`),
+    apiClient.delete<JobDeleteAcceptedResponse>(`/evaluate/jobs/${jobId}`, {
+      validateStatus: (status) => status === 202,
+    }),
   exportFiltered: (
     format: ExportFormat,
     filters: ExportFilterParams = {},

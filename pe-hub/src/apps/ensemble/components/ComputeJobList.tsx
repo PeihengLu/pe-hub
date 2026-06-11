@@ -38,7 +38,12 @@ interface PendingKill {
 
 function statusLabel(status: string, queuePosition?: number | null) {
   if (status === 'queued' && queuePosition) return `queued (#${queuePosition})`
+  if (status === 'stopping') return 'stopping…'
   return status
+}
+
+function isJobSelectable(job: ComputeJobListItem): boolean {
+  return job.status !== 'stopping'
 }
 
 function buildKillLabel(jobs: ComputeJobListItem[], getJobTitle: (job: ComputeJobListItem) => string): string {
@@ -69,17 +74,24 @@ export default function ComputeJobList({
   const [pendingKill, setPendingKill] = useState<PendingKill | null>(null)
   const [killingJobIds, setKillingJobIds] = useState<Set<string>>(() => new Set())
   const sortedJobs = useMemo(() => sortJobsByCreatedAt(jobs ?? []), [jobs])
+  const selectableJobs = useMemo(() => sortedJobs.filter(isJobSelectable), [sortedJobs])
   const visibleJobIds = useMemo(() => new Set(sortedJobs.map((job) => job.job_id)), [sortedJobs])
 
   useEffect(() => {
     setSelectedJobIds((current) => {
-      const next = new Set([...current].filter((jobId) => visibleJobIds.has(jobId)))
+      const next = new Set(
+        [...current].filter((jobId) => {
+          const job = sortedJobs.find((entry) => entry.job_id === jobId)
+          return job !== undefined && visibleJobIds.has(jobId) && isJobSelectable(job)
+        })
+      )
       return next.size === current.size ? current : next
     })
-  }, [visibleJobIds])
+  }, [visibleJobIds, sortedJobs])
 
   const selectedCount = selectedJobIds.size
-  const allSelected = sortedJobs.length > 0 && selectedCount === sortedJobs.length
+  const allSelected =
+    selectableJobs.length > 0 && selectableJobs.every((job) => selectedJobIds.has(job.job_id))
   const isKilling = killingJobIds.size > 0
 
   const jobLabelFor = (job: ComputeJobListItem) => formatJobListTitle(getJobTitle(job), job.created_at)
@@ -101,7 +113,7 @@ export default function ComputeJobList({
       setSelectedJobIds(new Set())
       return
     }
-    setSelectedJobIds(new Set(sortedJobs.map((job) => job.job_id)))
+    setSelectedJobIds(new Set(selectableJobs.map((job) => job.job_id)))
   }
 
   const executeKill = async (jobIds: string[]) => {
@@ -112,8 +124,8 @@ export default function ComputeJobList({
     setKillingJobIds(new Set(jobIds))
     const failures: string[] = []
 
-    for (const jobId of jobIds) {
-      try {
+    const results = await Promise.allSettled(
+      jobIds.map(async (jobId) => {
         await killJob(jobId)
         onJobKilled(jobId)
         setSelectedJobIds((current) => {
@@ -124,7 +136,12 @@ export default function ComputeJobList({
           next.delete(jobId)
           return next
         })
-      } catch (err: unknown) {
+      })
+    )
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        const err = result.reason
         const message =
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
           (err as Error)?.message ||
@@ -139,8 +156,6 @@ export default function ComputeJobList({
           ? failures[0]
           : `Failed to delete ${failures.length} jobs. ${failures[0]}`
       )
-    } else {
-      setPendingKill(null)
     }
 
     setKillingJobIds(new Set())
@@ -225,17 +240,22 @@ export default function ComputeJobList({
                 const jobLabel = jobLabelFor(job)
                 const isRowSelected = selectedJobIds.has(job.job_id)
                 const isRowKilling = killingJobIds.has(job.job_id)
+                const isRowSelectable = isJobSelectable(job)
 
                 return (
                   <li key={job.job_id} className="flex items-stretch">
-                    <label className="flex items-center px-3 cursor-pointer">
+                    <label
+                      className={`flex items-center px-3 ${
+                        isRowSelectable ? 'cursor-pointer' : 'cursor-not-allowed'
+                      }`}
+                    >
                       <input
                         type="checkbox"
                         checked={isRowSelected}
                         onChange={() => toggleJobSelected(job.job_id)}
-                        disabled={isKilling}
+                        disabled={isKilling || !isRowSelectable}
                         aria-label={`Select ${jobLabel}`}
-                        className="rounded border-slate-300"
+                        className="rounded border-slate-300 disabled:opacity-40"
                       />
                     </label>
                     <button
@@ -257,7 +277,7 @@ export default function ComputeJobList({
                       type="button"
                       title="Kill and delete job"
                       aria-label={`Kill and delete ${jobLabel}`}
-                      disabled={isRowKilling}
+                      disabled={isRowKilling || !isRowSelectable}
                       onClick={(event) => {
                         event.stopPropagation()
                         requestKillJob(job)
@@ -278,18 +298,15 @@ export default function ComputeJobList({
         open={pendingKill !== null}
         jobLabel={pendingKill?.label ?? ''}
         jobCount={pendingKill?.jobIds.length ?? 1}
-        isLoading={isKilling}
-        onCancel={() => {
-          if (!isKilling) {
-            setPendingKill(null)
-          }
-        }}
+        onCancel={() => setPendingKill(null)}
         onConfirm={(neverShowAgain) => {
           if (neverShowAgain) {
             persistSkipKillJobConfirm(true)
           }
-          if (pendingKill) {
-            void executeKill(pendingKill.jobIds)
+          const jobIds = pendingKill?.jobIds ?? []
+          setPendingKill(null)
+          if (jobIds.length > 0) {
+            void executeKill(jobIds)
           }
         }}
       />

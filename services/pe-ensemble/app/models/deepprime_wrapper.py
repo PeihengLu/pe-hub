@@ -28,6 +28,8 @@ from pe_common.training import (
 )
 from pe_common.splits import resolve_train_val_from_splits
 
+from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
+
 
 class _DeepPrimeTensorDataset(Dataset):
     def __init__(self, g: torch.Tensor, x: torch.Tensor, y: np.ndarray) -> None:
@@ -324,7 +326,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         training pipeline). Inputs must already be in DeepPrime's native feature
         schema (fetch model-format data from PE-DB: /api/filter?...&format=deepprime).
         """
-        hyperparameters = hyperparameters or {}
+        hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         epochs = int(hyperparameters.get("epochs", 5))
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
@@ -396,6 +398,17 @@ class DeepPrimeModelWrapper(BasePEModel):
                     enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
                     log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
                 ),
+                on_epoch_end=make_epoch_logger(
+                    progress_log,
+                    prefix=f"model {model_idx} |",
+                    cancel_check=cancel_check,
+                ),
+            )
+            log_training_best(
+                progress_log,
+                best_epoch=int(metrics["best_epoch"]),
+                best_val_loss=float(metrics["best_val_loss"]),
+                prefix=f"model {model_idx} |",
             )
             for row in cast(List[Dict[str, float]], metrics["history"]):
                 history.append({"model_index": float(model_idx), **row})

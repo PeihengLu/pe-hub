@@ -26,7 +26,6 @@ interface KillJobConfirmDialogProps {
   open: boolean
   jobLabel: string
   jobCount?: number
-  isLoading?: boolean
   onConfirm: (neverShowAgain: boolean) => void
   onCancel: () => void
 }
@@ -35,7 +34,6 @@ export default function KillJobConfirmDialog({
   open,
   jobLabel,
   jobCount = 1,
-  isLoading = false,
   onConfirm,
   onCancel,
 }: KillJobConfirmDialogProps) {
@@ -58,7 +56,7 @@ export default function KillJobConfirmDialog({
         type="button"
         aria-label="Close dialog"
         className="absolute inset-0 bg-slate-900/50"
-        onClick={isLoading ? undefined : onCancel}
+        onClick={onCancel}
       />
       <div
         role="dialog"
@@ -95,7 +93,6 @@ export default function KillJobConfirmDialog({
             type="checkbox"
             checked={neverShowAgain}
             onChange={(e) => setNeverShowAgain(e.target.checked)}
-            disabled={isLoading}
           />
           Don&apos;t show this again
         </label>
@@ -103,18 +100,16 @@ export default function KillJobConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            disabled={isLoading}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={() => onConfirm(neverShowAgain)}
-            disabled={isLoading}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-slate-400"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
           >
-            {isLoading ? 'Deleting…' : isBulk ? `Kill & delete ${jobCount}` : 'Kill & delete'}
+            {isBulk ? `Kill & delete ${jobCount}` : 'Kill & delete'}
           </button>
         </div>
       </div>

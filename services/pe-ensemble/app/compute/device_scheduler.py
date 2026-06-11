@@ -20,12 +20,14 @@ from .job_cancel import (
 from ..evaluation.jobs import get_job as get_eval_job
 from ..evaluation.jobs import mark_cancelled as mark_eval_cancelled
 from ..evaluation.jobs import mark_failed as mark_eval_failed
+from ..evaluation.jobs import mark_stopping as mark_eval_stopping
 from ..evaluation.jobs import update_job as update_eval_job
 from ..evaluation.runner import execute_evaluation
 from ..evaluation.schemas import EvaluationRequest
 from ..training.jobs import get_job as get_train_job
 from ..training.jobs import mark_cancelled as mark_train_cancelled
 from ..training.jobs import mark_failed as mark_train_failed
+from ..training.jobs import mark_stopping as mark_train_stopping
 from ..training.jobs import update_job as update_train_job
 from ..training.runner import execute_training
 from ..training.schemas import TrainingRequest
@@ -105,13 +107,27 @@ class ComputeDeviceScheduler:
 
             if queued in self._job_device:
                 request_cancel(kind, job_id)
+                self._mark_stopping_if_active(kind, job_id)
                 return True
 
             for running in self._running_on_device.values():
                 if running == queued:
                     request_cancel(kind, job_id)
+                    self._mark_stopping_if_active(kind, job_id)
                     return True
         return False
+
+    def _mark_stopping_if_active(self, kind: JobKind, job_id: str) -> None:
+        try:
+            manifest = self._get_job_manifest(kind, job_id)
+        except FileNotFoundError:
+            return
+        if manifest.get("status") not in ("queued", "running", "stopping"):
+            return
+        if kind == "train":
+            mark_train_stopping(job_id)
+        else:
+            mark_eval_stopping(job_id)
 
     def device_snapshot(self) -> List[Dict[str, object]]:
         with self._lock:

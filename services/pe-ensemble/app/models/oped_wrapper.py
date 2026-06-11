@@ -31,6 +31,8 @@ from pe_common.splits import (
     resolve_train_val_from_splits,
 )
 
+from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
+
 # Ensure that the OPED model code directory is in sys.path
 _vendor_root = resolve_vendor_models_path()
 if str(_vendor_root) not in sys.path:
@@ -535,6 +537,10 @@ class OPEDModelWrapper(BasePEModel):
         train_df: pd.DataFrame,
         val_df: pd.DataFrame,
         hparams: Dict[str, Any],
+        *,
+        progress_log: Optional[Any] = None,
+        cancel_check: Optional[Any] = None,
+        run_label: str = "",
     ) -> Tuple[torch.nn.Module, Dict[str, Any]]:
         batch_size = int(hparams.get("batch_size", 128))
         num_epochs = int(hparams.get("epoch_num", hparams.get("epochs", 100)))
@@ -567,6 +573,17 @@ class OPEDModelWrapper(BasePEModel):
                 enable_progress_bar=bool(hparams.get("progress_bar", False)),
                 log_every_n_steps=int(hparams.get("log_every_n_steps", 25)),
             ),
+            on_epoch_end=make_epoch_logger(
+                progress_log,
+                prefix=run_label,
+                cancel_check=cancel_check,
+            ),
+        )
+        log_training_best(
+            progress_log,
+            best_epoch=int(metrics["best_epoch"]),
+            best_val_loss=float(metrics["best_val_loss"]),
+            prefix=run_label,
         )
         model = lightning_module.model
         return model, {
@@ -617,6 +634,7 @@ class OPEDModelWrapper(BasePEModel):
             "scheduler": "step",
             "scheduler_kwargs": {"step_size": 10, "gamma": 0.95},
         }
+        hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         if hyperparameters:
             default_params.update(hyperparameters)
 
@@ -637,6 +655,8 @@ class OPEDModelWrapper(BasePEModel):
             for fold_idx, (fold_label, fold_train, fold_val) in enumerate(
                 iter_assigned_cv_folds(source_df)
             ):
+                if cancel_check is not None:
+                    cancel_check()
                 fold_model = self._build_model_from_hparams(default_params).to(self.device)
                 apply_freezing_if_needed(fold_model)
                 fold_model, fold_metrics = self._run_training_loop(
@@ -644,6 +664,9 @@ class OPEDModelWrapper(BasePEModel):
                     fold_train,
                     fold_val,
                     default_params,
+                    progress_log=progress_log,
+                    cancel_check=cancel_check,
+                    run_label=f"{fold_label} |",
                 )
                 fold_pred = self._predict_encoded_df(
                     fold_model,
@@ -669,7 +692,15 @@ class OPEDModelWrapper(BasePEModel):
 
         model = self._build_model_from_hparams(default_params).to(self.device)
         apply_freezing_if_needed(model)
-        model, train_metrics = self._run_training_loop(model, final_train, final_val, default_params)
+        model, train_metrics = self._run_training_loop(
+            model,
+            final_train,
+            final_val,
+            default_params,
+            progress_log=progress_log,
+            cancel_check=cancel_check,
+            run_label="final |",
+        )
         val_pred = self._predict_encoded_df(
             model,
             final_val.drop(columns=["Efficiency"]),

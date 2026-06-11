@@ -568,7 +568,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Returns:
             Dictionary with training results
         """
-        hyperparameters = hyperparameters or {}
+        from ..training.progress_log import take_job_training_callbacks
+
+        hyperparameters, _progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         trainer_backend = str(
             hyperparameters.get("trainer_backend", "pytorch-lightning")
         ).strip().lower()
@@ -588,6 +590,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
             for fold_idx, (fold_label, fold_train_native, fold_val_native) in enumerate(
                 iter_assigned_cv_folds(train_data)
             ):
+                if cancel_check is not None:
+                    cancel_check()
                 fold_train_df = self._to_pridict_dataframe(fold_train_native)
                 fold_val_df = self._to_pridict_dataframe(fold_val_native)
                 report = self._run_train_val_once(
@@ -601,6 +605,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
                 )
                 fold_reports.append({"fold": fold_idx, "fold_label": fold_label, **report})
 
+        if cancel_check is not None:
+            cancel_check()
         run_report = self._run_train_val_once(
             train_df=train_df,
             val_df=val_df,

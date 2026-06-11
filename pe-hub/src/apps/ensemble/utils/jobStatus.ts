@@ -1,4 +1,4 @@
-export const ACTIVE_JOB_STATUSES = new Set(['queued', 'running'])
+export const ACTIVE_JOB_STATUSES = new Set(['queued', 'running', 'stopping'])
 export const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'skipped'])
 
 export function jobStatusRefetchInterval(
