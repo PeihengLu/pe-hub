@@ -75,6 +75,7 @@ __all__ = [
     "fit_lightning_module",
     "lightning_accelerator_from_device",
     "pearson_spearman",
+    "regression_metrics",
     "run_supervised_training_loop",
     # Feature calculations (lazy-loaded)
     "calculate_mfe",
@@ -92,6 +93,7 @@ _TRAINING_EXPORTS = {
     "fit_lightning_module",
     "lightning_accelerator_from_device",
     "pearson_spearman",
+    "regression_metrics",
     "run_supervised_training_loop",
 }
 

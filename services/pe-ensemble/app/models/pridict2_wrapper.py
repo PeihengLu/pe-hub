@@ -7,7 +7,7 @@ import numpy as np
 
 from .vendor_path import resolve_vendor_models_path
 from . import weights_registry
-from pe_common.training import pearson_spearman
+from pe_common.training import regression_metrics
 from pe_common.splits import (
     has_assigned_cv_folds,
     iter_assigned_cv_folds,
@@ -543,18 +543,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
             pred_col = f"pred_{outcome}"
             if true_col not in pred_df.columns or pred_col not in pred_df.columns:
                 continue
-            y_true = pd.Series(pd.to_numeric(pred_df[true_col], errors="coerce"), index=pred_df.index)
-            y_pred = pd.Series(pd.to_numeric(pred_df[pred_col], errors="coerce"), index=pred_df.index)
-            mask = ~(y_true.isna().to_numpy() | y_pred.isna().to_numpy())
-            y_true_clean = y_true.to_numpy(dtype=np.float64)[mask]
-            y_pred_clean = y_pred.to_numpy(dtype=np.float64)[mask]
-            if len(y_true_clean) == 0:
-                fold_metrics[f"{outcome}_pearson"] = float("nan")
-                fold_metrics[f"{outcome}_spearman"] = float("nan")
-                continue
-            corr = pearson_spearman(y_true_clean.tolist(), y_pred_clean.tolist())
-            fold_metrics[f"{outcome}_pearson"] = float(corr["pearson"])
-            fold_metrics[f"{outcome}_spearman"] = float(corr["spearman"])
+            y_true = pd.to_numeric(pred_df[true_col], errors="coerce").to_numpy(dtype=np.float64)
+            y_pred = pd.to_numeric(pred_df[pred_col], errors="coerce").to_numpy(dtype=np.float64)
+            fold_metrics.update(regression_metrics(y_true, y_pred, prefix=outcome))
 
         return {
             "output_dir": run_output_dir,
@@ -668,39 +659,15 @@ class PRIDICT2ModelWrapper(BasePEModel):
                 pred_df["dataset_name"] == self.selected_cell_type
             ].reset_index(drop=True)
         
-        results = {}
-        n_samples = 0
-        
-        # Evaluate each outcome
+        primary_outcome = "averageedited" if "averageedited" in outcomes else outcomes[0]
+        results: Dict[str, float] = {}
         for outcome in outcomes:
-            y_true = pred_df[f'true_{outcome}'].values
-            y_pred = pred_df[f'pred_{outcome}'].values
-            n_samples = len(y_true)
-            
-            # Remove NaN values if present
-            mask = ~(np.isnan(y_true) | np.isnan(y_pred))
-            y_true_clean = y_true[mask]
-            y_pred_clean = y_pred[mask]
-            
-            if len(y_true_clean) > 0:
-                corr = pearson_spearman(y_true_clean.tolist(), y_pred_clean.tolist())
-                pearson_corr = float(corr["pearson"])
-                spearman_corr = float(corr["spearman"])
-                mse = np.mean((y_true_clean - y_pred_clean) ** 2)
-                mae = np.mean(np.abs(y_true_clean - y_pred_clean))
-                
-                results[f'{outcome}_pearson'] = pearson_corr
-                results[f'{outcome}_spearman'] = spearman_corr
-                results[f'{outcome}_mse'] = float(mse)
-                results[f'{outcome}_mae'] = float(mae)
-            else:
-                results[f'{outcome}_pearson'] = np.nan
-                results[f'{outcome}_spearman'] = np.nan
-                results[f'{outcome}_mse'] = np.nan
-                results[f'{outcome}_mae'] = np.nan
-        
-        results['n_samples'] = n_samples
-        
+            y_true = pred_df[f"true_{outcome}"].values
+            y_pred = pred_df[f"pred_{outcome}"].values
+            results.update(regression_metrics(y_true, y_pred, prefix=outcome))
+            if outcome == primary_outcome:
+                results.update(regression_metrics(y_true, y_pred))
+        results["n_samples"] = int(len(pred_df))
         return results
     
     def save_model(self, model_path: str) -> None:

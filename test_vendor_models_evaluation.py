@@ -130,11 +130,9 @@ class TestPRIDICT2Evaluation:
         )
 
         metrics = model.evaluate(df, weights=weight_name)
-        _assert_common_metrics(
-            metrics,
-            pearson_key="averageedited_pearson",
-            spearman_key="averageedited_spearman",
-        )
+        _assert_common_metrics(metrics, pearson_key="pearson", spearman_key="spearman")
+        _assert_finite_metric(metrics["averageedited_pearson"], "averageedited_pearson")
+        _assert_finite_metric(metrics["averageedited_spearman"], "averageedited_spearman")
 
 
 def test_all_vendor_wrappers_listed() -> None:

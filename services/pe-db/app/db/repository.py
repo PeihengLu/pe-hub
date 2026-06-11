@@ -512,13 +512,13 @@ class CatalogRepository:
             study_name = row.dataset.study.name
             dataset = row.dataset
             edit_types = self._extract_edit_type_series(filtered)
-            edit_lengths = self._extract_edit_length_series(filtered)
+            entry_edit_lengths = self._extract_edit_length_series(filtered)
             for idx in filtered.index:
                 entry_records.append(
                     {
                         "study": study_name,
                         "edit_type": edit_types.loc[idx],
-                        "edit_length": edit_lengths.loc[idx],
+                        "edit_length": entry_edit_lengths.loc[idx],
                         "pegRNA_delivery_method": dataset.pegRNA_delivery_method,
                         "pe_delivery_method": dataset.pe_delivery_method,
                         "edit_scope": dataset.edit_scope,

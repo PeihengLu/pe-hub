@@ -24,6 +24,7 @@ from pe_common.training import (
     build_lr_scheduler,
     fit_lightning_module,
     LightningTrainerConfig,
+    regression_metrics,
 )
 from pe_common.splits import resolve_train_val_from_splits
 
@@ -439,10 +440,7 @@ class DeepPrimeModelWrapper(BasePEModel):
                 f"Available: {self.list_available_weights()}"
             )
         self.load_weights_by_name(weights)
-        
-        from scipy.stats import pearsonr, spearmanr
-        
-        # Separate features and labels
+
         if 'Efficiency' in test_data.columns:
             y_true = test_data['Efficiency'].values
             X_test = test_data.drop('Efficiency', axis=1)
@@ -451,28 +449,10 @@ class DeepPrimeModelWrapper(BasePEModel):
             X_test = test_data.drop('PE_efficiency', axis=1)
         else:
             raise ValueError("Test data must contain 'Efficiency' or 'PE_efficiency' column")
-        
-        # Prepare data and make predictions
+
         prepared_data = self.prepare_data(X_test)
         y_pred = np.array(self.predict(prepared_data))
-        
-        # Calculate metrics
-        pearson_res = pearsonr(y_true, y_pred)
-        spearman_res = spearmanr(y_true, y_pred)
-        pearson_corr = float(pearson_res[0])
-        spearman_corr = float(spearman_res[0])
-        
-        # Calculate additional metrics
-        mse = np.mean((y_true - y_pred) ** 2)
-        mae = np.mean(np.abs(y_true - y_pred))
-        
-        return {
-            'pearson': pearson_corr,
-            'spearman': spearman_corr,
-            'mse': float(mse),
-            'mae': float(mae),
-            'n_samples': len(y_true)
-        }
+        return regression_metrics(y_true, y_pred)
     
     def save_model(self, model_path: str) -> None:
         """

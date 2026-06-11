@@ -23,6 +23,7 @@ from pe_common.training import (
     fit_lightning_module,
     LightningTrainerConfig,
     pearson_spearman,
+    regression_metrics,
 )
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -725,8 +726,7 @@ class OPEDModelWrapper(BasePEModel):
         y_test = X_test["Efficiency"].astype(float).reset_index(drop=True)
         X_test = X_test.drop(columns=["Efficiency"])
         
-        # Evaluate
-        results, _, _ = evaluate_transformer_order3(
+        _, _, outputs = evaluate_transformer_order3(
             transformer=self.model,
             X_train=X_test,
             y_train=y_test,
@@ -734,12 +734,7 @@ class OPEDModelWrapper(BasePEModel):
             device=self.device,
             verbose=True
         )
-        
-        return {
-            'pearson': float(results['pearson'][0]),
-            'spearman': float(results['spearman'][0]),
-            'n_samples': len(y_test)
-        }
+        return regression_metrics(y_test.tolist(), outputs)
     
     def save_model(self, model_path: str) -> None:
         """
