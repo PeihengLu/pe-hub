@@ -77,3 +77,7 @@ export function downloadTextFile(filename: string, content: string, mimeType: st
 export function downloadCsv(filename: string, csv: string) {
   downloadTextFile(filename, csv, 'text/csv;charset=utf-8')
 }
+
+export function downloadJson(filename: string, value: unknown, indent = 2) {
+  downloadTextFile(filename, JSON.stringify(value, null, indent), 'application/json;charset=utf-8')
+}

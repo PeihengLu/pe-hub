@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Download, Trash2 } from 'lucide-react'
 import Card from '@components/Card'
 import KillJobConfirmDialog, {
   persistSkipKillJobConfirm,
@@ -27,6 +27,8 @@ interface ComputeJobListProps {
   getJobTitle: (job: ComputeJobListItem) => string
   killJob: (jobId: string) => Promise<unknown>
   emptyMessage?: string
+  onExportSelected?: (selectedJobIds: string[]) => void | Promise<void>
+  exportSelectedLoading?: boolean
 }
 
 interface PendingKill {
@@ -60,6 +62,8 @@ export default function ComputeJobList({
   getJobTitle,
   killJob,
   emptyMessage = 'No jobs yet.',
+  onExportSelected,
+  exportSelectedLoading = false,
 }: ComputeJobListProps) {
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(() => new Set())
   const [pendingKill, setPendingKill] = useState<PendingKill | null>(null)
@@ -93,12 +97,11 @@ export default function ComputeJobList({
   }
 
   const toggleSelectAll = () => {
-    setSelectedJobIds((current) => {
-      if (allSelected) {
-        return new Set()
-      }
-      return new Set(sortedJobs.map((job) => job.job_id))
-    })
+    if (allSelected) {
+      setSelectedJobIds(new Set())
+      return
+    }
+    setSelectedJobIds(new Set(sortedJobs.map((job) => job.job_id)))
   }
 
   const executeKill = async (jobIds: string[]) => {
@@ -190,15 +193,30 @@ export default function ComputeJobList({
                 )}
               </label>
               {selectedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={requestKillSelected}
-                  disabled={isKilling}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete selected ({selectedCount})
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {onExportSelected && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onExportSelected([...selectedJobIds])
+                      }}
+                      disabled={isKilling || exportSelectedLoading}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <Download className="w-4 h-4" />
+                      {exportSelectedLoading ? 'Exporting…' : `Export JSON (${selectedCount})`}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={requestKillSelected}
+                    disabled={isKilling}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete selected ({selectedCount})
+                  </button>
+                </div>
               )}
             </div>
 

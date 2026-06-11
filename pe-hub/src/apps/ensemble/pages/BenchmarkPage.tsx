@@ -20,6 +20,9 @@ import {
   jobStatusRefetchInterval,
   TERMINAL_JOB_STATUSES,
 } from '@apps/ensemble/utils/jobStatus'
+import { buildBenchmarkResultsExport } from '@apps/ensemble/utils/exportBenchmarkResults'
+import { downloadJson } from '@apps/database/utils/downloadCsv'
+import type { BenchmarkJobStatusResponse } from '@apps/ensemble/services/api'
 
 export default function BenchmarkPage() {
   const [modelName, setModelName] = useState('deepprime')
@@ -47,6 +50,7 @@ export default function BenchmarkPage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [exportingResults, setExportingResults] = useState(false)
   const [queueProgress, setQueueProgress] = useState<{
     phase: 'discovering' | 'queueing'
     current: number
@@ -216,6 +220,48 @@ export default function BenchmarkPage() {
     )
     return { job_id: response.data.job_id, batch_count: 1 }
   })
+
+  const handleExportSelected = async (selectedJobIds: string[]) => {
+    if (selectedJobIds.length === 0) {
+      return
+    }
+
+    setExportingResults(true)
+    setError(null)
+
+    try {
+      const responses = await Promise.all(
+        selectedJobIds.map((jobId) => api.getBenchmarkStatus(jobId))
+      )
+      const jobs = responses.map((response) => response.data)
+      const exportableJobs = jobs.filter(
+        (job): job is BenchmarkJobStatusResponse =>
+          job.status === 'succeeded' && Boolean(job.result?.metrics)
+      )
+
+      if (exportableJobs.length === 0) {
+        setError('No completed benchmark results in the selected jobs to export.')
+        return
+      }
+
+      const payload = buildBenchmarkResultsExport(exportableJobs)
+      if (payload.models.length === 0) {
+        setError('Selected jobs have no exportable metrics.')
+        return
+      }
+
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+      downloadJson(`benchmark-results-${stamp}.json`, payload)
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        (err as Error)?.message ||
+        'Failed to export benchmark results'
+      setError(message)
+    } finally {
+      setExportingResults(false)
+    }
+  }
 
   const handleBenchmark = () => {
     if (!hasRegisteredWeights) {
@@ -411,6 +457,8 @@ export default function BenchmarkPage() {
           getJobTitle={(job) => `${job.model_name ?? ''} · ${job.benchmark_name ?? ''}`}
           killJob={(jobId) => api.deleteBenchmarkJob(jobId)}
           emptyMessage="No benchmark jobs yet."
+          onExportSelected={handleExportSelected}
+          exportSelectedLoading={exportingResults}
         />
 
         <Card title="Device occupancy">
