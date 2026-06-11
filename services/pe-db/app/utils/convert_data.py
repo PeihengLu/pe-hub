@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import as_completed
 from typing import Any, Callable, Iterable, Optional
 
 import pandas as pd
@@ -221,17 +221,28 @@ def _compute_pridict2_mfe_features_batch(
     last_milestone = [-1]
     total = len(payloads)
     done = 0
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        for chunk_result in pool.imap(_pridict2_mfe_chunk_worker, chunks):
+    from ..process_pool import get_mfe_process_pool
+
+    pool = get_mfe_process_pool()
+    futures = {
+        pool.submit(_pridict2_mfe_chunk_worker, chunk): index
+        for index, chunk in enumerate(chunks)
+    }
+    ordered_chunks: list[Optional[list[dict[str, float]]]] = [None] * len(chunks)
+    for future in as_completed(futures):
+        index = futures[future]
+        ordered_chunks[index] = future.result()
+        done += len(ordered_chunks[index])
+        _report_progress_milestone(
+            progress_callback,
+            phase="Computing RNA MFE features",
+            done=done,
+            total=total,
+            last_milestone=last_milestone,
+        )
+    for chunk_result in ordered_chunks:
+        if chunk_result is not None:
             results.extend(chunk_result)
-            done += len(chunk_result)
-            _report_progress_milestone(
-                progress_callback,
-                phase="Computing RNA MFE features",
-                done=done,
-                total=total,
-                last_milestone=last_milestone,
-            )
     return results
 
 

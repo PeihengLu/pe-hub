@@ -1,11 +1,15 @@
 # FastAPI endpoints for PE Ensemble service
+import os
+
+# Avoid joblib/loky spawning extra process pools (PRIDICT2 imports sklearn).
+os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
+
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Literal, Optional, Dict, Any, Union
 import logging
-import os
 
 import pandas as pd
 import torch
@@ -53,6 +57,16 @@ logger = logging.getLogger(__name__)
 GRACEFUL_SHUTDOWN_SECONDS = 5
 
 
+def _shutdown_joblib_loky() -> None:
+    """Release joblib/loky semaphores created when sklearn is imported."""
+    try:
+        from joblib.externals.loky import get_reusable_executor
+
+        get_reusable_executor().shutdown(wait=True)
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     loop = asyncio.get_running_loop()
@@ -64,7 +78,8 @@ async def lifespan(_app: FastAPI):
         from .compute.device_scheduler import shutdown_scheduler
 
         shutdown_scheduler()
-        executor.shutdown(wait=False, cancel_futures=True)
+        _shutdown_joblib_loky()
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 app = FastAPI(

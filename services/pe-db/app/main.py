@@ -56,7 +56,10 @@ async def lifespan(_app: FastAPI):
         )
         yield
     finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+        from .process_pool import shutdown_mfe_process_pool
+
+        shutdown_mfe_process_pool()
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 app = FastAPI(
