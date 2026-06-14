@@ -76,6 +76,15 @@ export default function TrainingPage() {
     select: (response) => response.data.jobs,
   })
 
+  const { data: weightSets, isFetching: weightsFetching } = useQuery(
+    ['model-weights', modelName],
+    () => api.listModelWeights(modelName),
+    {
+      enabled: Boolean(modelName),
+      select: (response) => response.data.weights,
+    }
+  )
+
   const { data: jobStatusResponse } = useQuery(
     ['training-status', selectedJobId],
     () => api.getTrainingStatus(selectedJobId!),
@@ -95,6 +104,10 @@ export default function TrainingPage() {
   useEffect(() => {
     setPreviewData(undefined)
   }, [modelName, filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, originalFoldTestValue, splitRandomState, batchTraining])
+
+  useEffect(() => {
+    setHyperparameters((prev) => ({ ...prev, pretrainedWeightId: '' }))
+  }, [modelName])
 
   useEffect(() => {
     if (!selectedJobId) return undefined
@@ -315,6 +328,8 @@ export default function TrainingPage() {
                 modelName={modelName}
                 values={hyperparameters}
                 onChange={setHyperparameters}
+                availableWeights={weightSets}
+                weightsLoading={weightsFetching}
               />
             </div>
 

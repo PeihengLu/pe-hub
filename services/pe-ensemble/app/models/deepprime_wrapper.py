@@ -21,6 +21,7 @@ if str(_vendor_root) not in sys.path:
 
 from pe_common.model_interface import BasePEModel
 from pe_common.training import (
+    apply_fine_tune_freezing,
     build_lr_scheduler,
     fit_lightning_module,
     LightningTrainerConfig,
@@ -331,8 +332,9 @@ class DeepPrimeModelWrapper(BasePEModel):
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
         weight_decay = float(hyperparameters.get("weight_decay", 0.0))
-        train_ensemble = bool(hyperparameters.get("train_ensemble", False))
         load_pretrained = bool(hyperparameters.get("load_pretrained", True))
+        pretrained_weights = hyperparameters.get("weights")
+        freezing = bool(hyperparameters.get("freezing", False))
         grad_clip = float(hyperparameters.get("grad_clip", 1.0))
         scheduler_name = hyperparameters.get("scheduler", "none")
         scheduler_kwargs = hyperparameters.get("scheduler_kwargs", None)
@@ -349,11 +351,18 @@ class DeepPrimeModelWrapper(BasePEModel):
 
         if not self.is_trained:
             if load_pretrained:
-                self.load_model()
+                if pretrained_weights:
+                    self.load_weights_by_name(str(pretrained_weights))
+                else:
+                    self.load_model()
             else:
                 from deepprime.src.dprime import GeneInteractionModel
 
-                self.models = [GeneInteractionModel(hidden_size=128, num_layers=1).to(self.device)]
+                hidden_size = int(hyperparameters.get("hidden_size", 128))
+                num_layers = int(hyperparameters.get("num_layers", 1))
+                self.models = [
+                    GeneInteractionModel(hidden_size=hidden_size, num_layers=num_layers).to(self.device)
+                ]
                 self.model = self.models
                 self.is_trained = True
 
@@ -374,11 +383,13 @@ class DeepPrimeModelWrapper(BasePEModel):
             drop_last=False,
         )
 
-        models_to_train = self.models if train_ensemble else self.models[:1]
+        models_to_train = self.models
         history: List[Dict[str, float]] = []
         model_summaries: List[Dict[str, float]] = []
 
         for model_idx, model in enumerate(models_to_train):
+            if freezing:
+                apply_fine_tune_freezing(model, model.head)
             lightning_hparams = dict(hyperparameters)
             lightning_hparams["lr"] = lr
             lightning_hparams["weight_decay"] = weight_decay
@@ -431,6 +442,10 @@ class DeepPrimeModelWrapper(BasePEModel):
             "epochs": epochs,
             "batch_size": batch_size,
             "lr": lr,
+            "load_pretrained": load_pretrained,
+            "freezing": freezing,
+            "hidden_size": int(hyperparameters.get("hidden_size", 128)),
+            "num_layers": int(hyperparameters.get("num_layers", 1)),
             "final_train_loss": final.get("train_loss"),
             "final_val_loss": final.get("val_loss"),
             "model_summaries": model_summaries,

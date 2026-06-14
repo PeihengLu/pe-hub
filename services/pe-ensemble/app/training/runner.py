@@ -16,7 +16,7 @@ from .data import fetch_training_dataframe, normalize_filter_param
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
 from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, tee_stream_to_log
-from .schemas import TrainingRequest
+from .model_architecture import apply_fine_tune_defaults
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def _training_metadata_from_request(
 
 
 def _merge_hyperparameters(request: TrainingRequest, device: torch.device) -> Dict[str, Any]:
-    hyperparameters = dict(request.hyperparameters or {})
+    hyperparameters = apply_fine_tune_defaults(dict(request.hyperparameters or {}))
     if request.model_name.strip().lower() == "pridict2" and "gpu_index" not in hyperparameters:
         hyperparameters["gpu_index"] = cuda_index_from_device(device)
     return hyperparameters

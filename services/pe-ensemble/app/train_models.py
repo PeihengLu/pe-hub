@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from pe_common.devices import format_devices_for_cli
 
 from .training.config import jobs_root
+from .training.model_architecture import architecture_from_cli_args, merge_training_hyperparameters
 from .compute.device_scheduler import get_scheduler
 from .training.jobs import create_job, get_job, read_logs, wait_for_job
 from .training.runner import TrainingError
@@ -38,11 +39,20 @@ def _build_request(args: argparse.Namespace) -> TrainingRequest:
         split_random_state=args.split_random_state,
         merge=args.merge,
     )
+    base = _parse_json_object(args.hyperparameters_json) or {}
+    if args.pretrained_weights:
+        base["load_pretrained"] = True
+        base["weights"] = args.pretrained_weights
+    hyperparameters = merge_training_hyperparameters(
+        args.model,
+        base,
+        architecture_from_cli_args(args.model, args),
+    )
     return TrainingRequest(
         model_name=args.model,
         dataset_source=args.dataset_source,
         dataset_name=args.dataset_name,
-        hyperparameters=_parse_json_object(args.hyperparameters_json),
+        hyperparameters=hyperparameters or None,
         split=split,
         study=args.study or None,
         dataset=args.dataset or None,
@@ -110,7 +120,51 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split-random-state", type=int, default=42)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--hyperparameters-json", default=None, help="Training hyperparameters as JSON object")
+    parser.add_argument(
+        "--pretrained-weights",
+        default=None,
+        help="Registered weight set ID to fine-tune from (sets load_pretrained=true)",
+    )
     parser.add_argument("--model-kwargs-json", default=None, help="Model constructor kwargs as JSON object")
+
+    arch = parser.add_argument_group("model architecture (optional; merged into hyperparameters)")
+    arch.add_argument(
+        "--dp-hidden-size",
+        type=int,
+        default=None,
+        help="DeepPrime GRU hidden size when training from scratch (ignored with load_pretrained)",
+    )
+    arch.add_argument(
+        "--dp-num-layers",
+        type=int,
+        default=None,
+        help="DeepPrime GRU layer count when training from scratch",
+    )
+    arch.add_argument("--oped-embedding-size", type=int, default=None, help="OPED token embedding dimension")
+    arch.add_argument(
+        "--oped-ffn-dim",
+        type=int,
+        default=None,
+        help="OPED transformer feed-forward dim (applied to Target/PBS/RT branches)",
+    )
+    arch.add_argument(
+        "--oped-encoder-layers",
+        type=int,
+        default=None,
+        help="OPED transformer encoder depth per branch",
+    )
+    arch.add_argument("--oped-nhead", type=int, default=None, help="OPED multi-head attention head count")
+    arch.add_argument("--oped-dropout", type=float, default=None, help="OPED dropout rate")
+    arch.add_argument("--pridict2-embed-dim", type=int, default=None, help="PRIDICT2 sequence embedding dimension")
+    arch.add_argument("--pridict2-z-dim", type=int, default=None, help="PRIDICT2 latent dimension")
+    arch.add_argument(
+        "--pridict2-num-hidden-layers",
+        type=int,
+        default=None,
+        help="PRIDICT2 RNN hidden layer count",
+    )
+    arch.add_argument("--pridict2-dropout", type=float, default=None, help="PRIDICT2 dropout rate")
+
     parser.add_argument("--notes", default=None)
     parser.add_argument("--pe-db-url", default=None, help="Override PE_DB_URL for this run")
     parser.add_argument("--weights-root", default=None, help="Override WEIGHTS_ROOT for this run")

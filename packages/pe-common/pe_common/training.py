@@ -196,6 +196,17 @@ def clip_gradients(model: torch.nn.Module, max_norm: Optional[float]) -> None:
     torch.nn.utils.clip_grad_norm_(model.parameters(), float(max_norm))
 
 
+def apply_fine_tune_freezing(
+    model: torch.nn.Module,
+    trainable_module: torch.nn.Module,
+) -> None:
+    """Freeze all model parameters except those in ``trainable_module``."""
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in trainable_module.parameters():
+        param.requires_grad = True
+
+
 def build_lr_scheduler(
     optimizer: torch.optim.Optimizer,
     scheduler_name: Optional[str] = None,

@@ -19,6 +19,7 @@ from pe_common.sequence_utils import (
     sanitize_dna_sequence,
 )
 from pe_common.training import (
+    apply_fine_tune_freezing,
     build_lr_scheduler,
     fit_lightning_module,
     LightningTrainerConfig,
@@ -639,20 +640,42 @@ class OPEDModelWrapper(BasePEModel):
             "early_stopping_min_delta": 0.0,
             "scheduler": "step",
             "scheduler_kwargs": {"step_size": 10, "gamma": 0.95},
+            "freezing": False,
         }
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         if hyperparameters:
             default_params.update(hyperparameters)
 
+        freezing = bool(default_params.get("freezing", freezing))
+
+        load_pretrained = bool(default_params.get("load_pretrained", False))
+        pretrained_weights = default_params.get("weights")
+
+        def build_trainable_model() -> torch.nn.Module:
+            if load_pretrained:
+                weight_name = (
+                    str(pretrained_weights)
+                    if pretrained_weights
+                    else self.DEFAULT_WEIGHT_ID
+                )
+                self.load_weights_by_name(weight_name)
+                model_obj = self.model
+                if model_obj is None:
+                    raise ValueError("Failed to load OPED pretrained weights.")
+                model_obj.train()
+                return model_obj
+            return self._build_model_from_hparams(default_params).to(self.device)
+
         def apply_freezing_if_needed(model_obj: torch.nn.Module) -> None:
             if not freezing:
                 return
-            for param in model_obj.parameters():
-                param.requires_grad = False
             fc_layers = getattr(model_obj, "fully_connected_layers", None)
             if isinstance(fc_layers, torch.nn.Module):
-                for param in fc_layers.parameters():
-                    param.requires_grad = True
+                apply_fine_tune_freezing(model_obj, fc_layers)
+                return
+            raise ValueError(
+                "OPED freezing requested but model has no fully_connected_layers module."
+            )
 
         source_df = train_data.copy().reset_index(drop=True)
         cv_reports: List[Dict[str, Any]] = []
@@ -663,7 +686,7 @@ class OPEDModelWrapper(BasePEModel):
             ):
                 if cancel_check is not None:
                     cancel_check()
-                fold_model = self._build_model_from_hparams(default_params).to(self.device)
+                fold_model = build_trainable_model()
                 apply_freezing_if_needed(fold_model)
                 fold_model, fold_metrics = self._run_training_loop(
                     fold_model,
@@ -696,7 +719,7 @@ class OPEDModelWrapper(BasePEModel):
 
         final_train, final_val = resolve_train_val_from_splits(source_df, val_data)
 
-        model = self._build_model_from_hparams(default_params).to(self.device)
+        model = build_trainable_model()
         apply_freezing_if_needed(model)
         model, train_metrics = self._run_training_loop(
             model,

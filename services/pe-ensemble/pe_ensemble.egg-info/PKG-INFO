@@ -1,3 +1,35 @@
+Metadata-Version: 2.4
+Name: pe-ensemble
+Version: 0.2.0
+Summary: Prime Editing Ensemble Service - unified interface for training and evaluating PE prediction models (DeepPrime, OPED, PRIDICT2)
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.104.0
+Requires-Dist: uvicorn[standard]>=0.24.0
+Requires-Dist: torch<2.9,>=2.0
+Requires-Dist: lightning<2.9,>=2.0
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: numpy>=1.21.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: requests>=2.28.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: python-multipart>=0.0.6
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: matplotlib>=3.5.0
+Requires-Dist: prettytable>=3.5.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: httpx>=0.25.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: jupyter>=1.0.0; extra == "dev"
+Requires-Dist: jupyterlab>=3.0.0; extra == "dev"
+Requires-Dist: tensorboard>=2.14.0; extra == "dev"
+Requires-Dist: mlflow>=2.8.0; extra == "dev"
+Provides-Extra: vendor
+Requires-Dist: xgboost>=1.7.0; extra == "vendor"
+
 # PE Ensemble Service
 
 A FastAPI-based web service for evaluating, training, and creating ensembles of Prime Editing efficiency prediction models.
@@ -122,22 +154,6 @@ python -m app.train_models \
   --oped-encoder-layers 2 \
   --oped-nhead 4 \
   --hyperparameters-json '{"epoch_num":20,"lr":0.0003}'
-```
-
-Fine-tune from a registered checkpoint with `--pretrained-weights` (sets `load_pretrained=true`,
-freezes the backbone, and skips architecture flags). DeepPrime always fine-tunes every ensemble
-member in the checkpoint together:
-
-```bash
-python -m app.train_models \
-  --model deepprime \
-  --dataset-name library2 \
-  --dataset library2 \
-  --cell-line HEK293T \
-  --pe-system PE2max \
-  --pretrained-weights DeepPrime_base \
-  --hyperparameters-json '{"epochs":5,"lr":0.0001}'
-```
 
 `POST /train` accepts `device` (`auto`, `cuda:0`, `mps`, `cpu`, …). Multiple jobs can run
 concurrently on different devices; the service maintains a per-device queue so only one job

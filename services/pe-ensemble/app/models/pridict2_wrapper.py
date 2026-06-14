@@ -486,6 +486,57 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
         return dtensor, list(norm_cols or [])
 
+    @staticmethod
+    def _resolve_pretrained_statedict_dir(weights_name: str) -> str:
+        """Return ``statedict_dir`` for ``train_val_run`` from a weight selection."""
+        run_dir, _ = PRIDICT2ModelWrapper.resolve_weight_selection(weights_name)
+        return str(run_dir.parent.parent)
+
+    def _resolve_train_statedict_dir(
+        self, hyperparameters: Dict[str, Any]
+    ) -> Optional[str]:
+        if not bool(hyperparameters.get("load_pretrained", False)):
+            return None
+        weights = hyperparameters.get("weights")
+        if not weights:
+            return None
+        return self._resolve_pretrained_statedict_dir(str(weights))
+
+    def _build_trf_tup(
+        self,
+        hyperparameters: Dict[str, Any],
+        *,
+        batch_size: int,
+        num_epochs: int,
+    ) -> tuple[Any, ...]:
+        from torch import nn
+
+        if "trf_tup" in hyperparameters:
+            return hyperparameters["trf_tup"]
+        embed_dim = int(hyperparameters.get("embed_dim", 64))
+        z_dim = int(hyperparameters.get("z_dim", 64))
+        num_hidden_layers = int(hyperparameters.get("num_hidden_layers", 1))
+        bidirection = bool(hyperparameters.get("bidirection", True))
+        p_dropout = float(
+            hyperparameters.get(
+                "p_dropout",
+                hyperparameters.get("dropout", 0.1),
+            )
+        )
+        l2_reg = float(hyperparameters.get("weight_decay", 1e-4))
+        return (
+            embed_dim,
+            z_dim,
+            num_hidden_layers,
+            bidirection,
+            p_dropout,
+            nn.GRU,
+            nn.ReLU(),
+            l2_reg,
+            batch_size,
+            num_epochs,
+        )
+
     def _run_train_val_once(
         self,
         *,
@@ -497,7 +548,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
         run_suffix: str,
         trainer_backend: str = "legacy",
     ) -> Dict[str, Any]:
-        from torch import nn
         from pridict2.pridict.pridictv2.run_workflow import build_config_map, train_val_run
 
         dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
@@ -506,9 +556,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
         run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
         batch_size = int(hyperparameters.get("batch_size", 128))
         num_epochs = int(hyperparameters.get("num_epochs", 20))
-        trf_tup = hyperparameters.get(
-            "trf_tup",
-            (64, 64, 1, True, 0.1, nn.GRU, nn.ReLU(), 1e-4, batch_size, num_epochs),
+        trf_tup = self._build_trf_tup(
+            hyperparameters,
+            batch_size=batch_size,
+            num_epochs=num_epochs,
         )
         experiment_options = {
             "experiment_desc": str(hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")),
@@ -518,18 +569,24 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "seqlevel_featdim": int(hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))),
             "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
         }
+        if bool(hyperparameters.get("freezing", False)):
+            experiment_options["freezing"] = True
+            experiment_options["trainable_layernames"] = list(
+                hyperparameters.get("trainable_layernames", ["decoder"])
+            )
         config_map = build_config_map(
             trf_tup,
             experiment_options,
             loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
         )
         run_output_dir = f"{output_dir}/{run_suffix}"
+        statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
         train_val_run(
             data_partitions,
             config_map,
             run_output_dir,
             run_gpu_map,
-            None,
+            statedict_dir,
             num_epochs,
             trainer_backend,
         )

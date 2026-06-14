@@ -6,3 +6,4 @@
 # macOS Finder metadata (any directory)
 .DS_Store
 .idea/
+checkpoints/** 

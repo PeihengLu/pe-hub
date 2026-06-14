@@ -9,7 +9,11 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pe-common"))
 
-from pe_common.training import format_epoch_metrics_row, run_supervised_training_loop
+from pe_common.training import (
+    apply_fine_tune_freezing,
+    format_epoch_metrics_row,
+    run_supervised_training_loop,
+)
 
 
 def test_format_epoch_metrics_row():
@@ -31,6 +35,23 @@ class _DummyModel:
 
     def load_state_dict(self, _state: dict[str, torch.Tensor]) -> None:
         return None
+
+
+class _ToyModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.backbone = torch.nn.Linear(4, 4)
+        self.head = torch.nn.Linear(4, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.backbone(x))
+
+
+def test_apply_fine_tune_freezing_trains_head_only():
+    model = _ToyModel()
+    apply_fine_tune_freezing(model, model.head)
+    assert all(not param.requires_grad for param in model.backbone.parameters())
+    assert all(param.requires_grad for param in model.head.parameters())
 
 
 def test_run_supervised_training_loop_calls_on_epoch_end():
