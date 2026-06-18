@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { SERVICES, type ServiceId } from '@config/services'
 import { useServiceHealth } from '@context/ServiceHealthProvider'
 
-export type HubSection = 'home' | 'database' | 'ensemble'
+export type HubSection = 'home' | 'add-model' | 'database' | 'ensemble'
 export type DatabasePage = 'catalog' | 'export'
 export type EnsemblePage = 'benchmark' | 'design' | 'train' | 'ensemble' | 'docs'
 
@@ -16,9 +16,20 @@ interface HubNavbarProps {
   onEnsemblePageChange: (page: EnsemblePage) => void
 }
 
-function StatusDot({ serviceId }: { serviceId: ServiceId }) {
+type ServiceHealthVisual = 'up' | 'down' | 'checking'
+
+function resolveServiceHealth(
+  health: ReturnType<typeof useServiceHealth>['health'],
+  serviceIds: ServiceId[]
+): ServiceHealthVisual {
+  if (serviceIds.some((id) => health[id].status === 'down')) return 'down'
+  if (serviceIds.some((id) => health[id].status === 'checking')) return 'checking'
+  return 'up'
+}
+
+function StatusDot({ serviceIds }: { serviceIds: ServiceId[] }) {
   const { health } = useServiceHealth()
-  const status = health[serviceId].status
+  const status = resolveServiceHealth(health, serviceIds)
 
   return (
     <Circle
@@ -41,10 +52,11 @@ export default function HubNavbar({
   ensemblePage,
   onEnsemblePageChange,
 }: HubNavbarProps) {
-  const sections: { id: HubSection; label: string; serviceId?: ServiceId }[] = [
+  const sections: { id: HubSection; label: string; serviceIds?: ServiceId[] }[] = [
     { id: 'home', label: 'Home' },
-    { id: 'database', label: 'Database', serviceId: 'pe-db' },
-    { id: 'ensemble', label: 'Ensemble', serviceId: 'pe-ensemble' },
+    { id: 'add-model', label: 'Add Model', serviceIds: ['pe-db', 'pe-ensemble'] },
+    { id: 'database', label: 'Database', serviceIds: ['pe-db'] },
+    { id: 'ensemble', label: 'Ensemble', serviceIds: ['pe-ensemble'] },
   ]
 
   const databaseNav: { id: DatabasePage; label: string }[] = [
@@ -91,7 +103,7 @@ export default function HubNavbar({
                     : 'text-slate-700 hover:bg-slate-100'
                 )}
               >
-                {item.serviceId && <StatusDot serviceId={item.serviceId} />}
+                {item.serviceIds && <StatusDot serviceIds={item.serviceIds} />}
                 {item.label}
               </button>
             ))}

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 
 from ..models.model_factory import ModelFactory
-from ..training.config import MODEL_FORMAT, SUPPORTED_MODELS
+from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
@@ -46,12 +46,12 @@ def execute_evaluation(
     device_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     model_name = request.model_name.strip().lower()
-    if model_name not in SUPPORTED_MODELS:
+    if not is_supported_model(model_name):
         raise EvaluationError(f"Invalid model name: {model_name}")
 
     resolved_device_id = resolve_device_id(device_id or request.device or AUTO_DEVICE)
     device = resolve_device(resolved_device_id)
-    model_format = MODEL_FORMAT[model_name]
+    model_format = model_format_for(model_name)
 
     def _log(message: str) -> None:
         logger.info(message)

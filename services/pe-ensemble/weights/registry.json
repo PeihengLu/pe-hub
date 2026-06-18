@@ -1,5 +1,5 @@
 {
-  "count": 43,
+  "count": 44,
   "entries": [
     {
       "created_at": "2026-06-08T15:10:18Z",
@@ -200,6 +200,16 @@
       "model": "deepprime",
       "notes": null,
       "source": "vendor"
+    },
+    {
+      "created_at": "2026-06-18T13:13:18Z",
+      "format": "dummy_state_dict",
+      "id": "dummy_base",
+      "label": "dummy_base",
+      "metrics": null,
+      "model": "dummy_model",
+      "notes": "Test weights for dummy_model",
+      "source": "plugin"
     },
     {
       "created_at": "2026-06-11T14:25:20Z",
@@ -442,6 +452,6 @@
       "source": "vendor"
     }
   ],
-  "updated_at": "2026-06-11T14:43:05Z",
+  "updated_at": "2026-06-18T13:13:18Z",
   "version": 1
 }

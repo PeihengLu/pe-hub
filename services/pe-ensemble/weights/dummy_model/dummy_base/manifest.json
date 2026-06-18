@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-06-18T13:13:18Z",
+  "files": [
+    "weights.txt"
+  ],
+  "format": "dummy_state_dict",
+  "id": "dummy_base",
+  "label": "dummy_base",
+  "metrics": null,
+  "model": "dummy_model",
+  "notes": "Test weights for dummy_model",
+  "provenance": {
+    "plugin": "dummy_model",
+    "version": "0.1.0"
+  },
+  "source": "plugin",
+  "training": null
+}

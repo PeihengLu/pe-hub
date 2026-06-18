@@ -753,6 +753,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
                     shutil.rmtree(dest_sub)
                 shutil.copytree(src_sub, dest_sub)
     
+    def save_to_registry(self, dest_dir) -> str:
+        self.save_model(str(dest_dir))
+        return "pridict2_run"
+    
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""
         info = super().get_model_info()

@@ -1,0 +1,19 @@
+name: broken_convert
+version: 0.0.1
+display_name: "Broken Convert Plugin"
+authors: ["PE-DB tests"]
+description: "Deliberately invalid convert.py for validation harness tests."
+
+format:
+  module: convert.py
+  entrypoint: convert
+  output_columns:
+    - feature
+    - Efficiency
+  label_column: Efficiency
+
+model:
+  module: wrapper.py
+  class: BrokenConvertWrapper
+  pe_db_format: broken_convert
+  weight_format: dummy_state_dict

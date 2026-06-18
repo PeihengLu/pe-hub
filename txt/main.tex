@@ -256,19 +256,25 @@ The three deep learning models originally targeted markedly different releases: 
 
 While DeepPrime and PRIDICTv2 distribute their weights as state dictionaries and consequently load without modification under a modern PyTorch, OPED published checkpoint is a full pickled model that fails to deserialize under PyTorch~$\geq$~2.0. We therefore converted the OPED checkpoint once into a weights-only state dictionary (\nolinkurl{*\_weights.pt}) by loading the original object under a compatibility shim that maps its legacy module paths to the vendored implementation, extracting \nolinkurl{state\_dict()}, and re-serializing it. The OPED wrapper was then updated to load this portable artifact by default, to deserialize with \nolinkurl{weights\_only=True}, and to reject the legacy full-pickle checkpoints with an actionable error rather than failing silently at runtime.
 
+Each vendor also ships multiple pretrained weight sets rather than a single checkpoint. DeepPrime provides 20 cell-line and PE-system variants (e.g.\ \nolinkurl{DeepPrime\_base}, \nolinkurl{DP\_variant\_293T\_PE4max\_Opti\_220728}), PRIDICTv2 provides 20 cross-validation runs across four experiment folders and two cell lines(HEK293T and K562, for MMR deficient and proficient cell lines), and OPED provides one portable state dictionary. The ensemble wrappers expose these as named weight sets via \nolinkurl{list\_available\_weights()}, and the evaluation API accepts an optional \nolinkurl{weights} parameter so that a specific pretrained checkpoint can be selected without retraining. When \nolinkurl{weights} is omitted, the currently loaded or freshly trained model is used instead.
 
-Each vendor also ships multiple pretrained weight sets rather than a single checkpoint. DeepPrime provides 20 cell-line and PE-system variants (e.g.\ \nolinkurl{DeepPrime\_base}, \nolinkurl{DP\_variant\_293T\_PE4max\_Opti\_220728}), PRIDICTv2 provides 20 cross-validation runs across four experiment folders, and OPED provides one portable state dictionary. The ensemble wrappers expose these as named weight sets via \nolinkurl{list\_available\_weights()}, and the evaluation API accepts an optional \nolinkurl{weights} parameter so that a specific pretrained checkpoint can be selected without retraining. When \nolinkurl{weights} is omitted, the currently loaded or freshly trained model is used instead.
-
-We verified the unified environment in two ways. First, an automated smoke test loads representative checkpoints from all three vendors under the pinned PyTorch version and confirms that each deserializes as a state dictionary while OPED's legacy full-pickle artifact is explicitly rejected. Second, a root-level test runner executes these suites in isolated processes to avoid import collisions between the PE Database and PE Ensemble services. Together, these checks ensure that future framework upgrades cannot silently break compatibility with any of the vendored models.
-
-\subsubsection{Retraining Deep Learning Models}
+\subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
 
 For a more consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets using the same set of training strategies.
 
 PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED fine-tuning within this environment, providing a consistent optimizer and learning-rate scheduler interface without re-implementing each vendor's original training scripts.
 
+Optuna was used for automatic hyperparameter search, it is capable of smarter and thus more efficient search strategies than grid search, such as TPE(Treee-structured Parzen Estimator), and can prune the search space based on results from previous trials. It also manages all the trials and their results so users do not have to add boilerplate code for logging. It was implemented on top of the PE-Ensemble training API, so users can easily integrate it into their own training pipelines. 
 
-\subsection{PE Hub Web Portal}
+
+\subsubsection{Creating Custom Ensembles}
+
+Using vendored and trained weights, users can create custom ensembles .
+
+PE-DB would provide the datasets in format required by each model, making the evaluation process hassle free for users.
+
+
+\subsection{PE Hub}
 \label{sec:pe-hub-web-portal}
 
 \begin{figure}[ht]
@@ -277,6 +283,13 @@ PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED 
     \caption{Software Stack of PE Hub}
     \label{fig:pe-hub-architecture}
 \end{figure}
+
+
+\subsection{Using PE Hub}
+
+The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web service and communicate with each other via HTTP requests and API endpoints. The web interface, built with extensive help of Cursor AI agent, is designed to be user friendly and accessible, with good documentation on the endpoints.
+
+However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation process.
 
 
 \section{Result}

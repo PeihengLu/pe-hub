@@ -1,0 +1,32 @@
+name: dummy_model
+version: 0.1.0
+display_name: "Dummy Test Model"
+authors: ["PE-DB tests"]
+description: "Minimal plugin for loader integration tests."
+
+format:
+  module: convert.py
+  entrypoint: convert
+  required_std_columns:
+    - wt_sequence
+    - mut_sequence
+    - editing_efficiency
+    - edit_len
+  output_columns:
+    - feature
+    - Efficiency
+  label_column: Efficiency
+
+model:
+  module: wrapper.py
+  class: DummyModelWrapper
+  pe_db_format: dummy_model
+  weight_format: dummy_state_dict
+  hyperparameters:
+    - name: epochs
+      type: int
+      default: 1
+
+weights:
+  - id: dummy_base
+    notes: "Test weights for dummy_model"

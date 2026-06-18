@@ -16,10 +16,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from .registry import model_registry
+
 REGISTRY_FILENAME = "registry.json"
 MANIFEST_FILENAME = "manifest.json"
 
-MODEL_NAMES = ("deepprime", "oped", "pridict2")
+
+def _known_models() -> tuple[str, ...]:
+    return model_registry.names()
+
+
+def _assert_known_model(model: str) -> None:
+    known = _known_models()
+    if known and model not in known:
+        raise ValueError(f"Unknown model '{model}'. Supported: {known}")
 
 
 def weights_root() -> Path:
@@ -114,8 +124,9 @@ def rebuild_index() -> Dict[str, Any]:
     root = weights_root()
     root.mkdir(parents=True, exist_ok=True)
     entries: List[Dict[str, Any]] = []
-    for model in MODEL_NAMES:
-        model_dir = root / model
+    model_dirs = sorted(p for p in root.iterdir() if p.is_dir())
+    for model_dir in model_dirs:
+        model = model_dir.name
         if not model_dir.is_dir():
             continue
         for entry_dir in sorted(model_dir.iterdir()):
@@ -143,8 +154,7 @@ def rebuild_index() -> Dict[str, Any]:
 
 def list_entries(model: str) -> List[Dict[str, Any]]:
     """List manifest summaries for a model (rebuilds index if missing)."""
-    if model not in MODEL_NAMES:
-        raise ValueError(f"Unknown model '{model}'. Supported: {MODEL_NAMES}")
+    _assert_known_model(model)
 
     registry_file = _registry_path()
     if not registry_file.is_file():
@@ -200,8 +210,7 @@ def register(
 
     ``populate(dest_dir)`` must write weight files into the new entry directory.
     """
-    if model not in MODEL_NAMES:
-        raise ValueError(f"Unknown model '{model}'. Supported: {MODEL_NAMES}")
+    _assert_known_model(model)
 
     metadata = dict(metadata or {})
     weight_id = weight_id or generate_id(model, metadata)
@@ -295,35 +304,19 @@ def register_trained_model(
     label: Optional[str] = None,
 ) -> str:
     """Persist a trained in-memory model wrapper into the registry."""
+    from .registry import model_registry
+
     metadata = dict(metadata or {})
     if metrics is not None:
         metadata["metrics"] = metrics
     if notes:
         metadata["notes"] = notes
 
-    format_map = {
-        "deepprime": "deepprime_ensemble",
-        "oped": "oped_state_dict",
-        "pridict2": "pridict2_run",
-    }
-    format_name = format_map[model]
+    spec = model_registry.get(model)
+    format_name = spec.weight_format
 
     def populate(dest: Path) -> None:
-        if model == "deepprime":
-            wrapper.save_model(str(dest))
-        elif model == "oped":
-            wrapper.save_model(str(dest / "weights.pt"))
-        elif model == "pridict2":
-            loaded_dir = getattr(wrapper, "loaded_model_dir", None)
-            if not loaded_dir or not Path(loaded_dir).is_dir():
-                raise ValueError("PRIDICT2 model has no loaded run directory to register.")
-            src = Path(loaded_dir)
-            for name in ("model_statedict", "config"):
-                src_sub = src / name
-                if src_sub.is_dir():
-                    shutil.copytree(src_sub, dest / name)
-        else:
-            raise ValueError(f"Unsupported model for registration: {model}")
+        wrapper.save_to_registry(dest)
 
     auto_label = label
     if auto_label is None:

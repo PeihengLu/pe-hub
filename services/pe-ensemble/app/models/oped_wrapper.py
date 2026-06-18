@@ -813,6 +813,12 @@ class OPEDModelWrapper(BasePEModel):
         torch.save(self.model.state_dict(), model_path)
         
         print(f"Model saved to {model_path}")
+
+    def save_to_registry(self, dest_dir) -> str:
+        dest = Path(dest_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+        self.save_model(str(dest / "weights.pt"))
+        return "oped_state_dict"
     
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""

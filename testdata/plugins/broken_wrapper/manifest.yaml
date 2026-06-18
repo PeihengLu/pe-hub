@@ -1,0 +1,22 @@
+name: broken_wrapper
+version: 0.0.1
+display_name: "Broken Wrapper Plugin"
+authors: ["PE-DB tests"]
+description: "Wrapper missing evaluate() for validation harness tests."
+
+format:
+  module: convert.py
+  entrypoint: convert
+  required_std_columns:
+    - editing_efficiency
+    - edit_len
+  output_columns:
+    - feature
+    - Efficiency
+  label_column: Efficiency
+
+model:
+  module: wrapper.py
+  class: BrokenWrapper
+  pe_db_format: broken_wrapper
+  weight_format: dummy_state_dict

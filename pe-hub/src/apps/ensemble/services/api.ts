@@ -265,6 +265,150 @@ export interface ExportResponse {
   }
 }
 
+export type PluginStatus = 'pending' | 'active' | 'rejected' | string
+
+export interface PluginValidationCheck {
+  id: string
+  passed: boolean
+  detail: string
+  duration_ms: number
+}
+
+export interface PluginValidationReport {
+  plugin_name: string
+  passed: boolean
+  validated_at?: string | null
+  checks: PluginValidationCheck[]
+}
+
+export interface PluginSummary {
+  name: string
+  status: PluginStatus
+  version: string
+  display_name: string
+  updated_at?: string | null
+  validation_passed?: boolean | null
+  validated_at?: string | null
+  check_count?: number
+  failed_checks?: string[]
+}
+
+export interface PluginsListResponse {
+  plugins: PluginSummary[]
+  count: number
+}
+
+export interface PluginDetail {
+  name: string
+  status: PluginStatus
+  updated_at?: string | null
+  file_hashes?: Record<string, string>
+  manifest: Record<string, unknown>
+  validation_report?: PluginValidationReport | null
+  validation_log_exists?: boolean
+}
+
+export interface PluginUploadResponse {
+  name: string
+  status: PluginStatus
+  message: string
+}
+
+export interface PluginValidationJobCreatedResponse {
+  job_id: string
+  plugin_name: string
+  status: TrainingJobStatus
+  message: string
+}
+
+export interface PluginValidationJobStatusResponse {
+  job_id: string
+  plugin_name: string
+  status: TrainingJobStatus
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  error?: string | null
+  result?: {
+    plugin_name?: string
+    validation_report?: PluginValidationReport
+    status?: PluginStatus
+  }
+}
+
+export interface PluginValidationLogResponse {
+  job_id: string
+  plugin_name: string
+  status: TrainingJobStatus
+  offset: number
+  next_offset: number
+  log: string
+}
+
+export interface PluginActivateResponse {
+  name: string
+  status: PluginStatus
+  ensemble_loaded: string[]
+  pe_db_reload: Record<string, unknown>
+}
+
+export interface PluginDeleteResponse {
+  name: string
+  deleted: boolean
+}
+
+export interface PluginUploadPayload {
+  name: string
+  version: string
+  display_name: string
+  description: string
+  wrapper_class: string
+  weight_format: string
+  authors?: string
+  convert_entrypoint?: string
+  pe_db_format?: string
+  output_columns?: string
+  required_std_columns?: string
+  label_column?: string
+  hyperparameters_json?: string
+  weights_json?: string
+  replace_existing?: boolean
+  convert_file?: File | null
+  wrapper_file?: File | null
+  bundle_zip?: File | null
+  weight_id?: string
+  weight_file?: File | null
+}
+
+function buildPluginUploadFormData(payload: PluginUploadPayload): FormData {
+  const formData = new FormData()
+  formData.append('name', payload.name)
+  formData.append('version', payload.version)
+  formData.append('display_name', payload.display_name)
+  formData.append('description', payload.description)
+  formData.append('wrapper_class', payload.wrapper_class)
+  formData.append('weight_format', payload.weight_format)
+  if (payload.authors) formData.append('authors', payload.authors)
+  if (payload.convert_entrypoint) formData.append('convert_entrypoint', payload.convert_entrypoint)
+  if (payload.pe_db_format) formData.append('pe_db_format', payload.pe_db_format)
+  if (payload.output_columns) formData.append('output_columns', payload.output_columns)
+  if (payload.required_std_columns) {
+    formData.append('required_std_columns', payload.required_std_columns)
+  }
+  if (payload.label_column) formData.append('label_column', payload.label_column)
+  if (payload.hyperparameters_json) {
+    formData.append('hyperparameters_json', payload.hyperparameters_json)
+  }
+  if (payload.weights_json) formData.append('weights_json', payload.weights_json)
+  formData.append('replace_existing', String(Boolean(payload.replace_existing)))
+  if (payload.convert_file) formData.append('convert_file', payload.convert_file)
+  if (payload.wrapper_file) formData.append('wrapper_file', payload.wrapper_file)
+  if (payload.bundle_zip) formData.append('bundle_zip', payload.bundle_zip)
+  if (payload.weight_id) formData.append('weight_id', payload.weight_id)
+  if (payload.weight_file) formData.append('weight_file', payload.weight_file)
+  return formData
+}
+
 export const api = {
   healthCheck: () => apiClient.get('/health'),
   listModels: () => apiClient.get<ModelsListResponse>('/models'),
@@ -309,6 +453,49 @@ export const api = {
       params: { format, ...filters, ...split },
     }),
   ensemblePredict: (data: unknown) => apiClient.post('/ensemble', data),
+  listPlugins: () => apiClient.get<PluginsListResponse>('/models/plugins'),
+  getPlugin: (name: string) => apiClient.get<PluginDetail>(`/models/plugins/${encodeURIComponent(name)}`),
+  uploadPlugin: (payload: PluginUploadPayload) =>
+    apiClient.post<PluginUploadResponse>(
+      '/models/plugins',
+      buildPluginUploadFormData(payload),
+      {
+        transformRequest: (data, headers) => {
+          if (headers && data instanceof FormData) {
+            delete headers['Content-Type']
+          }
+          return data
+        },
+      }
+    ),
+  validatePlugin: (name: string) =>
+    apiClient.post<PluginValidationJobCreatedResponse>(
+      `/models/plugins/${encodeURIComponent(name)}/validate`,
+      undefined,
+      { validateStatus: (status) => status === 202 || status === 200 }
+    ),
+  getPluginValidationStatus: (name: string, jobId: string) =>
+    apiClient.get<PluginValidationJobStatusResponse>(
+      `/models/plugins/${encodeURIComponent(name)}/validate/status/${jobId}`
+    ),
+  getPluginValidationLogs: (name: string, jobId: string, offset = 0) =>
+    apiClient.get<PluginValidationLogResponse>(
+      `/models/plugins/${encodeURIComponent(name)}/validate/logs/${jobId}`,
+      { params: { offset } }
+    ),
+  cancelPluginValidation: (name: string, jobId: string) =>
+    apiClient.delete(`/models/plugins/${encodeURIComponent(name)}/validate/jobs/${jobId}`, {
+      validateStatus: (status) => status === 202,
+    }),
+  getPluginValidationLog: (name: string, offset = 0) =>
+    apiClient.get<{ name: string; offset: number; next_offset: number; log: string }>(
+      `/models/plugins/${encodeURIComponent(name)}/validation.log`,
+      { params: { offset } }
+    ),
+  activatePlugin: (name: string) =>
+    apiClient.post<PluginActivateResponse>(`/models/plugins/${encodeURIComponent(name)}/activate`),
+  deletePlugin: (name: string) =>
+    apiClient.delete<PluginDeleteResponse>(`/models/plugins/${encodeURIComponent(name)}`),
 }
 
 export default api

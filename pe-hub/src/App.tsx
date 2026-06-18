@@ -13,6 +13,7 @@ import DesignPage from '@apps/ensemble/pages/DesignPage'
 import TrainingPage from '@apps/ensemble/pages/TrainingPage'
 import EnsembleToolPage from '@apps/ensemble/pages/EnsemblePage'
 import DocumentationPage from '@apps/ensemble/pages/DocumentationPage'
+import AddModelPage from '@apps/ensemble/pages/AddModelPage'
 
 function App() {
   const [section, setSection] = useState<HubSection>('home')
@@ -22,6 +23,16 @@ function App() {
   const renderContent = () => {
     if (section === 'home') {
       return <HomePage />
+    }
+
+    if (section === 'add-model') {
+      return (
+        <ServiceGate serviceId="pe-db">
+          <ServiceGate serviceId="pe-ensemble">
+            <AddModelPage />
+          </ServiceGate>
+        </ServiceGate>
+      )
     }
 
     if (section === 'database') {

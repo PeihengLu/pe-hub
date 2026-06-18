@@ -13,13 +13,14 @@ import logging
 
 import pandas as pd
 import torch
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .models.model_factory import ModelFactory
 from .models import weights_registry
-from .training.config import MODEL_FORMAT, SUPPORTED_MODELS
+from .models.registry import model_registry
+from .training.config import is_supported_model
 from .training.data import (
     build_pe_db_filter_params as _build_pe_db_filter_params,
     request_pe_db_filtered,
@@ -73,11 +74,18 @@ async def lifespan(_app: FastAPI):
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-ensemble-sync")
     loop.set_default_executor(executor)
     try:
+        from .plugin_loader import load_active_plugins
+
+        loaded = load_active_plugins()
+        if loaded:
+            logger.info("Loaded PE Ensemble plugins: %s", ", ".join(loaded))
         yield
     finally:
         from .compute.device_scheduler import shutdown_scheduler
+        from .plugins.scheduler import shutdown_validation_scheduler
 
         shutdown_scheduler()
+        shutdown_validation_scheduler()
         _shutdown_joblib_loky()
         executor.shutdown(wait=True, cancel_futures=True)
 
@@ -174,7 +182,7 @@ async def health_check():
 
 @app.get("/data/filter")
 async def export_filtered_data(
-    format_: Literal["std", "oped", "deepprime", "pridict", "pridict2"] = Query(
+    format_: str = Query(
         ...,
         alias="format",
         description="Output format (same as PE-DB GET /api/filter).",
@@ -242,55 +250,25 @@ async def export_filtered_data(
 @app.get("/models")
 async def list_models():
     """List all available models"""
-    models = [
-        {
-            "name": "deepprime",
-            "description": "CNN model for PE efficiency prediction",
-            "type": "neural_network",
-            "status": "available"
-        },
-        # {
-        #     "name": "pridict",
-        #     "description": "RNN based model for PE efficiency prediction",
-        #     "type": "pssm",
-        #     "status": "available"
-        # },
-        {
-            "name": "pridict2",
-            "description": "Improved version of PRIDICT with transfer learning",
-            "type": "pssm",
-            "status": "available"
-        },
-        {
-            "name": "oped",
-            "description": "Optimized Prime Editor prediction model using transformer architecture",
-            "type": "neural_network",
-            "status": "available"
-        }
-    ]
-    
+    models = model_registry.list_catalog_entries()
     return {"models": models, "count": len(models)}
 
 
 @app.get("/models/{model_name}/weights")
 async def list_model_weights(model_name: str):
     """List registered weight sets available for a model."""
-    if model_name not in SUPPORTED_MODELS:
+    model_name = model_name.strip().lower()
+    if not is_supported_model(model_name):
         raise HTTPException(status_code=400, detail="Invalid model name")
-    if model_name == "pridict2":
-        from .models.pridict2_wrapper import PRIDICT2ModelWrapper
 
-        entries = PRIDICT2ModelWrapper.list_available_weight_entries()
-        return {"model": model_name, "weights": entries, "count": len(entries)}
-
-    entries = weights_registry.list_entries(model_name)
+    entries = model_registry.list_weight_entries(model_name)
     return {"model": model_name, "weights": entries, "count": len(entries)}
 
 
 @app.post("/predict")
 async def predict(request: PredictionRequest):
     """Get predictions from a model"""
-    if request.model_name not in ["deepprime", "pridict", "pridict2", "oped"]:
+    if not is_supported_model(request.model_name):
         raise HTTPException(status_code=400, detail="Invalid model name")
 
     model_kwargs: Dict[str, Any] = {}
@@ -346,7 +324,7 @@ async def training_device_status():
 async def train_model(request: TrainingRequest):
     """Queue an asynchronous model training job."""
     model_name = request.model_name.strip().lower()
-    if model_name not in SUPPORTED_MODELS:
+    if not is_supported_model(model_name):
         raise HTTPException(status_code=400, detail="Invalid model name")
 
     job_id = create_job(request)
@@ -436,19 +414,14 @@ async def get_training_logs(
 async def evaluate_model(request: EvaluationRequest):
     """Queue an asynchronous benchmark / evaluation job."""
     model_name = request.model_name.strip().lower()
-    if model_name not in SUPPORTED_MODELS:
+    if not is_supported_model(model_name):
         raise HTTPException(status_code=400, detail="Invalid model name")
 
     weight_id = request.weights.strip()
     if not weight_id:
         raise HTTPException(status_code=400, detail="weights is required")
     try:
-        if model_name == "pridict2":
-            from .models.pridict2_wrapper import PRIDICT2ModelWrapper
-
-            PRIDICT2ModelWrapper.resolve_weight_selection(weight_id)
-        else:
-            weights_registry.resolve_dir(model_name, weight_id)
+        model_registry.validate_weight_selection(model_name, weight_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -536,6 +509,227 @@ async def evaluation_device_status():
         "default": default_device_id(),
         "devices": get_scheduler().device_snapshot(),
     }
+
+
+@app.get("/models/plugins")
+async def list_plugin_bundles():
+    from .plugins.manager import list_plugins
+
+    plugins = await asyncio.to_thread(list_plugins)
+    return {"plugins": plugins, "count": len(plugins)}
+
+
+@app.get("/models/plugins/{name}")
+async def get_plugin_bundle(name: str):
+    from .plugins.manager import get_plugin
+
+    try:
+        return await asyncio.to_thread(get_plugin, name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/models/plugins/{name}/validation.log")
+async def get_plugin_validation_log(
+    name: str,
+    offset: int = Query(0, ge=0),
+):
+    from .plugins.manager import read_validation_log
+
+    try:
+        log_chunk, next_offset = await asyncio.to_thread(read_validation_log, name, offset)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "name": name.strip().lower(),
+        "offset": offset,
+        "next_offset": next_offset,
+        "log": log_chunk,
+    }
+
+
+@app.post("/models/plugins")
+async def upload_plugin_bundle(
+    name: str = Form(...),
+    version: str = Form(...),
+    display_name: str = Form(...),
+    description: str = Form(...),
+    wrapper_class: str = Form(...),
+    weight_format: str = Form(...),
+    authors: Optional[str] = Form(None),
+    convert_entrypoint: str = Form("convert"),
+    pe_db_format: Optional[str] = Form(None),
+    output_columns: Optional[str] = Form(None),
+    required_std_columns: Optional[str] = Form(None),
+    label_column: Optional[str] = Form(None),
+    hyperparameters_json: Optional[str] = Form(None),
+    weights_json: Optional[str] = Form(None),
+    replace_existing: bool = Form(False),
+    convert_file: Optional[UploadFile] = File(None),
+    wrapper_file: Optional[UploadFile] = File(None),
+    bundle_zip: Optional[UploadFile] = File(None),
+    weight_id: Optional[str] = Form(None),
+    weight_file: Optional[UploadFile] = File(None),
+):
+    from pe_common.plugins import PluginError
+
+    from .plugins.manager import upload_plugin_bundle
+
+    convert_bytes: Optional[bytes] = None
+    wrapper_bytes: Optional[bytes] = None
+    bundle_zip_bytes: Optional[bytes] = None
+    weight_uploads: Optional[list] = None
+    if bundle_zip is not None:
+        bundle_zip_bytes = await bundle_zip.read()
+    if convert_file is not None:
+        convert_bytes = await convert_file.read()
+    if wrapper_file is not None:
+        wrapper_bytes = await wrapper_file.read()
+    if weight_file is not None and weight_id and weight_id.strip():
+        weight_uploads = [(weight_id.strip(), await weight_file.read())]
+
+    try:
+        result = await asyncio.to_thread(
+            upload_plugin_bundle,
+            name=name,
+            version=version,
+            display_name=display_name,
+            description=description,
+            authors=authors,
+            wrapper_class=wrapper_class,
+            convert_entrypoint=convert_entrypoint,
+            pe_db_format=pe_db_format,
+            weight_format=weight_format,
+            output_columns=output_columns,
+            required_std_columns=required_std_columns,
+            label_column=label_column,
+            hyperparameters_json=hyperparameters_json,
+            weights_json=weights_json,
+            convert_bytes=convert_bytes,
+            wrapper_bytes=wrapper_bytes,
+            bundle_zip_bytes=bundle_zip_bytes,
+            weight_uploads=weight_uploads,
+            replace_existing=replace_existing,
+        )
+    except PluginError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return result
+
+
+@app.post("/models/plugins/{name}/validate", status_code=202)
+async def validate_plugin_bundle(name: str):
+    from pe_common.plugins import PluginError
+
+    from .plugins.manager import queue_validation
+
+    try:
+        created = await asyncio.to_thread(queue_validation, name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PluginError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    from .plugins.schemas import PluginValidationJobCreatedResponse
+
+    return PluginValidationJobCreatedResponse(
+        job_id=created["job_id"],
+        plugin_name=created["plugin_name"],
+        status=created["status"],
+        message=created["message"],
+    )
+
+
+@app.get("/models/plugins/{name}/validate/status/{job_id}")
+async def get_plugin_validation_status(name: str, job_id: str):
+    from .plugins.schemas import job_summary
+    from .plugins.validation_jobs import get_job
+
+    try:
+        manifest = await asyncio.to_thread(get_job, job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if manifest.get("plugin_name") != name.strip().lower():
+        raise HTTPException(status_code=404, detail="Validation job not found for this plugin")
+
+    summary = job_summary(manifest).model_dump()
+    if manifest.get("result") is not None:
+        summary["result"] = manifest["result"]
+    return summary
+
+
+@app.get("/models/plugins/{name}/validate/logs/{job_id}")
+async def get_plugin_validation_job_logs(
+    name: str,
+    job_id: str,
+    offset: int = Query(0, ge=0),
+):
+    from .plugins.schemas import PluginValidationLogResponse
+    from .plugins.validation_jobs import get_job, read_logs
+
+    try:
+        manifest = await asyncio.to_thread(get_job, job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if manifest.get("plugin_name") != name.strip().lower():
+        raise HTTPException(status_code=404, detail="Validation job not found for this plugin")
+
+    log_chunk, next_offset = await asyncio.to_thread(read_logs, job_id, offset=offset)
+    return PluginValidationLogResponse(
+        job_id=job_id,
+        plugin_name=manifest["plugin_name"],
+        status=manifest["status"],
+        offset=offset,
+        next_offset=next_offset,
+        log=log_chunk,
+    )
+
+
+@app.delete("/models/plugins/{name}/validate/jobs/{job_id}", status_code=202)
+async def cancel_plugin_validation_job(name: str, job_id: str):
+    from .plugins.scheduler import get_validation_scheduler
+    from .plugins.validation_jobs import get_job
+
+    try:
+        manifest = await asyncio.to_thread(get_job, job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if manifest.get("plugin_name") != name.strip().lower():
+        raise HTTPException(status_code=404, detail="Validation job not found for this plugin")
+
+    accepted = await asyncio.to_thread(get_validation_scheduler().cancel, job_id)
+    return {
+        "job_id": job_id,
+        "accepted": accepted,
+        "status": manifest.get("status"),
+    }
+
+
+@app.post("/models/plugins/{name}/activate")
+async def activate_plugin_bundle_endpoint(name: str):
+    from pe_common.plugins import PluginError
+
+    from .plugins.manager import activate_plugin_bundle
+
+    try:
+        return await asyncio.to_thread(activate_plugin_bundle, name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PluginError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/models/plugins/{name}")
+async def delete_plugin_bundle_endpoint(name: str):
+    from .plugins.manager import delete_plugin_bundle
+
+    try:
+        return await asyncio.to_thread(delete_plugin_bundle, name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 if __name__ == "__main__":

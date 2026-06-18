@@ -504,6 +504,10 @@ class DeepPrimeModelWrapper(BasePEModel):
             self.mean.to_csv(os.path.join(model_path, 'mean.csv'))
         if self.std is not None:
             self.std.to_csv(os.path.join(model_path, 'std.csv'))
+
+    def save_to_registry(self, dest_dir) -> str:
+        self.save_model(str(dest_dir))
+        return "deepprime_ensemble"
     
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""
