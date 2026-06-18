@@ -9,17 +9,12 @@ from typing import Callable, Optional, Union
 import logging
 
 from pe_common.constants import DATA_ROOT
+from .format_registry import convert_standardized, known_model_formats
 from .formatted_cache import (
-    FORMATTED_MODEL_FORMATS,
     load_formatted_cache,
     save_formatted_cache,
 )
-from .utils.convert_data import (
-    is_standardized_dataframe,
-    standardized_to_pridict_dataframe,
-    standardized_to_deepprime_dataframe,
-    standardized_to_oped_dataframe,
-)
+from .utils.convert_data import is_standardized_dataframe
 from .utils.standardize_data import export_original_data, standardize_pe_data
 
 logger = logging.getLogger(__name__)
@@ -110,7 +105,7 @@ class DataConverter:
 
         Args:
             source: Standardized dataframe or path to a standardized CSV file
-            target_format: One of {"std", "deepprime", "pridict", "pridict2", "oped"}
+            target_format: Registered output format (see ``format_registry``)
             output_file: Optional CSV path to write converted output
         """
         if isinstance(source, Path):
@@ -120,28 +115,14 @@ class DataConverter:
         else:
             df = source.copy()
 
-        if target_format == "std":
-            converted = df.copy()
-        else:
-            if not is_standardized_dataframe(df):
-                raise ValueError("Input dataframe is not in standardized schema.")
-            if target_format == "deepprime":
-                converted = standardized_to_deepprime_dataframe(
-                    df,
-                    progress_callback=progress_callback,
-                )
-            elif target_format in {"pridict", "pridict2"}:
-                converted = standardized_to_pridict_dataframe(
-                    df,
-                    progress_callback=progress_callback,
-                )
-            elif target_format == "oped":
-                converted = standardized_to_oped_dataframe(
-                    df,
-                    progress_callback=progress_callback,
-                )
-            else:
-                raise ValueError(f"Unsupported target format: {target_format}")
+        if target_format != "std" and not is_standardized_dataframe(df):
+            raise ValueError("Input dataframe is not in standardized schema.")
+
+        converted = convert_standardized(
+            df,
+            target_format,
+            progress_callback=progress_callback,
+        )
 
         if output_file is not None:
             output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -167,7 +148,7 @@ class DataConverter:
         """Return model-format rows for a full standardized datasheet, using disk cache."""
         if target_format == "std":
             return source.copy()
-        if target_format not in FORMATTED_MODEL_FORMATS:
+        if target_format not in known_model_formats():
             raise ValueError(f"Unsupported target format: {target_format}")
 
         cached = load_formatted_cache(

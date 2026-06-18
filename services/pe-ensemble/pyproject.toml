@@ -40,6 +40,14 @@ dev = [
     "tensorboard>=2.14.0",
     "mlflow>=2.8.0",
 ]
+# In-process PE-DB access (PE_DB_MODE=library). Install sibling package editable:
+#   pip install -e packages/pe-common && pip install -e services/pe-db
+pe-db = [
+    "pe-db>=0.2.0",
+]
+library = [
+    "pe-db>=0.2.0",
+]
 
 # Vendor model dependencies (installed from local paths)
 vendor = [

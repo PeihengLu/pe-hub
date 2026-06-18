@@ -10,12 +10,35 @@ from typing import Any, Dict, List, Optional
 
 from pe_common.devices import format_devices_for_cli
 
-from .training.config import jobs_root
+from .training.config import jobs_root, supported_models
 from .training.model_architecture import architecture_from_cli_args, merge_training_hyperparameters
 from .compute.device_scheduler import get_scheduler
 from .training.jobs import create_job, get_job, read_logs, wait_for_job
+from .training.pe_db_access import PeDbAccessError, reload_pe_db_plugins
 from .training.runner import TrainingError
 from .training.schemas import SplitQueryParams, TrainingRequest
+
+
+def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
+    """Parse flags that must apply before plugin bootstrap."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--plugins-root")
+    parser.add_argument("--pe-db-mode", choices=["http", "library"])
+    parser.add_argument("--list-devices", action="store_true")
+    return parser.parse_known_args(argv)[0]
+
+
+def _bootstrap_plugins() -> List[str]:
+    from .plugin_loader import load_active_plugins
+
+    return load_active_plugins()
+
+
+def _sync_pe_db_plugins() -> None:
+    try:
+        reload_pe_db_plugins()
+    except PeDbAccessError:
+        pass
 
 
 def _parse_json_object(raw: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -77,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         required=True,
-        choices=["deepprime", "oped", "pridict2"],
+        choices=list(supported_models()),
         help="Model to train",
     )
     parser.add_argument(
@@ -167,7 +190,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--notes", default=None)
     parser.add_argument("--pe-db-url", default=None, help="Override PE_DB_URL for this run")
+    parser.add_argument(
+        "--pe-db-mode",
+        default=None,
+        choices=["http", "library"],
+        help="PE-DB transport: http (default) or library (in-process, no HTTP server)",
+    )
     parser.add_argument("--weights-root", default=None, help="Override WEIGHTS_ROOT for this run")
+    parser.add_argument(
+        "--plugins-root",
+        default=None,
+        help="Override PLUGINS_ROOT for active plugin scan (default: repo plugins/)",
+    )
     parser.add_argument("--jobs-root", default=None, help="Override TRAINING_JOBS_ROOT for this run")
     parser.add_argument(
         "--job-id",
@@ -198,15 +232,31 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
-    if args.list_devices:
+    early = _early_parse(argv)
+    if early.list_devices:
         print(format_devices_for_cli())
         return 0
 
+    if early.plugins_root:
+        os.environ["PLUGINS_ROOT"] = early.plugins_root
+    if early.pe_db_mode:
+        os.environ["PE_DB_MODE"] = early.pe_db_mode
+
+    loaded = _bootstrap_plugins()
+    if loaded:
+        print(f"Loaded plugins: {', '.join(loaded)}", file=sys.stderr)
+    _sync_pe_db_plugins()
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.plugins_root:
+        os.environ["PLUGINS_ROOT"] = args.plugins_root
+
     if args.pe_db_url:
         os.environ["PE_DB_URL"] = args.pe_db_url
+    if args.pe_db_mode:
+        os.environ["PE_DB_MODE"] = args.pe_db_mode
     if args.weights_root:
         os.environ["WEIGHTS_ROOT"] = args.weights_root
     if args.jobs_root:

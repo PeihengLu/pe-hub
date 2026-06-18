@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple, Union
 import pandas as pd
 import torch
 
@@ -50,7 +51,16 @@ class BasePEModel(ABC):
     def save_model(self, model_path: str) -> None:
         """Save the trained model to disk"""
         pass
-    
+
+    def save_to_registry(self, dest_dir: Union[str, Path]) -> str:
+        """Persist trained artifacts into a weight-registry entry directory.
+
+        Returns the registry ``format`` name (e.g. ``deepprime_ensemble``).
+        """
+        raise NotImplementedError(
+            f"{self.model_name} does not implement save_to_registry"
+        )
+
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""
         return {

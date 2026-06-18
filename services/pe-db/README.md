@@ -39,13 +39,34 @@ Seed does **not**:
 
 ## Manual usage
 
+### CLI (no HTTP server)
+
+```bash
+cd services/pe-db
+pip install -e ../../packages/pe-common --no-deps
+pip install -e .
+
+pe-db init                              # seed + export + standardize
+pe-db init --force-export               # re-export raw study files
+pe-db export --study deepprime
+pe-db standardize --force
+pe-db filter --format deepprime --dataset library2 \
+  --cell-line HEK293T --pe-system PE2max --split-strategy holdout_3 \
+  --out /tmp/deepprime_train.parquet
+pe-db formats
+pe-db plugins reload
+```
+
+### Python
+
 ```python
 from app.catalog.initialize import initialize_database
 from app.converter import DataConverter
+from pe_db.library import filter_from_params, run_init
 
-initialize_database()  # seed + export + standardize
+run_init()  # seed + export + standardize
 # or
-DataConverter().initialize_database(force_export=True, force_standardize=True)
+initialize_database()  # same pipeline via app.catalog
 ```
 
 ```bash
@@ -89,6 +110,7 @@ PE Ensemble and PE Hub call this endpoint (Ensemble proxies it at `GET /data/fil
 cd services/pe-db
 pip install -r requirements.txt
 pip install -e ../../packages/pe-common --no-deps
+pip install -e .   # installs ``pe-db`` CLI and ``pe_db`` library package
 uvicorn app.main:app --reload --port 8000
 ```
 

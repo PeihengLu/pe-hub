@@ -8,6 +8,8 @@ from typing import Any, Callable, Dict, Iterator, Optional
 
 from pe_common.conversion_progress import clear_progress, progress_file_path
 
+from .config import pe_db_mode
+
 
 def _tail_progress_file(
     path,
@@ -44,8 +46,8 @@ def pe_db_filter_progress(
     progress_log: Optional[Callable[[str], None]],
     request_fn: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> Iterator[Dict[str, Any]]:
-    """Call PE-DB /api/filter and mirror coarse conversion progress into job logs."""
-    if progress_log is None:
+    """Call PE-DB filter/export and mirror coarse conversion progress into job logs."""
+    if progress_log is None or pe_db_mode() == "library":
         yield request_fn(params)
         return
 

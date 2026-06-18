@@ -31,6 +31,9 @@ make install
 # PE Database only
 ./start-pe-db-backend.sh --install
 
+# PE Database headless (no HTTP)
+cd services/pe-db && pe-db init
+
 # Individual backends
 cd services/pe-db && uvicorn app.main:app --reload --port 8000
 cd services/pe-ensemble && PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
@@ -71,7 +74,8 @@ curl http://localhost:8001/devices
 
 | Variable | Service | Purpose |
 |----------|---------|---------|
-| `PE_DB_URL` | Ensemble | PE Database base URL (default `http://localhost:8000`) |
+| `PE_DB_URL` | Ensemble | PE Database base URL when `PE_DB_MODE=http` (default `http://localhost:8000`) |
+| `PE_DB_MODE` | Ensemble | `http` (default) or `library` for in-process PE-DB access |
 | `WEIGHTS_ROOT` | Ensemble | Override weights directory |
 | `TRAINING_JOBS_ROOT` | Ensemble | Override `jobs/` location |
 | `DATABASE_URL` | Database | Override SQLite catalog path |

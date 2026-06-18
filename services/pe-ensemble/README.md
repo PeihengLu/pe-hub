@@ -80,7 +80,34 @@ with `python -m app.models.migrate_weights`.
 
 ## Training CLI and SLURM
 
-Run training without the HTTP server (logs and job state land under `jobs/`):
+Run training without the PE Ensemble HTTP server or PE Hub (logs and job state land under `jobs/`).
+
+Active model plugins under `PLUGINS_ROOT` (default `<repo>/plugins`) are loaded automatically at CLI startup, same as the HTTP service. See [`../../plugins/README.md`](../../plugins/README.md) for how to prepare and activate a plugin for both the web UI and CLI.
+
+### Library mode (no PE-DB HTTP server)
+
+Install both packages, prepare data once, then train in-process:
+
+```bash
+pip install -e packages/pe-common
+pip install -e services/pe-db
+pip install -e "services/pe-ensemble[pe-db]"
+
+pe-db init   # seed, export, standardize (or skip if datasets/ already prepared)
+
+cd services/pe-ensemble
+PE_DB_MODE=library python -m app.train_models \
+  --model deepprime \
+  --dataset-name library2 \
+  --dataset library2 \
+  --cell-line HEK293T \
+  --pe-system PE2max \
+  --device cuda:0
+```
+
+Use `--pe-db-mode library` instead of the environment variable when preferred.
+
+### HTTP mode (PE-DB API running)
 
 ```bash
 cd services/pe-ensemble

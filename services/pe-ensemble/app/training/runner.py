@@ -11,7 +11,7 @@ from pe_common.splits import exclude_test_partition
 
 from ..models import weights_registry
 from ..models.model_factory import ModelFactory
-from .config import MODEL_FORMAT, SUPPORTED_MODELS
+from .config import is_supported_model, model_format_for
 from .data import fetch_training_dataframe, normalize_filter_param
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
@@ -87,7 +87,7 @@ def execute_training(
 ) -> Dict[str, Any]:
     """Run training end-to-end and register weights."""
     model_name = request.model_name.strip().lower()
-    if model_name not in SUPPORTED_MODELS:
+    if not is_supported_model(model_name):
         raise TrainingError(f"Invalid model name: {model_name}")
 
     resolved_device_id = resolve_device_id(device_id or request.device or AUTO_DEVICE)
@@ -119,7 +119,7 @@ def execute_training(
             _raise_if_cancelled()
             train_df = fetch_training_dataframe(
                 request,
-                MODEL_FORMAT[model_name],
+                model_format_for(model_name),
                 progress_log=_progress_log,
             )
             if train_df.empty:

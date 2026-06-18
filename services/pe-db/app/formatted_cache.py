@@ -10,9 +10,14 @@ import pandas as pd
 
 from pe_common.constants import DATA_ROOT
 
+from .format_registry import known_model_formats
+
 logger = logging.getLogger(__name__)
 
-FORMATTED_MODEL_FORMATS = frozenset({"deepprime", "pridict", "pridict2", "oped"})
+
+def formatted_model_formats() -> frozenset[str]:
+    """Model format names eligible for disk cache (derived from the format registry)."""
+    return known_model_formats()
 
 
 def _normalize_segment(value: str) -> str:
@@ -32,7 +37,7 @@ def formatted_cache_path(
     *,
     datasets_dir: Optional[Path] = None,
 ) -> Path:
-    if target_format not in FORMATTED_MODEL_FORMATS:
+    if target_format not in formatted_model_formats():
         raise ValueError(f"Unsupported formatted cache format: {target_format}")
     study_key = _normalize_segment(study)
     dataset_key = _normalize_segment(dataset)

@@ -10,13 +10,20 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .converter import DataConverter
+from .library import (
+    PeDbLibraryError,
+    filter_data as library_filter_data,
+    reload_plugins as library_reload_plugins,
+    run_convert_sheet,
+    run_export as library_run_export,
+    run_init,
+)
 from .db.repository import CatalogRepository
 from .db.schemas import (
     DatasetRead,
@@ -44,16 +51,20 @@ def _env_flag(name: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from .catalog.initialize import initialize_database
-
     loop = asyncio.get_running_loop()
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-db-sync")
     loop.set_default_executor(executor)
     try:
-        initialize_database(
+        await asyncio.to_thread(
+            run_init,
             force_export=_env_flag("PE_DB_FORCE_EXPORT"),
             force_standardize=_env_flag("PE_DB_FORCE_STANDARDIZE"),
         )
+        from .plugin_loader import loaded_plugin_names
+
+        names = loaded_plugin_names()
+        if names:
+            logger.info("Loaded PE-DB plugins: %s", ", ".join(names))
         yield
     finally:
         from .process_pool import shutdown_mfe_process_pool
@@ -77,7 +88,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-converter = DataConverter()
 loader = DataLoader()
 
 GRACEFUL_SHUTDOWN_SECONDS = 5
@@ -91,48 +101,6 @@ def _legacy_model_to_study(source_model: str) -> str:
         "pd2": "pridict2",
     }
     return legacy_map.get(source_model.strip().lower(), source_model.strip().lower())
-
-
-def _filter_data_sync(
-    *,
-    study: Optional[list[str]],
-    dataset: Optional[list[str]],
-    cell_line: Optional[list[str]],
-    pe_system: Optional[list[str]],
-    edit_type: Optional[list[str]],
-    edit_length: Optional[list[int]],
-    edit_efficiency_min: Optional[float],
-    edit_efficiency_max: Optional[float],
-    edit_scope: Optional[list[str]],
-    experimental_method: Optional[list[str]],
-    target_context: Optional[list[str]],
-    scaffold_name: Optional[list[str]],
-    format_: Optional[str],
-    split_config: Any,
-    merge: bool,
-    summary_only: bool,
-    progress_callback: Any = None,
-) -> dict[str, Any]:
-    with get_session() as session:
-        return CatalogRepository(session).filter_all(
-            study_name=study,
-            dataset_name=dataset,
-            cell_line=cell_line,
-            pe_system=pe_system,
-            edit_type=edit_type,
-            edit_length=edit_length,
-            edit_efficiency_min=edit_efficiency_min,
-            edit_efficiency_max=edit_efficiency_max,
-            edit_scope=edit_scope,
-            experimental_method=experimental_method,
-            target_context=target_context,
-            scaffold_name=scaffold_name,
-            target_format=format_,
-            split_config=split_config,
-            merge_groups=merge,
-            summary_only=summary_only,
-            progress_callback=progress_callback,
-        )
 
 
 @app.get("/")
@@ -216,7 +184,7 @@ async def filter_data(
     experimental_method: Optional[list[str]] = Query(None, description="Filter by experimental method."),
     target_context: Optional[list[str]] = Query(None, description="Filter by target context."),
     scaffold_name: Optional[list[str]] = Query(None, description="Filter by pegRNA scaffold name."),
-    format_: Optional[Literal["std", "oped", "deepprime", "pridict", "pridict2"]] = Query(
+    format_: Optional[str] = Query(
         None,
         alias="format",
         description=(
@@ -281,16 +249,6 @@ async def filter_data(
     With ``summary_only=true``, ``format`` defaults to ``std`` and only record
     counts are returned (no model conversion).
     """
-    if summary_only and format_ is None:
-        format_ = "std"
-
-    if format_ is not None and split_strategy is None:
-        raise HTTPException(
-            status_code=422,
-            detail="split_strategy is required when format is set (use 'none' for no split columns).",
-        )
-
-    split_config = None
     progress_callback = None
     if progress_token:
         from pe_common.conversion_progress import append_progress, clear_progress
@@ -298,26 +256,9 @@ async def filter_data(
         clear_progress(progress_token)
         progress_callback = lambda message, token=progress_token: append_progress(token, message)
 
-    if format_ is not None:
-        from pe_common.splits import split_config_from_params
-
-        try:
-            split_config = split_config_from_params(
-                strategy=split_strategy,
-                train_pct=train_pct,
-                val_pct=val_pct,
-                test_pct=test_pct,
-                cv_folds=cv_folds,
-                use_original_fold=use_original_fold,
-                original_fold_test_value=original_fold_test_value,
-                random_state=split_random_state,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
     try:
-        result = await asyncio.to_thread(
-            _filter_data_sync,
+        return await asyncio.to_thread(
+            library_filter_data,
             study=study,
             dataset=dataset,
             cell_line=cell_line,
@@ -331,27 +272,25 @@ async def filter_data(
             target_context=target_context,
             scaffold_name=scaffold_name,
             format_=format_,
-            split_config=split_config,
+            split_strategy=split_strategy,
+            train_pct=train_pct,
+            val_pct=val_pct,
+            test_pct=test_pct,
+            cv_folds=cv_folds,
+            use_original_fold=use_original_fold,
+            original_fold_test_value=original_fold_test_value,
+            split_random_state=split_random_state,
             merge=merge,
             summary_only=summary_only,
             progress_callback=progress_callback,
         )
+    except PeDbLibraryError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("Error filtering data: %s", exc)
         raise HTTPException(status_code=500, detail=f"Error filtering data: {exc}") from exc
-
-    if format_ is None:
-        # Proceed as usual: matching datasheet metadata.
-        return {
-            "status": "success",
-            "format": None,
-            "count": len(result),
-            "datasheets": result,
-        }
-
-    return {"status": "success", **result}
 
 
 @app.get("/api/data")
@@ -501,26 +440,13 @@ async def export_data(
 ):
     """Export raw study files (and optionally standardize). Refreshes Datasheet catalog rows."""
     try:
-        if study is None and not force_reexport and not force_standardize and standardize:
-            converter.initialize_database(
-                force_export=force_reexport,
-                force_standardize=force_standardize,
-            )
-        else:
-            converter.export_raw(study=study, force_reexport=force_reexport)
-            if standardize:
-                from .utils.standardize_data import standardize_exported_data
-
-                standardize_exported_data(study=study, force=force_standardize)
-        with get_session() as session:
-            count = len(CatalogRepository(session).list_datasheets())
-        return {
-            "status": "success",
-            "study": study or "all",
-            "force_reexport": force_reexport,
-            "standardized": standardize,
-            "datasheets_in_catalog": count,
-        }
+        return await asyncio.to_thread(
+            library_run_export,
+            study=study,
+            force_reexport=force_reexport,
+            standardize=standardize,
+            force_standardize=force_standardize,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -536,18 +462,13 @@ async def convert_data(
     pe_system: str = Query(..., description="PE system"),
 ):
     try:
-        result = converter.convert_to_standardized(
+        return await asyncio.to_thread(
+            run_convert_sheet,
             study=study,
             dataset=dataset,
             cell_line=cell_line,
             pe_system=pe_system,
         )
-        return {
-            "status": "success",
-            "message": f"Successfully standardized {study}/{dataset} data",
-            "records_converted": len(result),
-            "output_columns": list(result.columns),
-        }
     except FileNotFoundError as exc:
         logger.error("Source file not found: %s", exc)
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -564,6 +485,13 @@ async def health_check():
         "catalog_database": str(settings.catalog_db_path),
         "catalog_database_exists": settings.catalog_db_path.exists(),
     }
+
+
+@app.post("/api/plugins/reload")
+async def reload_plugin_formats():
+    """Reload active plugin converters from ``PLUGINS_ROOT``."""
+    loaded = await asyncio.to_thread(library_reload_plugins)
+    return {"loaded": loaded, "count": len(loaded)}
 
 
 if __name__ == "__main__":

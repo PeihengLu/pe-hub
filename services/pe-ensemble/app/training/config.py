@@ -4,17 +4,37 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-SUPPORTED_MODELS = ("deepprime", "pridict2", "oped")
+from ..models.registry import model_registry
 
-MODEL_FORMAT = {
-    "deepprime": "deepprime",
-    "pridict2": "pridict2",
-    "oped": "oped",
-}
+
+def supported_models() -> tuple[str, ...]:
+    return model_registry.names()
+
+
+def is_supported_model(model_name: str) -> bool:
+    return model_registry.is_registered(model_name)
+
+
+def model_format_for(model_name: str) -> str:
+    return model_registry.get(model_name).pe_db_format
+
+
+def model_format_map() -> dict[str, str]:
+    return model_registry.model_format_map()
+
+
+# Backward-compatible module-level aliases (derived from the registry).
+SUPPORTED_MODELS = supported_models()
+MODEL_FORMAT = model_format_map()
 
 
 def pe_db_url() -> str:
     return os.getenv("PE_DB_URL", "http://localhost:8000")
+
+
+def pe_db_mode() -> str:
+    """``http`` (default) or ``library`` for in-process PE-DB access."""
+    return os.getenv("PE_DB_MODE", "http").strip().lower()
 
 
 def pe_db_filter_timeout() -> tuple[float, float]:

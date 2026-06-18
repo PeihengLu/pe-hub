@@ -5,10 +5,9 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
-import requests
 
-from .config import pe_db_filter_timeout, pe_db_url
 from .conversion_progress import pe_db_filter_progress
+from .pe_db_access import fetch_pe_db_filter
 from .schemas import FilterScalar, FilterValue, SplitQueryParams, TrainingRequest
 
 
@@ -76,14 +75,12 @@ def build_pe_db_filter_params(
     return params
 
 
-def request_pe_db_filtered(params: Dict[str, Any]) -> Dict[str, Any]:
-    response = requests.get(
-        f"{pe_db_url()}/api/filter",
-        params=params,
-        timeout=pe_db_filter_timeout(),
-    )
-    response.raise_for_status()
-    return response.json()
+def request_pe_db_filtered(
+    params: Dict[str, Any],
+    *,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> Dict[str, Any]:
+    return fetch_pe_db_filter(params, progress_callback=progress_callback)
 
 
 def filtered_payload_to_dataframe(payload: Dict[str, Any]) -> pd.DataFrame:
@@ -159,7 +156,11 @@ def fetch_model_format_result(
     )
     if progress_log is not None:
         progress_log(f"Fetching {model_format} data from PE-DB (conversion may take a while)...")
-    with pe_db_filter_progress(params, progress_log=progress_log, request_fn=request_pe_db_filtered) as payload:
+
+    def _request(params: Dict[str, Any]) -> Dict[str, Any]:
+        return request_pe_db_filtered(params, progress_callback=progress_log)
+
+    with pe_db_filter_progress(params, progress_log=progress_log, request_fn=_request) as payload:
         skipped = list(payload.get("skipped") or [])
         total_records = int(payload.get("total_records") or 0)
         df = filtered_payload_to_dataframe(payload)
