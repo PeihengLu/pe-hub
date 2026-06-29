@@ -291,6 +291,14 @@ The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web servi
 
 However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation process.
 
+\subsection{Introducing Custom Models}
+
+Clearly, a lot of potential users for this tool would not only want to run models that are already in the system, but also benchmarking their own models and compare the performance with existing models.
+
+
+To leverage the ever increasing capability and usage of LLMs, we also provided a prompt designed to devise all required components to add a custom model to the system for benchmarking. In the workspace of your project, using any LLM based code editor(copilot, cursor, codex, claude code etc.), enter the prompt and the agent should spin up a complete package. You can either upload the package through the web interface for it to be checked and registered, or just paste the files into the plugins directories and activate it via the CLI.
+% TODO: CLI to be developed
+
 
 \section{Result}
 

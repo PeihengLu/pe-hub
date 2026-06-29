@@ -550,12 +550,12 @@ async def get_plugin_validation_log(
 
 @app.post("/models/plugins")
 async def upload_plugin_bundle(
-    name: str = Form(...),
-    version: str = Form(...),
-    display_name: str = Form(...),
-    description: str = Form(...),
-    wrapper_class: str = Form(...),
-    weight_format: str = Form(...),
+    name: Optional[str] = Form(None),
+    version: Optional[str] = Form("0.1.0"),
+    display_name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    wrapper_class: Optional[str] = Form(None),
+    weight_format: Optional[str] = Form(None),
     authors: Optional[str] = Form(None),
     convert_entrypoint: str = Form("convert"),
     pe_db_format: Optional[str] = Form(None),
@@ -568,6 +568,7 @@ async def upload_plugin_bundle(
     convert_file: Optional[UploadFile] = File(None),
     wrapper_file: Optional[UploadFile] = File(None),
     bundle_zip: Optional[UploadFile] = File(None),
+    manifest_file: Optional[UploadFile] = File(None),
     weight_id: Optional[str] = Form(None),
     weight_file: Optional[UploadFile] = File(None),
 ):
@@ -578,9 +579,12 @@ async def upload_plugin_bundle(
     convert_bytes: Optional[bytes] = None
     wrapper_bytes: Optional[bytes] = None
     bundle_zip_bytes: Optional[bytes] = None
+    manifest_bytes: Optional[bytes] = None
     weight_uploads: Optional[list] = None
     if bundle_zip is not None:
         bundle_zip_bytes = await bundle_zip.read()
+    if manifest_file is not None:
+        manifest_bytes = await manifest_file.read()
     if convert_file is not None:
         convert_bytes = await convert_file.read()
     if wrapper_file is not None:
@@ -591,15 +595,15 @@ async def upload_plugin_bundle(
     try:
         result = await asyncio.to_thread(
             upload_plugin_bundle,
-            name=name,
-            version=version,
-            display_name=display_name,
-            description=description,
+            name=name or None,
+            version=version or "0.1.0",
+            display_name=display_name or "",
+            description=description or "",
             authors=authors,
-            wrapper_class=wrapper_class,
+            wrapper_class=wrapper_class or "",
             convert_entrypoint=convert_entrypoint,
             pe_db_format=pe_db_format,
-            weight_format=weight_format,
+            weight_format=weight_format or "",
             output_columns=output_columns,
             required_std_columns=required_std_columns,
             label_column=label_column,
@@ -608,6 +612,7 @@ async def upload_plugin_bundle(
             convert_bytes=convert_bytes,
             wrapper_bytes=wrapper_bytes,
             bundle_zip_bytes=bundle_zip_bytes,
+            manifest_bytes=manifest_bytes,
             weight_uploads=weight_uploads,
             replace_existing=replace_existing,
         )

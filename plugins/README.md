@@ -16,6 +16,8 @@ plugins/<name>/
 Only plugins with `"status": "active"` in `.state.json` are registered at startup.
 
 **Reference bundle:** `testdata/plugins/dummy_model/` (minimal working example).  
+**Starter template:** `plugins/_template/` (copy and edit).  
+**LLM prompt:** `docs/plugin-author-llm-prompt.md` (paste into ChatGPT/Claude to generate files).  
 **Design details:** `docs/add-new-model-plugins.md`.
 
 ---
@@ -155,7 +157,7 @@ Plugins must be **`active`** before Train, Benchmark, or the CLI can use them.
 ### Option A — PE Hub (recommended)
 
 1. Open **Add Model** (requires PE-DB and PE Ensemble running).
-2. Fill metadata and upload `convert.py`, `wrapper.py`, optional weights (or a zip).
+2. Fill metadata and upload `convert.py`, `wrapper.py`, optional weights — **or** upload a prepared **`manifest.yaml`** (recommended for hyperparameters, weight metadata, and full plugin config) plus code files.
 3. **Validate** — automated harness (manifest, imports, convert round-trip, train/eval smoke on CPU).
 4. **Activate** — sets `.state.json` to `active`, reloads PE Ensemble and notifies PE-DB.
 

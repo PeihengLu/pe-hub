@@ -1,5 +1,10 @@
 /** Hover help text for the Add Model upload form (maps to manifest.yaml fields). */
 
+export const PLUGIN_CONFIG_SOURCE_HINTS = {
+  yaml: 'All plugin metadata, hyperparameters, and format settings come from manifest.yaml (uploaded directly or inside a zip). Web form fields are not used.',
+  form: 'Build manifest.yaml on the server from the fields below. Do not upload a manifest file — config is defined entirely by the form.',
+} as const
+
 export const PLUGIN_FORM_HINTS = {
   name: 'Unique plugin slug (lowercase letters, digits, underscores). Must match the plugin directory name and cannot collide with built-in models like deepprime.',
   version: 'Semantic version string stored in manifest.yaml (e.g. 0.1.0).',
@@ -27,4 +32,6 @@ export const PLUGIN_FORM_HINTS = {
   wrapperFile: 'Python module defining your BasePEModel wrapper (train, evaluate, predict, save_to_registry).',
   weightFileUpload: 'Optional pretrained artifact copied into weights/<weight id>/ when uploading (e.g. weights.txt or a checkpoint file).',
   weightIdUpload: 'Registry id for the optional weight file; must match a weight metadata id if both are provided.',
+  manifestFile:
+    'Authoritative plugin config: hyperparameters, weights metadata, format block, and model fields. Required when using YAML manifest mode (not used with web form).',
 } as const

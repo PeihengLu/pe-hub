@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -12,11 +13,14 @@ from pe_common.plugin_validation import validate_plugin_directory
 from pe_common.plugins import (
     BUILTIN_FORMAT_NAMES,
     PluginError,
+    PluginManifest,
     activate_plugin,
     build_manifest_yaml,
     find_manifest_path,
     list_plugin_dirs,
     load_manifest,
+    parse_manifest,
+    parse_manifest_bytes,
     plugin_status,
     plugins_root,
     read_plugin_state,
@@ -143,6 +147,75 @@ def _safe_zip_extract(zip_path: Path, dest_dir: Path) -> None:
         archive.extractall(dest_dir)
 
 
+def _plugin_content_root(staging: Path) -> Path:
+    """If the zip contains a single top-level plugin directory, use it as the root."""
+    entries = [
+        path
+        for path in staging.iterdir()
+        if path.name not in {".", ".."} and not path.name.startswith(".")
+    ]
+    if len(entries) == 1 and entries[0].is_dir():
+        nested = entries[0]
+        if find_manifest_path(nested) is not None or (nested / "wrapper.py").is_file():
+            return nested
+    return staging
+
+
+def _extract_bundle_zip(bundle_zip_bytes: bytes) -> tuple[Path, Path]:
+    """Extract a plugin zip to a temp directory; return (content_root, staging_dir)."""
+    _assert_upload_size(bundle_zip_bytes, "bundle.zip")
+    staging = Path(tempfile.mkdtemp(prefix="pe-plugin-upload-"))
+    zip_path = staging / "bundle.zip"
+    zip_path.write_bytes(bundle_zip_bytes)
+    _safe_zip_extract(zip_path, staging)
+    zip_path.unlink(missing_ok=True)
+    return _plugin_content_root(staging), staging
+
+
+def _copy_plugin_contents(src: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    for item in src.iterdir():
+        if item.name.startswith(".") and item.name not in {".state.json"}:
+            continue
+        target = dest / item.name
+        if item.is_dir():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(item, target)
+        else:
+            shutil.copy2(item, target)
+
+
+def _assert_plugin_artifacts(plugin_dir: Path, manifest: PluginManifest) -> None:
+    if manifest.model is None:
+        raise PluginError("manifest.model section is required")
+    wrapper_path = plugin_dir / manifest.model.module
+    if not wrapper_path.is_file():
+        raise PluginError(f"Missing model module file: {manifest.model.module}")
+    if manifest.format is not None:
+        convert_path = plugin_dir / manifest.format.module
+        if not convert_path.is_file():
+            raise PluginError(f"Missing format module file: {manifest.format.module}")
+
+
+def _resolve_plugin_key(name: Optional[str], manifest: PluginManifest) -> str:
+    key = manifest.name
+    if name and name.strip():
+        requested = validate_plugin_name(name)
+        if requested != key:
+            raise PluginError(
+                f"manifest name '{key}' must match upload name '{requested}'"
+            )
+    return key
+
+
+def _read_manifest_from_dir(content_root: Path) -> Optional[PluginManifest]:
+    manifest_path = find_manifest_path(content_root)
+    if manifest_path is None:
+        return None
+    return parse_manifest(manifest_path)
+
+
 def _build_manifest_dict(
     *,
     name: str,
@@ -194,15 +267,15 @@ def _build_manifest_dict(
 
 def upload_plugin_bundle(
     *,
-    name: str,
-    version: str,
-    display_name: str,
-    description: str,
+    name: Optional[str] = None,
+    version: str = "0.1.0",
+    display_name: str = "",
+    description: str = "",
     authors: Optional[str] = None,
-    wrapper_class: str,
+    wrapper_class: str = "",
     convert_entrypoint: str = "convert",
     pe_db_format: Optional[str] = None,
-    weight_format: str,
+    weight_format: str = "",
     output_columns: Optional[str] = None,
     required_std_columns: Optional[str] = None,
     label_column: Optional[str] = None,
@@ -211,61 +284,101 @@ def upload_plugin_bundle(
     convert_bytes: Optional[bytes] = None,
     wrapper_bytes: Optional[bytes] = None,
     bundle_zip_bytes: Optional[bytes] = None,
+    manifest_bytes: Optional[bytes] = None,
     weight_uploads: Optional[Sequence[Tuple[str, bytes]]] = None,
     replace_existing: bool = False,
 ) -> Dict[str, Any]:
-    """Write a new plugin directory in ``pending`` state."""
-    key = validate_plugin_name(name)
-    plugin_dir = plugins_root() / key
-    root = plugins_root()
-    root.mkdir(parents=True, exist_ok=True)
+    """Write a new plugin directory in ``pending`` state.
 
-    if plugin_dir.is_dir():
-        status = plugin_status(plugin_dir)
-        if status == "active" and not replace_existing:
-            raise PluginError(
-                f"Plugin '{key}' is active. Deactivate/delete it before uploading again."
-            )
-        if status == "pending" and not replace_existing:
-            raise PluginError(
-                f"Plugin '{key}' already exists. Delete it or pass replace_existing."
-            )
-        shutil.rmtree(plugin_dir)
-
-    plugin_dir.mkdir(parents=True, exist_ok=False)
+    Bundle-first upload: provide ``bundle_zip`` and/or ``manifest_bytes`` with code
+    files. Plugin name and metadata come from ``manifest.yaml``. Form fields are
+    only used when no manifest is supplied.
+    """
+    staging_dir: Optional[Path] = None
+    content_root: Optional[Path] = None
+    plugin_dir: Optional[Path] = None
 
     try:
         if bundle_zip_bytes is not None:
-            _assert_upload_size(bundle_zip_bytes, "bundle.zip")
-            zip_path = plugin_dir / "_upload.zip"
-            zip_path.write_bytes(bundle_zip_bytes)
-            _safe_zip_extract(zip_path, plugin_dir)
-            zip_path.unlink(missing_ok=True)
+            content_root, staging_dir = _extract_bundle_zip(bundle_zip_bytes)
+
+        manifest: Optional[PluginManifest] = None
+        manifest_write_bytes: Optional[bytes] = None
+
+        if manifest_bytes is not None:
+            manifest = parse_manifest_bytes(manifest_bytes)
+            manifest_write_bytes = manifest_bytes
+        elif content_root is not None:
+            manifest = _read_manifest_from_dir(content_root)
+            if manifest is None:
+                raise PluginError(
+                    "bundle zip must include manifest.yaml or manifest.json "
+                    "(or upload manifest_file separately)"
+                )
+
+        using_form_manifest = manifest is None
+        if using_form_manifest:
+            if not name or not name.strip():
+                raise PluginError(
+                    "Plugin name is required when manifest.yaml is not provided"
+                )
+            if not wrapper_class.strip():
+                raise PluginError("wrapper_class is required when manifest.yaml is not provided")
+            if not weight_format.strip():
+                raise PluginError("weight_format is required when manifest.yaml is not provided")
+            key = validate_plugin_name(name)
+        else:
+            assert manifest is not None
+            key = _resolve_plugin_key(name, manifest)
+
+        plugin_dir = plugins_root() / key
+        root = plugins_root()
+        root.mkdir(parents=True, exist_ok=True)
+
+        if plugin_dir.is_dir():
+            status = plugin_status(plugin_dir)
+            if status == "active" and not replace_existing:
+                raise PluginError(
+                    f"Plugin '{key}' is active. Deactivate/delete it before uploading again."
+                )
+            if status == "pending" and not replace_existing:
+                raise PluginError(
+                    f"Plugin '{key}' already exists. Delete it or pass replace_existing."
+                )
+            shutil.rmtree(plugin_dir)
+
+        plugin_dir.mkdir(parents=True, exist_ok=False)
+
+        if content_root is not None:
+            _copy_plugin_contents(content_root, plugin_dir)
         else:
             if convert_bytes is None or wrapper_bytes is None:
                 raise PluginError("convert.py and wrapper.py are required when no zip is provided")
             _write_bytes(plugin_dir / "convert.py", convert_bytes)
             _write_bytes(plugin_dir / "wrapper.py", wrapper_bytes)
 
-        resolved_pe_db_format = (pe_db_format or key).strip().lower()
-        manifest_dict = _build_manifest_dict(
-            name=key,
-            version=version.strip(),
-            display_name=display_name.strip(),
-            description=description.strip(),
-            authors=_parse_authors(authors),
-            wrapper_class=wrapper_class.strip(),
-            convert_entrypoint=convert_entrypoint.strip() or "convert",
-            pe_db_format=resolved_pe_db_format,
-            weight_format=weight_format.strip(),
-            output_columns=_parse_csv_list(output_columns),
-            required_std_columns=_parse_csv_list(required_std_columns),
-            label_column=label_column.strip() if label_column else None,
-            hyperparameters=_parse_json_list(hyperparameters_json, "hyperparameters"),
-            weights=_parse_json_list(weights_json, "weights"),
-        )
-        manifest_yaml = build_manifest_yaml(manifest_dict)
-        (plugin_dir / "manifest.yaml").write_text(manifest_yaml, encoding="utf-8")
+        if using_form_manifest:
+            resolved_pe_db_format = (pe_db_format or key).strip().lower()
+            manifest_dict = _build_manifest_dict(
+                name=key,
+                version=version.strip(),
+                display_name=display_name.strip() or key,
+                description=description.strip() or "Plugin model",
+                authors=_parse_authors(authors),
+                wrapper_class=wrapper_class.strip(),
+                convert_entrypoint=convert_entrypoint.strip() or "convert",
+                pe_db_format=resolved_pe_db_format,
+                weight_format=weight_format.strip(),
+                output_columns=_parse_csv_list(output_columns),
+                required_std_columns=_parse_csv_list(required_std_columns),
+                label_column=label_column.strip() if label_column else None,
+                hyperparameters=_parse_json_list(hyperparameters_json, "hyperparameters"),
+                weights=_parse_json_list(weights_json, "weights"),
+            )
+            manifest_yaml = build_manifest_yaml(manifest_dict)
+            (plugin_dir / "manifest.yaml").write_text(manifest_yaml, encoding="utf-8")
+        elif manifest_write_bytes is not None:
+            (plugin_dir / "manifest.yaml").write_bytes(manifest_write_bytes)
 
         if weight_uploads:
             for weight_id, payload in weight_uploads:
@@ -276,6 +389,9 @@ def upload_plugin_bundle(
                 weight_dir.mkdir(parents=True, exist_ok=True)
                 _write_bytes(weight_dir / "weights.txt", payload)
 
+        final_manifest = load_manifest(plugin_dir)
+        _assert_plugin_artifacts(plugin_dir, final_manifest)
+
         set_plugin_pending(plugin_dir)
         state = read_plugin_state(plugin_dir)
         return {
@@ -284,8 +400,12 @@ def upload_plugin_bundle(
             "message": "Plugin uploaded as pending",
         }
     except Exception:
-        shutil.rmtree(plugin_dir, ignore_errors=True)
+        if plugin_dir is not None and plugin_dir.is_dir():
+            shutil.rmtree(plugin_dir, ignore_errors=True)
         raise
+    finally:
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def _append_validation_log(plugin_dir: Path, message: str) -> None:

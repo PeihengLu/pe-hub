@@ -6,7 +6,11 @@ import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import FormFieldLabel from '@components/FormFieldLabel'
-import { PLUGIN_FORM_HINTS } from '@apps/ensemble/config/pluginFormHints'
+import AddModelInstructions from '@apps/ensemble/components/AddModelInstructions'
+import {
+  PLUGIN_CONFIG_SOURCE_HINTS,
+  PLUGIN_FORM_HINTS,
+} from '@apps/ensemble/config/pluginFormHints'
 import api, {
   type PluginSummary,
   type PluginUploadPayload,
@@ -43,6 +47,24 @@ interface WeightMetaRow {
 
 const emptyHyperparameter = (): HyperparameterRow => ({ name: '', type: 'int', default: '' })
 const emptyWeightMeta = (): WeightMetaRow => ({ id: '', notes: '' })
+
+type PluginConfigSource = 'yaml' | 'form'
+type YamlDeliveryMode = 'zip' | 'files'
+
+const DEFAULT_FORM_STATE = {
+  name: '',
+  version: '0.1.0',
+  displayName: '',
+  description: '',
+  authors: '',
+  wrapperClass: '',
+  weightFormat: '',
+  convertEntrypoint: 'convert',
+  peDbFormat: '',
+  outputColumns: 'feature,Efficiency',
+  requiredStdColumns: '',
+  labelColumn: 'Efficiency',
+} as const
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -97,7 +119,55 @@ export default function AddModelPage() {
     emptyHyperparameter(),
   ])
   const [weightMetaRows, setWeightMetaRows] = useState<WeightMetaRow[]>([emptyWeightMeta()])
-  const [useZipBundle, setUseZipBundle] = useState(false)
+  const [configSource, setConfigSource] = useState<PluginConfigSource>('yaml')
+  const [yamlDelivery, setYamlDelivery] = useState<YamlDeliveryMode>('zip')
+  const [manifestFile, setManifestFile] = useState<File | null>(null)
+
+  const resetYamlUploads = () => {
+    setBundleZip(null)
+    setManifestFile(null)
+    setConvertFile(null)
+    setWrapperFile(null)
+    setWeightId('')
+    setWeightFile(null)
+  }
+
+  const resetFormConfig = () => {
+    setName(DEFAULT_FORM_STATE.name)
+    setVersion(DEFAULT_FORM_STATE.version)
+    setDisplayName(DEFAULT_FORM_STATE.displayName)
+    setDescription(DEFAULT_FORM_STATE.description)
+    setAuthors(DEFAULT_FORM_STATE.authors)
+    setWrapperClass(DEFAULT_FORM_STATE.wrapperClass)
+    setWeightFormat(DEFAULT_FORM_STATE.weightFormat)
+    setConvertEntrypoint(DEFAULT_FORM_STATE.convertEntrypoint)
+    setPeDbFormat(DEFAULT_FORM_STATE.peDbFormat)
+    setOutputColumns(DEFAULT_FORM_STATE.outputColumns)
+    setRequiredStdColumns(DEFAULT_FORM_STATE.requiredStdColumns)
+    setLabelColumn(DEFAULT_FORM_STATE.labelColumn)
+    setHyperparameterRows([emptyHyperparameter()])
+    setWeightMetaRows([emptyWeightMeta()])
+    setConvertFile(null)
+    setWrapperFile(null)
+    setWeightId('')
+    setWeightFile(null)
+  }
+
+  const selectConfigSource = (source: PluginConfigSource) => {
+    if (source === configSource) return
+    if (source === 'yaml') {
+      resetFormConfig()
+    } else {
+      resetYamlUploads()
+    }
+    setConfigSource(source)
+  }
+
+  const selectYamlDelivery = (delivery: YamlDeliveryMode) => {
+    if (delivery === yamlDelivery) return
+    resetYamlUploads()
+    setYamlDelivery(delivery)
+  }
 
   const {
     data: plugins,
@@ -242,6 +312,35 @@ export default function AddModelPage() {
 
   const buildUploadPayload = (): PluginUploadPayload | null => {
     const trimmedName = name.trim().toLowerCase()
+
+    if (configSource === 'yaml') {
+      if (yamlDelivery === 'zip') {
+        if (!bundleZip) {
+          setError('Plugin zip bundle is required')
+          return null
+        }
+        return {
+          upload_mode: 'bundle',
+          replace_existing: replaceExisting,
+          bundle_zip: bundleZip,
+        }
+      }
+
+      if (!manifestFile || !convertFile || !wrapperFile) {
+        setError('manifest.yaml, convert.py, and wrapper.py are required')
+        return null
+      }
+      return {
+        upload_mode: 'manifest',
+        replace_existing: replaceExisting,
+        manifest_file: manifestFile,
+        convert_file: convertFile,
+        wrapper_file: wrapperFile,
+        weight_id: weightId.trim() || undefined,
+        weight_file: weightFile,
+      }
+    }
+
     if (!trimmedName) {
       setError('Plugin name is required')
       return null
@@ -254,12 +353,7 @@ export default function AddModelPage() {
       setError('Weight format is required')
       return null
     }
-    if (useZipBundle) {
-      if (!bundleZip) {
-        setError('Zip bundle is required when using zip upload mode')
-        return null
-      }
-    } else if (!convertFile || !wrapperFile) {
+    if (!convertFile || !wrapperFile) {
       setError('convert.py and wrapper.py are required')
       return null
     }
@@ -269,7 +363,11 @@ export default function AddModelPage() {
       .map((row) => ({
         name: row.name.trim(),
         type: row.type.trim() || 'string',
-        default: row.default.trim() ? Number.isNaN(Number(row.default)) ? row.default : Number(row.default) : undefined,
+        default: row.default.trim()
+          ? Number.isNaN(Number(row.default))
+            ? row.default
+            : Number(row.default)
+          : undefined,
       }))
 
     const weights = weightMetaRows
@@ -280,6 +378,7 @@ export default function AddModelPage() {
       }))
 
     return {
+      upload_mode: 'form',
       name: trimmedName,
       version: version.trim() || '0.1.0',
       display_name: displayName.trim() || trimmedName,
@@ -295,9 +394,8 @@ export default function AddModelPage() {
       hyperparameters_json: hyperparameters.length ? JSON.stringify(hyperparameters) : undefined,
       weights_json: weights.length ? JSON.stringify(weights) : undefined,
       replace_existing: replaceExisting,
-      convert_file: useZipBundle ? null : convertFile,
-      wrapper_file: useZipBundle ? null : wrapperFile,
-      bundle_zip: useZipBundle ? bundleZip : null,
+      convert_file: convertFile,
+      wrapper_file: wrapperFile,
       weight_id: weightId.trim() || undefined,
       weight_file: weightFile,
     }
@@ -332,6 +430,8 @@ export default function AddModelPage() {
           Benchmark.
         </p>
       </div>
+
+      <AddModelInstructions />
 
       {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
@@ -521,265 +621,264 @@ export default function AddModelPage() {
       )}
 
       <Card title="Upload new plugin">
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.name}>Name (slug)</FieldLabel>
-            <input
-              className={inputClass}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my_model"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.version}>Version</FieldLabel>
-            <input className={inputClass} value={version} onChange={(e) => setVersion(e.target.value)} />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.displayName}>Display name</FieldLabel>
-            <input
-              className={inputClass}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.authors}>Authors</FieldLabel>
-            <input
-              className={inputClass}
-              value={authors}
-              onChange={(e) => setAuthors(e.target.value)}
-              placeholder="comma-separated or JSON array"
-            />
-          </label>
-          <label className="block md:col-span-2">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.description}>Description</FieldLabel>
-            <textarea
-              className={inputClass}
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.wrapperClass}>Wrapper class</FieldLabel>
-            <input
-              className={inputClass}
-              value={wrapperClass}
-              onChange={(e) => setWrapperClass(e.target.value)}
-              placeholder="MyModelWrapper"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.weightFormat}>Weight format</FieldLabel>
-            <input
-              className={inputClass}
-              value={weightFormat}
-              onChange={(e) => setWeightFormat(e.target.value)}
-              placeholder="state_dict"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.convertEntrypoint}>Convert entrypoint</FieldLabel>
-            <input
-              className={inputClass}
-              value={convertEntrypoint}
-              onChange={(e) => setConvertEntrypoint(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.peDbFormat}>PE-DB format (optional)</FieldLabel>
-            <input
-              className={inputClass}
-              value={peDbFormat}
-              onChange={(e) => setPeDbFormat(e.target.value)}
-              placeholder="defaults to plugin name"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.outputColumns}>Output columns</FieldLabel>
-            <input
-              className={inputClass}
-              value={outputColumns}
-              onChange={(e) => setOutputColumns(e.target.value)}
-              placeholder="feature,Efficiency"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.requiredStdColumns}>Required std columns</FieldLabel>
-            <input
-              className={inputClass}
-              value={requiredStdColumns}
-              onChange={(e) => setRequiredStdColumns(e.target.value)}
-              placeholder="edit_len,editing_efficiency"
-            />
-          </label>
-          <label className="block">
-            <FieldLabel hint={PLUGIN_FORM_HINTS.labelColumn}>Label column</FieldLabel>
-            <input
-              className={inputClass}
-              value={labelColumn}
-              onChange={(e) => setLabelColumn(e.target.value)}
-            />
-          </label>
-        </div>
+        <p className="text-sm text-slate-600 mb-4">
+          Choose how to define plugin config —{' '}
+          <strong className="font-medium text-slate-800">YAML manifest or web form, not both</strong>.
+          See <code className="bg-slate-100 px-1 rounded text-xs">plugins/_template/</code> and{' '}
+          <code className="bg-slate-100 px-1 rounded text-xs">docs/plugin-author-llm-prompt.md</code>.
+        </p>
 
-        <div className="mt-6 space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.hyperparameters}>Hyperparameters</FieldLabel>
+        <fieldset className="mb-6 space-y-3">
+          <legend className="text-sm font-semibold text-slate-800">Config source</legend>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ['yaml', 'YAML manifest'],
+                ['form', 'Web form'],
+              ] as const
+            ).map(([source, label]) => (
               <button
+                key={source}
                 type="button"
-                className="inline-flex items-center gap-1 text-sm text-primary-700 hover:underline"
-                onClick={() => setHyperparameterRows((rows) => [...rows, emptyHyperparameter()])}
+                className={clsx(
+                  'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
+                  configSource === source
+                    ? 'border-primary-600 bg-primary-50 text-primary-800'
+                    : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                )}
+                onClick={() => selectConfigSource(source)}
               >
-                <Plus className="w-4 h-4" /> Add row
+                {label}
               </button>
-            </div>
-            <div className="mb-2 grid gap-2 md:grid-cols-4">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.hyperparameterName}>Name</FieldLabel>
-              <FieldLabel hint={PLUGIN_FORM_HINTS.hyperparameterType}>Type</FieldLabel>
-              <FieldLabel hint={PLUGIN_FORM_HINTS.hyperparameterDefault}>Default</FieldLabel>
-              <span className="text-sm font-medium text-slate-500">Actions</span>
-            </div>
-            <div className="space-y-2">
-              {hyperparameterRows.map((row, index) => (
-                <div key={index} className="grid gap-2 md:grid-cols-4">
-                  <input
-                    className={inputClass}
-                    placeholder="name"
-                    value={row.name}
-                    onChange={(e) => {
-                      const next = [...hyperparameterRows]
-                      next[index] = { ...row, name: e.target.value }
-                      setHyperparameterRows(next)
-                    }}
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="type"
-                    value={row.type}
-                    onChange={(e) => {
-                      const next = [...hyperparameterRows]
-                      next[index] = { ...row, type: e.target.value }
-                      setHyperparameterRows(next)
-                    }}
-                  />
-                  <input
-                    className={inputClass}
-                    placeholder="default"
-                    value={row.default}
-                    onChange={(e) => {
-                      const next = [...hyperparameterRows]
-                      next[index] = { ...row, default: e.target.value }
-                      setHyperparameterRows(next)
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                    onClick={() =>
-                      setHyperparameterRows((rows) => rows.filter((_, i) => i !== index))
-                    }
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Remove
-                  </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500">
+            {configSource === 'yaml'
+              ? PLUGIN_CONFIG_SOURCE_HINTS.yaml
+              : PLUGIN_CONFIG_SOURCE_HINTS.form}
+          </p>
+        </fieldset>
+
+        <div className="space-y-4">
+          {configSource === 'yaml' && (
+            <>
+              <fieldset className="space-y-3">
+                <legend className="text-sm font-semibold text-slate-800">Upload method</legend>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      ['zip', 'Zip bundle (recommended)'],
+                      ['files', 'manifest.yaml + scripts'],
+                    ] as const
+                  ).map(([delivery, label]) => (
+                    <button
+                      key={delivery}
+                      type="button"
+                      className={clsx(
+                        'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
+                        yamlDelivery === delivery
+                          ? 'border-primary-600 bg-primary-50 text-primary-800'
+                          : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                      )}
+                      onClick={() => selectYamlDelivery(delivery)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </fieldset>
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.weightMetadata}>Weight metadata</FieldLabel>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-sm text-primary-700 hover:underline"
-                onClick={() => setWeightMetaRows((rows) => [...rows, emptyWeightMeta()])}
-              >
-                <Plus className="w-4 h-4" /> Add row
-              </button>
-            </div>
-            <div className="mb-2 grid gap-2 md:grid-cols-3">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.weightId}>Weight id</FieldLabel>
-              <FieldLabel hint={PLUGIN_FORM_HINTS.weightNotes}>Notes</FieldLabel>
-              <span className="text-sm font-medium text-slate-500">Actions</span>
-            </div>
-            <div className="space-y-2">
-              {weightMetaRows.map((row, index) => (
-                <div key={index} className="grid gap-2 md:grid-cols-3">
+              {yamlDelivery === 'zip' && (
+                <>
+                  <label className="block">
+                    <FieldLabel hint={PLUGIN_FORM_HINTS.bundleZip}>Plugin zip</FieldLabel>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className={inputClass}
+                      onChange={(e) => setBundleZip(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Zip must contain <code className="bg-slate-100 px-1 rounded">manifest.yaml</code>,{' '}
+                    <code className="bg-slate-100 px-1 rounded">convert.py</code>,{' '}
+                    <code className="bg-slate-100 px-1 rounded">wrapper.py</code>, and optional{' '}
+                    <code className="bg-slate-100 px-1 rounded">weights/&lt;id&gt;/</code>. Plugin
+                    name comes from <code className="bg-slate-100 px-1 rounded">manifest.name</code>.
+                  </p>
+                </>
+              )}
+
+              {yamlDelivery === 'files' && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block">
+                      <FieldLabel hint={PLUGIN_FORM_HINTS.manifestFile}>manifest.yaml</FieldLabel>
+                      <input
+                        type="file"
+                        accept=".yaml,.yml,.json"
+                        className={inputClass}
+                        onChange={(e) => setManifestFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    <label className="block">
+                      <FieldLabel hint={PLUGIN_FORM_HINTS.convertFile}>convert.py</FieldLabel>
+                      <input
+                        type="file"
+                        accept=".py"
+                        className={inputClass}
+                        onChange={(e) => setConvertFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                    <label className="block">
+                      <FieldLabel hint={PLUGIN_FORM_HINTS.wrapperFile}>wrapper.py</FieldLabel>
+                      <input
+                        type="file"
+                        accept=".py"
+                        className={inputClass}
+                        onChange={(e) => setWrapperFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="block">
+                      <FieldLabel hint={PLUGIN_FORM_HINTS.weightIdUpload}>
+                        Weight id (optional)
+                      </FieldLabel>
+                      <input
+                        className={inputClass}
+                        value={weightId}
+                        onChange={(e) => setWeightId(e.target.value)}
+                        placeholder="base_weights"
+                      />
+                    </label>
+                    <label className="block">
+                      <FieldLabel hint={PLUGIN_FORM_HINTS.weightFileUpload}>
+                        Weight file (optional)
+                      </FieldLabel>
+                      <input
+                        type="file"
+                        className={inputClass}
+                        onChange={(e) => setWeightFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    All metadata and hyperparameters must be in the manifest file — no web form fields
+                    are sent.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+
+          {configSource === 'form' && (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.name}>Name (slug)</FieldLabel>
                   <input
                     className={inputClass}
-                    placeholder="weight id"
-                    value={row.id}
-                    onChange={(e) => {
-                      const next = [...weightMetaRows]
-                      next[index] = { ...row, id: e.target.value }
-                      setWeightMetaRows(next)
-                    }}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="my_model"
                   />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.version}>Version</FieldLabel>
                   <input
                     className={inputClass}
-                    placeholder="notes"
-                    value={row.notes}
-                    onChange={(e) => {
-                      const next = [...weightMetaRows]
-                      next[index] = { ...row, notes: e.target.value }
-                      setWeightMetaRows(next)
-                    }}
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
                   />
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                    onClick={() =>
-                      setWeightMetaRows((rows) => rows.filter((_, i) => i !== index))
-                    }
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={useZipBundle}
-                onChange={(e) => setUseZipBundle(e.target.checked)}
-              />
-              <FieldLabel hint={PLUGIN_FORM_HINTS.useZipBundle}>
-                Upload as zip bundle instead of separate files
-              </FieldLabel>
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={replaceExisting}
-                onChange={(e) => setReplaceExisting(e.target.checked)}
-              />
-              <FieldLabel hint={PLUGIN_FORM_HINTS.replaceExisting}>
-                Replace existing pending/rejected plugin with same name
-              </FieldLabel>
-            </label>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {useZipBundle ? (
-              <label className="block">
-                <FieldLabel hint={PLUGIN_FORM_HINTS.bundleZip}>Bundle zip</FieldLabel>
-                <input
-                  type="file"
-                  accept=".zip"
-                  className={inputClass}
-                  onChange={(e) => setBundleZip(e.target.files?.[0] ?? null)}
-                />
-              </label>
-            ) : (
-              <>
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.displayName}>Display name</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.authors}>Authors</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={authors}
+                    onChange={(e) => setAuthors(e.target.value)}
+                    placeholder="comma-separated or JSON array"
+                  />
+                </label>
+                <label className="block md:col-span-2">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.description}>Description</FieldLabel>
+                  <textarea
+                    className={inputClass}
+                    rows={2}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.wrapperClass}>Wrapper class</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={wrapperClass}
+                    onChange={(e) => setWrapperClass(e.target.value)}
+                    placeholder="MyModelWrapper"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.weightFormat}>Weight format</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={weightFormat}
+                    onChange={(e) => setWeightFormat(e.target.value)}
+                    placeholder="state_dict"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.convertEntrypoint}>Convert entrypoint</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={convertEntrypoint}
+                    onChange={(e) => setConvertEntrypoint(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.peDbFormat}>PE-DB format (optional)</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={peDbFormat}
+                    onChange={(e) => setPeDbFormat(e.target.value)}
+                    placeholder="defaults to plugin name"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.outputColumns}>Output columns</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={outputColumns}
+                    onChange={(e) => setOutputColumns(e.target.value)}
+                    placeholder="feature,Efficiency"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.requiredStdColumns}>Required std columns</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={requiredStdColumns}
+                    onChange={(e) => setRequiredStdColumns(e.target.value)}
+                    placeholder="edit_len,editing_efficiency"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.labelColumn}>Label column</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={labelColumn}
+                    onChange={(e) => setLabelColumn(e.target.value)}
+                  />
+                </label>
                 <label className="block">
                   <FieldLabel hint={PLUGIN_FORM_HINTS.convertFile}>convert.py</FieldLabel>
                   <input
@@ -798,26 +897,148 @@ export default function AddModelPage() {
                     onChange={(e) => setWrapperFile(e.target.files?.[0] ?? null)}
                   />
                 </label>
-              </>
-            )}
-            <label className="block">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.weightIdUpload}>Weight id (optional)</FieldLabel>
-              <input
-                className={inputClass}
-                value={weightId}
-                onChange={(e) => setWeightId(e.target.value)}
-                placeholder="base_weights"
-              />
-            </label>
-            <label className="block">
-              <FieldLabel hint={PLUGIN_FORM_HINTS.weightFileUpload}>Weight file (optional)</FieldLabel>
-              <input
-                type="file"
-                className={inputClass}
-                onChange={(e) => setWeightFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-          </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.hyperparameters}>Hyperparameters</FieldLabel>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-sm text-primary-700 hover:underline"
+                    onClick={() => setHyperparameterRows((rows) => [...rows, emptyHyperparameter()])}
+                  >
+                    <Plus className="w-4 h-4" /> Add row
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {hyperparameterRows.map((row, index) => (
+                    <div key={index} className="grid gap-2 md:grid-cols-4">
+                      <input
+                        className={inputClass}
+                        placeholder="name"
+                        value={row.name}
+                        onChange={(e) => {
+                          const next = [...hyperparameterRows]
+                          next[index] = { ...row, name: e.target.value }
+                          setHyperparameterRows(next)
+                        }}
+                      />
+                      <input
+                        className={inputClass}
+                        placeholder="type"
+                        value={row.type}
+                        onChange={(e) => {
+                          const next = [...hyperparameterRows]
+                          next[index] = { ...row, type: e.target.value }
+                          setHyperparameterRows(next)
+                        }}
+                      />
+                      <input
+                        className={inputClass}
+                        placeholder="default"
+                        value={row.default}
+                        onChange={(e) => {
+                          const next = [...hyperparameterRows]
+                          next[index] = { ...row, default: e.target.value }
+                          setHyperparameterRows(next)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                        onClick={() =>
+                          setHyperparameterRows((rows) => rows.filter((_, i) => i !== index))
+                        }
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.weightMetadata}>Weight metadata</FieldLabel>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-sm text-primary-700 hover:underline"
+                    onClick={() => setWeightMetaRows((rows) => [...rows, emptyWeightMeta()])}
+                  >
+                    <Plus className="w-4 h-4" /> Add row
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {weightMetaRows.map((row, index) => (
+                    <div key={index} className="grid gap-2 md:grid-cols-3">
+                      <input
+                        className={inputClass}
+                        placeholder="weight id"
+                        value={row.id}
+                        onChange={(e) => {
+                          const next = [...weightMetaRows]
+                          next[index] = { ...row, id: e.target.value }
+                          setWeightMetaRows(next)
+                        }}
+                      />
+                      <input
+                        className={inputClass}
+                        placeholder="notes"
+                        value={row.notes}
+                        onChange={(e) => {
+                          const next = [...weightMetaRows]
+                          next[index] = { ...row, notes: e.target.value }
+                          setWeightMetaRows(next)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                        onClick={() =>
+                          setWeightMetaRows((rows) => rows.filter((_, i) => i !== index))
+                        }
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.weightIdUpload}>Weight id (optional)</FieldLabel>
+                  <input
+                    className={inputClass}
+                    value={weightId}
+                    onChange={(e) => setWeightId(e.target.value)}
+                    placeholder="base_weights"
+                  />
+                </label>
+                <label className="block">
+                  <FieldLabel hint={PLUGIN_FORM_HINTS.weightFileUpload}>Weight file (optional)</FieldLabel>
+                  <input
+                    type="file"
+                    className={inputClass}
+                    onChange={(e) => setWeightFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={replaceExisting}
+              onChange={(e) => setReplaceExisting(e.target.checked)}
+            />
+            <FieldLabel hint={PLUGIN_FORM_HINTS.replaceExisting}>
+              Replace existing pending/rejected plugin with same name
+            </FieldLabel>
+          </label>
 
           <button
             type="button"

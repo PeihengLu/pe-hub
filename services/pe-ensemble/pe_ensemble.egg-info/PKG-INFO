@@ -27,6 +27,10 @@ Requires-Dist: jupyter>=1.0.0; extra == "dev"
 Requires-Dist: jupyterlab>=3.0.0; extra == "dev"
 Requires-Dist: tensorboard>=2.14.0; extra == "dev"
 Requires-Dist: mlflow>=2.8.0; extra == "dev"
+Provides-Extra: pe-db
+Requires-Dist: pe-db>=0.2.0; extra == "pe-db"
+Provides-Extra: library
+Requires-Dist: pe-db>=0.2.0; extra == "library"
 Provides-Extra: vendor
 Requires-Dist: xgboost>=1.7.0; extra == "vendor"
 
@@ -112,7 +116,34 @@ with `python -m app.models.migrate_weights`.
 
 ## Training CLI and SLURM
 
-Run training without the HTTP server (logs and job state land under `jobs/`):
+Run training without the PE Ensemble HTTP server or PE Hub (logs and job state land under `jobs/`).
+
+Active model plugins under `PLUGINS_ROOT` (default `<repo>/plugins`) are loaded automatically at CLI startup, same as the HTTP service. See [`../../plugins/README.md`](../../plugins/README.md) for how to prepare and activate a plugin for both the web UI and CLI.
+
+### Library mode (no PE-DB HTTP server)
+
+Install both packages, prepare data once, then train in-process:
+
+```bash
+pip install -e packages/pe-common
+pip install -e services/pe-db
+pip install -e "services/pe-ensemble[pe-db]"
+
+pe-db init   # seed, export, standardize (or skip if datasets/ already prepared)
+
+cd services/pe-ensemble
+PE_DB_MODE=library python -m app.train_models \
+  --model deepprime \
+  --dataset-name library2 \
+  --dataset library2 \
+  --cell-line HEK293T \
+  --pe-system PE2max \
+  --device cuda:0
+```
+
+Use `--pe-db-mode library` instead of the environment variable when preferred.
+
+### HTTP mode (PE-DB API running)
 
 ```bash
 cd services/pe-ensemble
@@ -154,6 +185,22 @@ python -m app.train_models \
   --oped-encoder-layers 2 \
   --oped-nhead 4 \
   --hyperparameters-json '{"epoch_num":20,"lr":0.0003}'
+```
+
+Fine-tune from a registered checkpoint with `--pretrained-weights` (sets `load_pretrained=true`,
+freezes the backbone, and skips architecture flags). DeepPrime always fine-tunes every ensemble
+member in the checkpoint together:
+
+```bash
+python -m app.train_models \
+  --model deepprime \
+  --dataset-name library2 \
+  --dataset library2 \
+  --cell-line HEK293T \
+  --pe-system PE2max \
+  --pretrained-weights DeepPrime_base \
+  --hyperparameters-json '{"epochs":5,"lr":0.0001}'
+```
 
 `POST /train` accepts `device` (`auto`, `cuda:0`, `mps`, `cpu`, …). Multiple jobs can run
 concurrently on different devices; the service maintains a per-device queue so only one job

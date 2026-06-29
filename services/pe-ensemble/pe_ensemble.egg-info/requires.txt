@@ -23,5 +23,11 @@ jupyterlab>=3.0.0
 tensorboard>=2.14.0
 mlflow>=2.8.0
 
+[library]
+pe-db>=0.2.0
+
+[pe-db]
+pe-db>=0.2.0
+
 [vendor]
 xgboost>=1.7.0

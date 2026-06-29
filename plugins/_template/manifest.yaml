@@ -1,0 +1,38 @@
+# Copy this directory to plugins/<your_model_name>/ or zip it for upload.
+# Replace every my_model / MyModelWrapper placeholder consistently.
+
+name: my_model
+version: 0.1.0
+display_name: "My PE Model"
+authors: ["Your Lab"]
+description: "One-line summary for the model catalog."
+
+format:
+  module: convert.py
+  entrypoint: convert
+  required_std_columns:
+    - wt_sequence
+    - mut_sequence
+    - editing_efficiency
+    - edit_len
+  output_columns:
+    - feature
+    - Efficiency
+  label_column: Efficiency
+
+model:
+  module: wrapper.py
+  class: MyModelWrapper
+  pe_db_format: my_model
+  weight_format: my_model_weights
+  hyperparameters:
+    - name: epochs
+      type: int
+      default: 10
+    - name: lr
+      type: float
+      default: 0.001
+
+weights:
+  - id: base
+    notes: "Optional shipped pretrained weights"

@@ -357,13 +357,16 @@ export interface PluginDeleteResponse {
   deleted: boolean
 }
 
+export type PluginUploadMode = 'bundle' | 'manifest' | 'form'
+
 export interface PluginUploadPayload {
-  name: string
-  version: string
-  display_name: string
-  description: string
-  wrapper_class: string
-  weight_format: string
+  upload_mode: PluginUploadMode
+  name?: string
+  version?: string
+  display_name?: string
+  description?: string
+  wrapper_class?: string
+  weight_format?: string
   authors?: string
   convert_entrypoint?: string
   pe_db_format?: string
@@ -378,16 +381,17 @@ export interface PluginUploadPayload {
   bundle_zip?: File | null
   weight_id?: string
   weight_file?: File | null
+  manifest_file?: File | null
 }
 
 function buildPluginUploadFormData(payload: PluginUploadPayload): FormData {
   const formData = new FormData()
-  formData.append('name', payload.name)
-  formData.append('version', payload.version)
-  formData.append('display_name', payload.display_name)
-  formData.append('description', payload.description)
-  formData.append('wrapper_class', payload.wrapper_class)
-  formData.append('weight_format', payload.weight_format)
+  if (payload.name) formData.append('name', payload.name)
+  if (payload.version) formData.append('version', payload.version)
+  if (payload.display_name) formData.append('display_name', payload.display_name)
+  if (payload.description) formData.append('description', payload.description)
+  if (payload.wrapper_class) formData.append('wrapper_class', payload.wrapper_class)
+  if (payload.weight_format) formData.append('weight_format', payload.weight_format)
   if (payload.authors) formData.append('authors', payload.authors)
   if (payload.convert_entrypoint) formData.append('convert_entrypoint', payload.convert_entrypoint)
   if (payload.pe_db_format) formData.append('pe_db_format', payload.pe_db_format)
@@ -406,6 +410,7 @@ function buildPluginUploadFormData(payload: PluginUploadPayload): FormData {
   if (payload.bundle_zip) formData.append('bundle_zip', payload.bundle_zip)
   if (payload.weight_id) formData.append('weight_id', payload.weight_id)
   if (payload.weight_file) formData.append('weight_file', payload.weight_file)
+  if (payload.manifest_file) formData.append('manifest_file', payload.manifest_file)
   return formData
 }
 

@@ -1,0 +1,11 @@
+Validation started for to_delete
+Validation finished: passed=True (9 checks)
+[PASS] manifest_schema: version 0.1.0, fixture=standardized_small.csv
+[PASS] import_convert: convert module imported
+[PASS] conversion_roundtrip: 2 rows converted
+[PASS] import_wrapper: wrapper module imported
+[PASS] interface_compliance: DummyModelWrapper
+[PASS] train_smoke: train returned 1 keys
+[PASS] save_to_registry: format=dummy_state_dict
+[PASS] eval_smoke: pearson=1.0, spearman=1.0
+[PASS] predict_smoke: 2 predictions

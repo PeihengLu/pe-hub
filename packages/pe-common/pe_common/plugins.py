@@ -184,8 +184,8 @@ def validate_plugin_name(name: str) -> str:
     return key
 
 
-def parse_manifest(path: Path) -> PluginManifest:
-    data = _load_yaml_or_json(path)
+def parse_manifest_data(data: Mapping[str, Any]) -> PluginManifest:
+    """Parse a manifest mapping (from YAML/JSON) into a :class:`PluginManifest`."""
     name = validate_plugin_name(_require_str(data, "name", "manifest"))
     version = _require_str(data, "version", "manifest")
     display_name = _require_str(data, "display_name", "manifest")
@@ -268,6 +268,31 @@ def parse_manifest(path: Path) -> PluginManifest:
         weights=tuple(weight_specs),
         raw=dict(data),
     )
+
+
+def parse_manifest(path: Path) -> PluginManifest:
+    return parse_manifest_data(_load_yaml_or_json(path))
+
+
+def parse_manifest_bytes(content: bytes) -> PluginManifest:
+    """Parse manifest YAML/JSON bytes (e.g. from an upload)."""
+    if not content.strip():
+        raise PluginError("manifest file is empty")
+    text = content.decode("utf-8")
+    if text.lstrip().startswith("{"):
+        payload = json.loads(text)
+    else:
+        try:
+            import yaml
+        except ImportError as exc:
+            raise PluginError(
+                "PyYAML is required to read manifest.yaml uploads. "
+                "Install pyyaml or upload manifest.json."
+            ) from exc
+        payload = yaml.safe_load(text)
+    if not isinstance(payload, dict):
+        raise PluginError("manifest must be a YAML/JSON mapping")
+    return parse_manifest_data(payload)
 
 
 def load_manifest(plugin_dir: Path) -> PluginManifest:

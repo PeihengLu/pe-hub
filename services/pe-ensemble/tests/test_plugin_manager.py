@@ -90,6 +90,66 @@ def test_upload_validate_activate_flow(plugins_root: Path, monkeypatch: pytest.M
     assert "upload_dummy" in loaded
 
 
+def test_upload_with_manifest_file(plugins_root: Path):
+    from app.plugins.manager import get_plugin, upload_plugin_bundle
+
+    convert_bytes, wrapper_bytes = _dummy_bytes()
+    manifest_bytes = (_DUMMY_ROOT / "manifest.yaml").read_bytes()
+
+    uploaded = upload_plugin_bundle(
+        manifest_bytes=manifest_bytes,
+        convert_bytes=convert_bytes,
+        wrapper_bytes=wrapper_bytes,
+    )
+    assert uploaded["name"] == "dummy_model"
+
+    detail = get_plugin("dummy_model")
+    manifest = detail["manifest"]
+    assert manifest["model"]["class"] == "DummyModelWrapper"
+    assert manifest["model"]["hyperparameters"]
+    assert manifest["weights"]
+
+
+def _dummy_zip_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        for path in _DUMMY_ROOT.rglob("*"):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            archive.writestr(path.relative_to(_DUMMY_ROOT).as_posix(), path.read_bytes())
+    return buf.getvalue()
+
+
+def test_upload_zip_bundle_only(plugins_root: Path):
+    from app.plugins.manager import get_plugin, upload_plugin_bundle
+
+    uploaded = upload_plugin_bundle(bundle_zip_bytes=_dummy_zip_bytes())
+    assert uploaded["name"] == "dummy_model"
+
+    detail = get_plugin("dummy_model")
+    assert detail["manifest"]["name"] == "dummy_model"
+    assert (plugins_root / "dummy_model" / "convert.py").is_file()
+    assert (plugins_root / "dummy_model" / "wrapper.py").is_file()
+
+
+def test_upload_manifest_name_mismatch(plugins_root: Path):
+    from app.plugins.manager import upload_plugin_bundle
+
+    convert_bytes, wrapper_bytes = _dummy_bytes()
+    manifest_bytes = (_DUMMY_ROOT / "manifest.yaml").read_bytes()
+
+    with pytest.raises(Exception, match="must match"):
+        upload_plugin_bundle(
+            name="other_name",
+            manifest_bytes=manifest_bytes,
+            convert_bytes=convert_bytes,
+            wrapper_bytes=wrapper_bytes,
+        )
+
+
 def test_activate_requires_validation(plugins_root: Path):
     from app.plugins.manager import activate_plugin_bundle, upload_plugin_bundle
 
