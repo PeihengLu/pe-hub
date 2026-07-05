@@ -224,6 +224,105 @@ export interface BenchmarkJobsListResponse {
   count: number
 }
 
+export type CombineMethod =
+  | 'mean'
+  | 'weighted_mean'
+  | 'median'
+  | 'trimmed_mean'
+  | 'rank_mean'
+  | 'percentile_mean'
+  | 'geometric_mean'
+  | 'harmonic_mean'
+  | 'min'
+  | 'max'
+
+export interface EnsembleMemberInput {
+  model_name: string
+  weights: string
+  member_weight?: number
+}
+
+export interface EnsembleRequest {
+  ensemble_name: string
+  combine: CombineMethod
+  combine_options?: Record<string, unknown>
+  members: EnsembleMemberInput[]
+  split?: SplitExportParams
+  study?: string[]
+  dataset?: string[]
+  cell_line?: string[]
+  pe_system?: string[]
+  edit_type?: string[]
+  edit_length?: number[]
+  edit_scope?: string[]
+  experimental_method?: string[]
+  target_context?: string[]
+  scaffold_name?: string[]
+  edit_efficiency_min?: number
+  edit_efficiency_max?: number
+  records?: Record<string, unknown>[]
+  device?: string
+}
+
+export type EnsembleJobStatus = TrainingJobStatus
+
+export interface EnsembleJobCreatedResponse {
+  job_id: string
+  status: EnsembleJobStatus
+  message: string
+}
+
+export interface EnsembleMemberMetrics {
+  model_name: string
+  weights: string
+  metrics?: Record<string, number>
+}
+
+export interface EnsembleJobStatusResponse {
+  job_id: string
+  status: EnsembleJobStatus
+  ensemble_name: string
+  combine: CombineMethod
+  member_count: number
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  device_requested?: string | null
+  device_assigned?: string | null
+  queue_position?: number | null
+  error?: string | null
+  result?: {
+    ensemble_name?: string
+    combine?: CombineMethod
+    device?: string
+    n_samples?: number
+    skipped?: boolean
+    skip_reason?: string
+    metrics?: Record<string, number>
+    member_metrics?: EnsembleMemberMetrics[]
+    alignment?: Record<string, unknown>
+  }
+}
+
+export interface EnsembleLogResponse {
+  job_id: string
+  status: EnsembleJobStatus
+  offset: number
+  next_offset: number
+  log: string
+}
+
+export interface EnsembleJobsListResponse {
+  jobs: EnsembleJobStatusResponse[]
+  count: number
+}
+
+export interface CombineMethodHelp {
+  id: CombineMethod
+  label: string
+  description: string
+}
+
 export type ExportFormat = 'std' | 'deepprime' | 'pridict' | 'pridict2' | 'oped'
 
 export type ExportFilterParams = Partial<{
@@ -458,7 +557,21 @@ export const api = {
     apiClient.get<ExportResponse>('/data/filter', {
       params: { format, ...filters, ...split },
     }),
-  ensemblePredict: (data: unknown) => apiClient.post('/ensemble', data),
+  listEnsembleMethods: () =>
+    apiClient.get<{ methods: CombineMethodHelp[]; count: number }>('/ensemble/methods'),
+  runEnsemble: (request: EnsembleRequest) =>
+    apiClient.post<EnsembleJobCreatedResponse>('/ensemble', request),
+  getEnsembleStatus: (jobId: string) =>
+    apiClient.get<EnsembleJobStatusResponse>(`/ensemble/status/${jobId}`),
+  getEnsembleLogs: (jobId: string, offset = 0) =>
+    apiClient.get<EnsembleLogResponse>(`/ensemble/logs/${jobId}`, { params: { offset } }),
+  listEnsembleJobs: (limit = 20) =>
+    apiClient.get<EnsembleJobsListResponse>('/ensemble/jobs', { params: { limit } }),
+  deleteEnsembleJob: (jobId: string) =>
+    apiClient.delete<JobDeleteAcceptedResponse>(`/ensemble/jobs/${jobId}`, {
+      validateStatus: (status) => status === 202,
+    }),
+  listEnsembleDevices: () => apiClient.get<ComputeDevicesResponse>('/ensemble/devices'),
   listPlugins: () => apiClient.get<PluginsListResponse>('/models/plugins'),
   getPlugin: (name: string) => apiClient.get<PluginDetail>(`/models/plugins/${encodeURIComponent(name)}`),
   uploadPlugin: (payload: PluginUploadPayload) =>

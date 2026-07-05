@@ -14,6 +14,9 @@ export interface ComputeJobListItem {
   model_name?: string
   dataset_name?: string
   benchmark_name?: string
+  ensemble_name?: string
+  combine?: string
+  member_count?: number
   queue_position?: number | null
   device_assigned?: string | null
 }

@@ -18,6 +18,7 @@ All wrappers implement `pe_common.model_interface.BasePEModel`. Create via
 - **Catalog** — `GET /models`, `GET /models/{name}/weights`
 - **Data** — `GET /data/filter` (PE-DB proxy)
 - **Evaluate** — `POST /evaluate` (PE-DB fetch or inline records; test split only)
+- **Ensemble** — `POST /ensemble` (multi-model fusion on test split; async job queue)
 - **Train** — `POST /train` with async job queue; `GET /train/status|logs|jobs`
 - **Devices** — `GET /devices`, `GET /train/devices`
 - **Predict** — `POST /predict` (stub)
@@ -52,4 +53,3 @@ Run from `services/pe-ensemble`: `pytest tests/ -v`
 ## Not yet implemented
 
 - Full `POST /predict` response (currently returns a placeholder message)
-- HTTP `POST /ensemble` endpoint (ensemble logic exists in `app/ensembler.py` for future use)

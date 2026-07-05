@@ -1,4 +1,4 @@
-"""Per-device compute queue for training and evaluation jobs."""
+"""Per-device compute queue for training, evaluation, and ensemble jobs."""
 from __future__ import annotations
 
 import json
@@ -17,6 +17,13 @@ from .job_cancel import (
     register_cancel_event,
     request_cancel,
 )
+from ..ensemble.jobs import get_job as get_ensemble_job
+from ..ensemble.jobs import mark_cancelled as mark_ensemble_cancelled
+from ..ensemble.jobs import mark_failed as mark_ensemble_failed
+from ..ensemble.jobs import mark_stopping as mark_ensemble_stopping
+from ..ensemble.jobs import update_job as update_ensemble_job
+from ..ensemble.runner import execute_ensemble
+from ..ensemble.schemas import EnsembleRequest
 from ..evaluation.jobs import get_job as get_eval_job
 from ..evaluation.jobs import mark_cancelled as mark_eval_cancelled
 from ..evaluation.jobs import mark_failed as mark_eval_failed
@@ -34,8 +41,52 @@ from ..training.schemas import TrainingRequest
 
 logger = logging.getLogger(__name__)
 
-JobKind = Literal["train", "evaluate"]
+JobKind = Literal["train", "evaluate", "ensemble"]
 QueuedJob = Tuple[JobKind, str]
+
+
+def _get_job_manifest(kind: JobKind, job_id: str) -> Dict[str, object]:
+    if kind == "train":
+        return get_train_job(job_id)
+    if kind == "ensemble":
+        return get_ensemble_job(job_id)
+    return get_eval_job(job_id)
+
+
+def _update_job(kind: JobKind, job_id: str, **fields: object) -> None:
+    if kind == "train":
+        update_train_job(job_id, **fields)
+    elif kind == "ensemble":
+        update_ensemble_job(job_id, **fields)
+    else:
+        update_eval_job(job_id, **fields)
+
+
+def _mark_cancelled(kind: JobKind, job_id: str) -> None:
+    if kind == "train":
+        mark_train_cancelled(job_id)
+    elif kind == "ensemble":
+        mark_ensemble_cancelled(job_id)
+    else:
+        mark_eval_cancelled(job_id)
+
+
+def _mark_failed(kind: JobKind, job_id: str, error: str) -> None:
+    if kind == "train":
+        mark_train_failed(job_id, error)
+    elif kind == "ensemble":
+        mark_ensemble_failed(job_id, error)
+    else:
+        mark_eval_failed(job_id, error)
+
+
+def _mark_stopping(kind: JobKind, job_id: str) -> None:
+    if kind == "train":
+        mark_train_stopping(job_id)
+    elif kind == "ensemble":
+        mark_ensemble_stopping(job_id)
+    else:
+        mark_eval_stopping(job_id)
 
 
 class ComputeDeviceScheduler:
@@ -63,17 +114,17 @@ class ComputeDeviceScheduler:
     def submit_evaluation(self, job_id: str, request: EvaluationRequest) -> None:
         self._submit(job_id, "evaluate", request.device or AUTO_DEVICE)
 
+    def submit_ensemble(self, job_id: str, request: EnsembleRequest) -> None:
+        self._submit(job_id, "ensemble", request.device or AUTO_DEVICE)
+
     def _submit(self, job_id: str, kind: JobKind, requested: str) -> None:
         queued: QueuedJob = (kind, job_id)
         with self._lock:
             self._refresh_device_map()
-            self._update_job_locked(kind, job_id, device_requested=requested, device_assigned=None, queue_position=None)
+            _update_job(kind, job_id, device_requested=requested, device_assigned=None, queue_position=None)
             if requested in (None, AUTO_DEVICE) and not list_accelerator_ids():
                 error = "No accelerator devices available; auto assignment does not use CPU"
-                if kind == "train":
-                    mark_train_failed(job_id, error)
-                else:
-                    mark_eval_failed(job_id, error)
+                _mark_failed(kind, job_id, error)
                 logger.error("Job %s/%s rejected: %s", kind, job_id, error)
                 return
             device_id = self._try_assign_locked(queued, requested)
@@ -97,10 +148,7 @@ class ComputeDeviceScheduler:
                 new_queue.append(item)
             if removed_from_queue:
                 self._wait_queue = new_queue
-                if kind == "train":
-                    mark_train_cancelled(job_id)
-                else:
-                    mark_eval_cancelled(job_id)
+                _mark_cancelled(kind, job_id)
                 self._update_queue_positions_locked()
                 self._dispatch_locked()
                 return True
@@ -119,15 +167,12 @@ class ComputeDeviceScheduler:
 
     def _mark_stopping_if_active(self, kind: JobKind, job_id: str) -> None:
         try:
-            manifest = self._get_job_manifest(kind, job_id)
+            manifest = _get_job_manifest(kind, job_id)
         except FileNotFoundError:
             return
         if manifest.get("status") not in ("queued", "running", "stopping"):
             return
-        if kind == "train":
-            mark_train_stopping(job_id)
-        else:
-            mark_eval_stopping(job_id)
+        _mark_stopping(kind, job_id)
 
     def device_snapshot(self) -> List[Dict[str, object]]:
         with self._lock:
@@ -149,7 +194,7 @@ class ComputeDeviceScheduler:
             ]
 
     def _job_waits_for_device(self, device_id: str, kind: JobKind, queued_id: str) -> bool:
-        requested = self._get_job_manifest(kind, queued_id).get("device_requested")
+        requested = _get_job_manifest(kind, queued_id).get("device_requested")
         if requested in (None, AUTO_DEVICE):
             return device_id in list_device_ids(include_cpu=False)
         return requested == device_id
@@ -158,17 +203,6 @@ class ComputeDeviceScheduler:
         if queued is None:
             return None
         return queued[1]
-
-    def _get_job_manifest(self, kind: JobKind, job_id: str) -> Dict[str, object]:
-        if kind == "train":
-            return get_train_job(job_id)
-        return get_eval_job(job_id)
-
-    def _update_job_locked(self, kind: JobKind, job_id: str, **fields: object) -> None:
-        if kind == "train":
-            update_train_job(job_id, **fields)
-        else:
-            update_eval_job(job_id, **fields)
 
     def _try_assign_locked(self, queued: QueuedJob, requested: str) -> Optional[str]:
         if requested not in (None, AUTO_DEVICE):
@@ -189,7 +223,7 @@ class ComputeDeviceScheduler:
     def _launch_locked(self, queued: QueuedJob, device_id: str) -> None:
         kind, job_id = queued
         register_cancel_event(kind, job_id)
-        self._update_job_locked(kind, job_id, device_assigned=device_id, queue_position=None)
+        _update_job(kind, job_id, device_assigned=device_id, queue_position=None)
         self._executor.submit(self._run_job, queued, device_id)
 
     def _run_job(self, queued: QueuedJob, device_id: str) -> None:
@@ -200,15 +234,14 @@ class ComputeDeviceScheduler:
             request = _load_request(kind, job_id)
             if kind == "train":
                 execute_training(request, job_id=job_id, device_id=device_id)
+            elif kind == "ensemble":
+                execute_ensemble(request, job_id=job_id, device_id=device_id)
             else:
                 execute_evaluation(request, job_id=job_id, device_id=device_id)
         except JobCancelledError:
             logger.info("%s job %s cancelled on %s", kind, job_id, device_id)
             try:
-                if kind == "train":
-                    mark_train_cancelled(job_id)
-                else:
-                    mark_eval_cancelled(job_id)
+                _mark_cancelled(kind, job_id)
             except FileNotFoundError:
                 pass
         except Exception as exc:  # noqa: BLE001
@@ -223,16 +256,12 @@ class ComputeDeviceScheduler:
     def _mark_failed_if_still_running(self, kind: JobKind, job_id: str, exc: BaseException) -> None:
         """Ensure the manifest leaves running if the worker raised unexpectedly."""
         try:
-            manifest = self._get_job_manifest(kind, job_id)
+            manifest = _get_job_manifest(kind, job_id)
         except FileNotFoundError:
             return
         if manifest.get("status") != "running":
             return
-        error = str(exc)
-        if kind == "train":
-            mark_train_failed(job_id, error)
-        else:
-            mark_eval_failed(job_id, error)
+        _mark_failed(kind, job_id, str(exc))
 
     def _release_locked(self, queued: QueuedJob, device_id: str) -> None:
         if self._running_on_device.get(device_id) == queued:
@@ -248,7 +277,7 @@ class ComputeDeviceScheduler:
         while self._wait_queue:
             queued = self._wait_queue.popleft()
             kind, job_id = queued
-            manifest = self._get_job_manifest(kind, job_id)
+            manifest = _get_job_manifest(kind, job_id)
             if manifest.get("status") not in ("queued",):
                 continue
             device_id = self._try_assign_locked(queued, manifest.get("device_requested", AUTO_DEVICE))
@@ -262,7 +291,7 @@ class ComputeDeviceScheduler:
 
     def _update_queue_positions_locked(self) -> None:
         for index, (kind, job_id) in enumerate(self._wait_queue, start=1):
-            self._update_job_locked(kind, job_id, queue_position=index, device_assigned=None)
+            _update_job(kind, job_id, queue_position=index, device_assigned=None)
 
     def shutdown(self, *, wait: bool = False) -> None:
         """Stop accepting work and release worker threads."""
@@ -270,10 +299,7 @@ class ComputeDeviceScheduler:
             while self._wait_queue:
                 kind, job_id = self._wait_queue.popleft()
                 try:
-                    if kind == "train":
-                        mark_train_cancelled(job_id)
-                    else:
-                        mark_eval_cancelled(job_id)
+                    _mark_cancelled(kind, job_id)
                 except FileNotFoundError:
                     pass
             for kind, job_id in list(self._job_device.keys()):
@@ -281,11 +307,18 @@ class ComputeDeviceScheduler:
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
 
 
-def _load_request(kind: JobKind, job_id: str) -> TrainingRequest | EvaluationRequest:
+def _load_request(
+    kind: JobKind,
+    job_id: str,
+) -> TrainingRequest | EvaluationRequest | EnsembleRequest:
     if kind == "train":
         from ..training.config import jobs_root
 
         request_path = jobs_root() / job_id / "request.json"
+    elif kind == "ensemble":
+        from ..ensemble.config import ensemble_jobs_root
+
+        request_path = ensemble_jobs_root() / job_id / "request.json"
     else:
         from ..evaluation.config import eval_jobs_root
 
@@ -294,6 +327,8 @@ def _load_request(kind: JobKind, job_id: str) -> TrainingRequest | EvaluationReq
         payload = json.load(handle)
     if kind == "train":
         return TrainingRequest.model_validate(payload)
+    if kind == "ensemble":
+        return EnsembleRequest.model_validate(payload)
     return EvaluationRequest.model_validate(payload)
 
 

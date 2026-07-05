@@ -62,6 +62,29 @@ export default function DocumentationPage() {
 }`}</code>
           </pre>
 
+          <h3>Ensemble</h3>
+          <p>
+            <code>POST /ensemble</code> queues a multi-model fusion job (same async
+            pattern as evaluate). Combine methods include mean, weighted mean,
+            median, trimmed mean, rank mean, percentile mean, geometric mean,
+            harmonic mean, min, and max. List options with{' '}
+            <code>GET /ensemble/methods</code>.
+          </p>
+          <pre className="bg-slate-100 p-4 rounded overflow-x-auto text-xs">
+            <code>{`POST /ensemble
+{
+  "ensemble_name": "library2_blend",
+  "combine": "rank_mean",
+  "members": [
+    { "model_name": "deepprime", "weights": "DeepPrime_base" },
+    { "model_name": "pridict2", "weights": "pridict1_1__exp_..." }
+  ],
+  "study": ["pridict1"],
+  "dataset": ["library2"],
+  "split": { "split_strategy": "holdout_2", "test_pct": 0.2 }
+}`}</code>
+          </pre>
+
           <h3>Train</h3>
           <p>
             <code>POST /train</code> queues a job (returns <code>job_id</code>).

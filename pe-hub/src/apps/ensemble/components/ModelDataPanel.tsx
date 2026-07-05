@@ -15,7 +15,7 @@ import { exportFormatForModel } from '@apps/ensemble/config/modelFormats'
 import { buildTrainingSplitParams } from '@apps/ensemble/utils/trainingRequest'
 import { useCatalogFilterOptions } from '@/hooks/useCatalogFilterOptions'
 
-export type ModelDataPanelMode = 'train' | 'benchmark'
+export type ModelDataPanelMode = 'train' | 'benchmark' | 'ensemble'
 
 const MODE_COPY: Record<
   ModelDataPanelMode,
@@ -60,6 +60,21 @@ const MODE_COPY: Record<
       'Each matching datasheet is split independently and queued as its own benchmark job.',
     previewError: 'Failed to preview benchmark data',
     incompleteHint: 'Each added attribute needs at least one value before preview or benchmark.',
+  },
+  ensemble: {
+    title: 'Ensemble data',
+    intro:
+      'Select held-out test data from the PE Database catalog. Each member model is evaluated on its native format; rows are aligned on the standardized test partition.',
+    splitDescription:
+      'Split assignment determines which rows count as test data. Datasheets can be merged or evaluated separately, matching the Benchmark page behavior.',
+    singleLabel: 'Single merged ensemble',
+    batchLabel: 'Batch ensemble (one job per datasheet)',
+    singleHelp:
+      'All matching datasheets are merged server-side, split once, and evaluated together in one ensemble job.',
+    batchHelp:
+      'Each matching datasheet is split independently and queued as its own ensemble job.',
+    previewError: 'Failed to preview ensemble data',
+    incompleteHint: 'Each added attribute needs at least one value before preview or ensemble run.',
   },
 }
 
@@ -119,7 +134,7 @@ export default function ModelDataPanel({
   const copy = MODE_COPY[mode]
   const { optionsByAttribute, getOptionsForRow, isLoading, error } =
     useCatalogFilterOptions(filterRows)
-  const exportFormat = exportFormatForModel(modelName)
+  const exportFormat = mode === 'ensemble' ? 'std' : exportFormatForModel(modelName)
   const formatMeta = EXPORT_FORMATS.find((item) => item.value === exportFormat)
 
   const incompleteRows = filterRows.filter(

@@ -40,6 +40,20 @@ from .evaluation.schemas import (
     EvaluationLogResponse,
     EvaluationRequest,
 )
+from .ensemble.combine import combine_method_help
+from .ensemble.jobs import (
+    create_job as create_ensemble_job,
+    delete_job as remove_ensemble_job,
+    get_job as get_ensemble_job,
+    job_summary as ensemble_job_summary,
+    list_jobs as list_ensemble_jobs,
+    read_logs as read_ensemble_logs,
+)
+from .ensemble.schemas import (
+    EnsembleJobCreatedResponse,
+    EnsembleLogResponse,
+    EnsembleRequest,
+)
 from .training.jobs import create_job, delete_job as delete_train_job, get_job, job_summary, list_jobs, read_logs
 from pe_common.devices import list_devices as list_compute_devices
 from pe_common.devices import default_device_id, resolve_device
@@ -539,6 +553,113 @@ async def get_evaluation_logs(
 
 @app.get("/evaluate/devices")
 async def evaluation_device_status():
+    return {
+        "default": default_device_id(),
+        "devices": get_scheduler().device_snapshot(),
+    }
+
+
+@app.get("/ensemble/methods")
+async def list_ensemble_combine_methods():
+    """List supported no-retrain prediction fusion methods."""
+    return {"methods": combine_method_help(), "count": len(combine_method_help())}
+
+
+@app.post("/ensemble")
+async def run_ensemble(request: EnsembleRequest):
+    """Queue an asynchronous ensemble evaluation job."""
+    for member in request.members:
+        model_name = member.model_name.strip().lower()
+        if not is_supported_model(model_name):
+            raise HTTPException(status_code=400, detail=f"Invalid model name: {member.model_name}")
+        weight_id = member.weights.strip()
+        if not weight_id:
+            raise HTTPException(status_code=400, detail="Each member requires a weights ID")
+        try:
+            model_registry.validate_weight_selection(model_name, weight_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    job_id = create_ensemble_job(request)
+    get_scheduler().submit_ensemble(job_id, request)
+    manifest = get_ensemble_job(job_id)
+    message = "Ensemble job started"
+    if manifest.get("queue_position"):
+        message = f"Ensemble job queued (position {manifest['queue_position']})"
+    return EnsembleJobCreatedResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        message=message,
+    )
+
+
+@app.get("/ensemble/jobs")
+async def list_ensemble_evaluation_jobs(limit: int = Query(50, ge=1, le=200)):
+    manifests = list_ensemble_jobs(limit=limit)
+    return {
+        "jobs": [ensemble_job_summary(manifest).model_dump() for manifest in manifests],
+        "count": len(manifests),
+    }
+
+
+@app.get("/ensemble/status/{job_id}")
+async def get_ensemble_status(job_id: str):
+    try:
+        manifest = get_ensemble_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    summary = ensemble_job_summary(manifest).model_dump()
+    if manifest.get("result") is not None:
+        summary["result"] = manifest["result"]
+    return summary
+
+
+@app.delete("/ensemble/jobs/{job_id}", status_code=202)
+async def delete_ensemble_job(job_id: str):
+    """Stop a queued or running ensemble job and remove its on-disk artifacts."""
+    try:
+        get_ensemble_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    manifest = begin_job_kill("ensemble", job_id, get_job=get_ensemble_job)
+    asyncio.create_task(
+        asyncio.to_thread(
+            finalize_job_kill,
+            "ensemble",
+            job_id,
+            get_job=get_ensemble_job,
+            delete_job=remove_ensemble_job,
+        )
+    )
+    return {
+        "job_id": job_id,
+        "accepted": True,
+        "status": manifest.get("status") if manifest else "deleted",
+    }
+
+
+@app.get("/ensemble/logs/{job_id}")
+async def get_ensemble_logs(
+    job_id: str,
+    offset: int = Query(0, ge=0),
+):
+    try:
+        manifest = get_ensemble_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    log_chunk, next_offset = read_ensemble_logs(job_id, offset=offset)
+    return EnsembleLogResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        offset=offset,
+        next_offset=next_offset,
+        log=log_chunk,
+    )
+
+
+@app.get("/ensemble/devices")
+async def ensemble_device_status():
     return {
         "default": default_device_id(),
         "devices": get_scheduler().device_snapshot(),

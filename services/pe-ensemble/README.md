@@ -32,6 +32,11 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 - `GET /evaluate/status/{job_id}` - Benchmark job status and metrics
 - `GET /evaluate/logs/{job_id}` - Benchmark job logs
 - `GET /evaluate/jobs` - List recent benchmark jobs
+- `POST /ensemble` - Queue an asynchronous multi-model ensemble job
+- `GET /ensemble/methods` - List supported fusion methods (no retrain)
+- `GET /ensemble/status/{job_id}` - Ensemble job status and metrics
+- `GET /ensemble/logs/{job_id}` - Ensemble job logs
+- `GET /ensemble/jobs` - List recent ensemble jobs
 
 ## Running Locally
 

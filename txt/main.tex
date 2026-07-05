@@ -69,11 +69,19 @@ Even when the edited strand is ligated in, the resulting heteroduplex still cont
 Because MMR can copy from either strand, it may reject the edit and rebuild the original allele, again resetting the locus and permitting re-binding of the PE--pegRNA complex as long as the PAM site remains intact~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
 These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
 
-% TODO: finish this paragraph
-On top of the competing repair outcomes, the editing efficiency is also heavily affected by target context and pegRNA design. 
+On top of the competing repair outcomes, editing efficiency is also heavily shaped by target context and pegRNA design.
+For a fixed pegRNA, integrating the same target sequence at different genomic loci can yield editing rates from near 0\% to over 90\%, demonstrating that cis-chromatin position effects and local epigenetic marks strongly modulate prime editing independently of guide sequence~\cite{liChromatinContextdependentRegulation2024a,mathisMachineLearningPrediction2024}.
+Complementary high-throughput analyses further show that regional heterochromatin and nucleosome occlusion impede editing, while position-specific nucleotide composition in the target and pegRNA flanking regions---including PBS and reverse-transcriptase template (RTT) GC content, PAM choice, and the identity of the last templated nucleotide---can shift activity by orders of magnitude~\cite{kimPredictingEfficiencyPrime2021,kimChromatinStructureContextdependent2023}.
+pegRNA architecture adds another layer of control: optimal primer-binding site (PBS) length depends on delivery format and on melting temperature of PBS--target hybridization, because complementarity between the PBS and spacer can auto-inhibit target binding~\cite{ponnienselvanReducingInherentAutoinhibitory2023}, and degradation of the 3$'$ RTT--PBS extension can poison editing unless the pegRNA is stabilized, for example with engineered 3$'$ RNA structures~\cite{nelsonEngineeredPegRNAsImprove2022}.
+Nevertheless, many determinants remain only partly understood.
+The cis-chromatin environment and its intersection with trans-acting DNA repair proteins were long undercharacterized relative to pegRNA sequence alone, and context-dependent repressors such as HLTF are still being discovered~\cite{liChromatinContextdependentRegulation2024a}.
+For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}.
+Accordingly, early screens noted that the factors controlling prime editing had not been extensively investigated, and sequence-based predictors trained on them achieve only moderate rank correlations on held-out pegRNAs (Spearman $\rho \approx 0.47$--$0.81$)~\cite{kimPredictingEfficiencyPrime2021}.
+As a result, efficient prime editing often still requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022}.
+Together, these observations mean that many physically valid pegRNAs can be proposed for a given edit, yet their expected efficiencies can differ dramatically and remain difficult to rank reliably---motivating the computational applications performing in silico design of pegRNAs given a target sequence and a desired edit.
 
-
-These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design
+These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design using a model trained on various datasets.
+\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}.
 
 \section{Methods}
 
@@ -211,6 +219,13 @@ The experiment level is represented by the \textbf{Datasheet} table. Each datash
 
 Because most metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required. When users requires to filter using fields not represented in the catalog schema, we then go through each datasheet that fulfills metadata requirements and retrieve the rows satisfying the datasheet-level filter criteria.
 
+\subsubsection{Filtering for well-designed pegRNAs}
+Hsu et al. \cite{hsuMechanisticMachineLearning2026} pointed out existing datasets contain a large amount of poorly designed pegRNAs that would never be used in practice by experienced technicians, thus the performance of existing models trained and benchmarked on these datasets are not representative of the real world performance and are potentially inflated with easily identifiable features that lead to poor editing efficiency.
+
+A set of design rules were thus implemented in the PE-DB, allowing users to select the rulesets they deem appropriate for additional filtering.
+
+% TODO: add description of the rulesets after the function is implemented
+
 
 \subsubsection{Data Retrieval and Interaction}
 
@@ -258,6 +273,12 @@ While DeepPrime and PRIDICTv2 distribute their weights as state dictionaries and
 
 Each vendor also ships multiple pretrained weight sets rather than a single checkpoint. DeepPrime provides 20 cell-line and PE-system variants (e.g.\ \nolinkurl{DeepPrime\_base}, \nolinkurl{DP\_variant\_293T\_PE4max\_Opti\_220728}), PRIDICTv2 provides 20 cross-validation runs across four experiment folders and two cell lines(HEK293T and K562, for MMR deficient and proficient cell lines), and OPED provides one portable state dictionary. The ensemble wrappers expose these as named weight sets via \nolinkurl{list\_available\_weights()}, and the evaluation API accepts an optional \nolinkurl{weights} parameter so that a specific pretrained checkpoint can be selected without retraining. When \nolinkurl{weights} is omitted, the currently loaded or freshly trained model is used instead.
 
+\subsubsection{Preventing Data Leakage}
+
+Model can perform exceptionally well if it is tested on examples that are too similar or even identical to the ones in the training set. This is known as data leakage, and it is a major problem in machine learning. 
+
+In the context of prime editing efficiency prediction, data leakage can occur if the model is trained on target loci that are identical to the ones in the test set, inflating the performance metrics.
+
 \subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
 
 For a more consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets using the same set of training strategies.
@@ -287,7 +308,7 @@ PE-DB would provide the datasets in format required by each model, making the ev
 
 \subsection{Using PE Hub}
 
-The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web service and communicate with each other via HTTP requests and API endpoints. The web interface, built with extensive help of Cursor AI agent, is designed to be user friendly and accessible, with good documentation on the endpoints.
+The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web service and communicate with each other via HTTP requests and API endpoints. The web interface is designed to be user friendly and accessible, with thorough documentation on the endpoints.
 
 However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation process.
 
@@ -323,6 +344,9 @@ To showcase this transfer learning + ensemble learning ability, we reproduced th
 \section{Discussion}
 
 (Your conclusion here.)
+
+OptiPrime is a SOTA mechanistic model for PE efficiency prediction, it will be added to the PE ensemble along with the lib-MMR and lib-CV high throughput libraries once the preprint is published\cite{hsuMechanisticMachineLearning2026}.  
+
 
 \printbibliography
 
