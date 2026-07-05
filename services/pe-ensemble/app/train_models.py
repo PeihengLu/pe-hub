@@ -76,6 +76,7 @@ def _build_request(args: argparse.Namespace) -> TrainingRequest:
         dataset_source=args.dataset_source,
         dataset_name=args.dataset_name,
         hyperparameters=hyperparameters or None,
+        hyperparameter_mode=args.hyperparameter_mode,
         split=split,
         study=args.study or None,
         dataset=args.dataset or None,
@@ -143,6 +144,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split-random-state", type=int, default=42)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--hyperparameters-json", default=None, help="Training hyperparameters as JSON object")
+    parser.add_argument(
+        "--hyperparameter-mode",
+        default="merge",
+        choices=["merge", "replace"],
+        help="merge: dataset preset + JSON overrides (default); replace: baseline + JSON only",
+    )
     parser.add_argument(
         "--pretrained-weights",
         default=None,

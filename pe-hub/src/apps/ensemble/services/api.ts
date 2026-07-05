@@ -103,6 +103,7 @@ export interface TrainingRequest {
   dataset_source: string
   dataset_name: string
   hyperparameters?: Record<string, unknown>
+  hyperparameter_mode?: 'merge' | 'replace'
   split?: SplitExportParams
   study?: string[]
   dataset?: string[]

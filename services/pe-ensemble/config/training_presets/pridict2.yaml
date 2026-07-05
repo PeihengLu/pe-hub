@@ -1,0 +1,13 @@
+schema_version: 1
+model: pridict2
+defaults:
+  batch_size: 128
+  num_epochs: 20
+  lr: 0.0001
+  weight_decay: 0.0001
+  embed_dim: 64
+  z_dim: 64
+  num_hidden_layers: 1
+  p_dropout: 0.1
+  loss_func: KLDloss
+datasets: {}

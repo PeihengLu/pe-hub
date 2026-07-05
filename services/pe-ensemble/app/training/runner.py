@@ -16,7 +16,7 @@ from .data import fetch_training_dataframe, normalize_filter_param
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
 from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, tee_stream_to_log
-from .model_architecture import apply_fine_tune_defaults
+from .hyperparameter_presets import resolve_hyperparameters_for_request
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,8 @@ def _training_metadata_from_request(
 
 
 def _merge_hyperparameters(request: TrainingRequest, device: torch.device) -> Dict[str, Any]:
-    hyperparameters = apply_fine_tune_defaults(dict(request.hyperparameters or {}))
+    resolved = resolve_hyperparameters_for_request(request)
+    hyperparameters = dict(resolved.hyperparameters)
     if request.model_name.strip().lower() == "pridict2" and "gpu_index" not in hyperparameters:
         hyperparameters["gpu_index"] = cuda_index_from_device(device)
     return hyperparameters
@@ -84,6 +85,7 @@ def execute_training(
     *,
     job_id: Optional[str] = None,
     device_id: Optional[str] = None,
+    register_weights: bool = True,
 ) -> Dict[str, Any]:
     """Run training end-to-end and register weights."""
     model_name = request.model_name.strip().lower()
@@ -160,13 +162,19 @@ def execute_training(
                 train_result=result,
                 device_id=resolved_device_id,
             )
-            weights_id = weights_registry.register_trained_model(
-                model_name,
-                model,
-                metadata=metadata,
-                notes=request.notes,
-            )
-            entry = weights_registry.get_manifest(model_name, weights_id)
+            weights_id: Optional[str] = None
+            weights_label: Optional[str] = None
+            if register_weights:
+                weights_id = weights_registry.register_trained_model(
+                    model_name,
+                    model,
+                    metadata=metadata,
+                    notes=request.notes,
+                )
+                entry = weights_registry.get_manifest(model_name, weights_id)
+                weights_label = entry.get("label")
+            else:
+                entry = {}
         except JobCancelledError:
             if job_id:
                 mark_cancelled(job_id)
@@ -183,10 +191,13 @@ def execute_training(
             "n_rows": int(len(train_df)),
             "device": resolved_device_id,
             "weights_id": weights_id,
-            "weights_label": entry.get("label"),
+            "weights_label": weights_label,
             "result": result,
         }
-        _log(f"Training succeeded; weights_id={weights_id}")
+        if weights_id:
+            _log(f"Training succeeded; weights_id={weights_id}")
+        else:
+            _log("Training succeeded (weights not registered).")
         if job_id:
             mark_succeeded(job_id, payload)
         return payload

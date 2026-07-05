@@ -1,0 +1,8 @@
+schema_version: 1
+model: oped
+defaults:
+  epoch_num: 100
+  batch_size: 128
+  lr: 0.0003
+  weight_decay: 0.0
+datasets: {}

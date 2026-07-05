@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
+HyperparameterMode = Literal["merge", "replace"]
 FilterScalar = Union[str, int]
 FilterValue = Union[FilterScalar, List[FilterScalar]]
 JobStatus = Literal["queued", "running", "stopping", "succeeded", "failed", "cancelled", "skipped"]
@@ -37,6 +38,7 @@ class TrainingRequest(BaseModel):
     dataset_source: str
     dataset_name: str
     hyperparameters: Optional[Dict[str, Any]] = None
+    hyperparameter_mode: HyperparameterMode = "merge"
     split: SplitQueryParams = Field(default_factory=default_training_split)
     study: Optional[FilterValue] = None
     dataset: Optional[FilterValue] = None

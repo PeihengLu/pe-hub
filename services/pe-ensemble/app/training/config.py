@@ -49,3 +49,17 @@ def jobs_root() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return (Path(__file__).resolve().parents[2] / "jobs").resolve()
+
+
+def presets_root() -> Path:
+    env = os.getenv("TRAINING_PRESETS_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path(__file__).resolve().parents[2] / "config" / "training_presets").resolve()
+
+
+def tuning_studies_root() -> Path:
+    env = os.getenv("TUNING_STUDIES_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path(__file__).resolve().parents[2] / "tuning_studies").resolve()

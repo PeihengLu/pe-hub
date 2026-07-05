@@ -13,6 +13,11 @@ import TrainingHyperparametersPanel, {
   buildHyperparametersPayload,
   type HyperparameterFormState,
 } from '@apps/ensemble/components/TrainingHyperparametersPanel'
+import {
+  defaultSchedulerForModel,
+  epochBudgetForModel,
+  schedulerFormFieldsFor,
+} from '@apps/ensemble/config/schedulerDefaults'
 import type { AttributeFilterRow, SplitStrategy } from '@apps/database/config/exportAttributes'
 import type { ExportResponse } from '@apps/database/services/peDbApi'
 import { resolveBatchGroups } from '@apps/ensemble/utils/batchGroups'
@@ -106,7 +111,13 @@ export default function TrainingPage() {
   }, [modelName, filterRows, splitStrategy, trainPct, valPct, testPct, cvFolds, useOriginalFold, originalFoldTestValue, splitRandomState, batchTraining])
 
   useEffect(() => {
-    setHyperparameters((prev) => ({ ...prev, pretrainedWeightId: '' }))
+    setHyperparameters((prev) => ({
+      ...prev,
+      pretrainedWeightId: '',
+      ...schedulerFormFieldsFor(defaultSchedulerForModel(modelName), {
+        epochBudget: epochBudgetForModel(modelName, prev),
+      }),
+    }))
   }, [modelName])
 
   useEffect(() => {

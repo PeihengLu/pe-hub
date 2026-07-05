@@ -537,6 +537,129 @@ class PRIDICT2ModelWrapper(BasePEModel):
             num_epochs,
         )
 
+    def _build_experiment_options(
+        self,
+        hyperparameters: Dict[str, Any],
+        *,
+        norm_cols_tr: List[str],
+        y_ref: List[str],
+    ) -> Dict[str, Any]:
+        experiment_options = {
+            "experiment_desc": str(
+                hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")
+            ),
+            "model_name": "PE_RNN_distribution",
+            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
+            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
+            "seqlevel_featdim": int(
+                hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))
+            ),
+            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
+        }
+        if bool(hyperparameters.get("freezing", False)):
+            experiment_options["freezing"] = True
+            experiment_options["trainable_layernames"] = list(
+                hyperparameters.get("trainable_layernames", ["decoder"])
+            )
+        return experiment_options
+
+    def _metrics_from_validation_predictions(
+        self,
+        val_df: pd.DataFrame,
+        y_ref: List[str],
+    ) -> Dict[str, float]:
+        prepared_val = self.prepare_data(val_df, y_ref=y_ref)
+        pred_df = self._predict_from_loaded_or_current_model(
+            dloader=prepared_val,
+            y_ref=y_ref,
+        )
+        fold_metrics: Dict[str, float] = {}
+        for outcome in y_ref:
+            true_col = f"true_{outcome}"
+            pred_col = f"pred_{outcome}"
+            if true_col not in pred_df.columns or pred_col not in pred_df.columns:
+                continue
+            y_true = pd.to_numeric(pred_df[true_col], errors="coerce").to_numpy(dtype=np.float64)
+            y_pred = pd.to_numeric(pred_df[pred_col], errors="coerce").to_numpy(dtype=np.float64)
+            fold_metrics.update(regression_metrics(y_true, y_pred, prefix=outcome))
+        return fold_metrics
+
+    def _run_train_val_lightning(
+        self,
+        *,
+        train_df: pd.DataFrame,
+        val_df: pd.DataFrame,
+        y_ref: List[str],
+        hyperparameters: Dict[str, Any],
+        output_dir: str,
+        run_suffix: str,
+        config_map: tuple[Any, Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        from ..training.progress_log import take_job_training_callbacks
+        from .pridict2_lightning import (
+            build_pernn_distribution_model,
+            build_pridict_dataloaders,
+            save_pridict_run_artifacts,
+            train_pridict2_with_lightning,
+            vendor_state_dict_path,
+        )
+
+        hyperparameters, progress_log, cancel_check = take_job_training_callbacks(
+            hyperparameters
+        )
+        batch_size = int(hyperparameters.get("batch_size", 128))
+        dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
+        dtensor_val, _ = self._build_datatensor(val_df, y_ref)
+        train_loader, val_loader = build_pridict_dataloaders(
+            train_dataset=dtensor_train,
+            val_dataset=dtensor_val,
+            batch_size=batch_size,
+        )
+
+        model = build_pernn_distribution_model(
+            hyperparameters,
+            seqlevel_featdim=int(
+                hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))
+            ),
+            num_outcomes=len(y_ref),
+            device=self.device,
+        )
+        statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
+        pretrained_path = vendor_state_dict_path(statedict_dir)
+        if pretrained_path:
+            model.load_vendor_statedict(pretrained_path, device=self.device)
+
+        train_metrics = train_pridict2_with_lightning(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            hyperparameters=hyperparameters,
+            device=self.device,
+            loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
+            progress_log=progress_log,
+            cancel_check=cancel_check,
+        )
+
+        run_output_dir = f"{output_dir}/{run_suffix}"
+        model_dir = Path(f"{run_output_dir}/train_val/run_0")
+        save_pridict_run_artifacts(
+            model_dir=model_dir,
+            model=model,
+            config_map=config_map,
+            best_epoch=int(train_metrics["best_epoch"]),
+        )
+
+        self.load_model(str(model_dir))
+        fold_metrics = self._metrics_from_validation_predictions(val_df, y_ref)
+        return {
+            "output_dir": run_output_dir,
+            "model_dir": str(model_dir),
+            "num_train_rows": len(train_df),
+            "num_val_rows": len(val_df),
+            "metrics": fold_metrics,
+            "training_metrics": train_metrics,
+        }
+
     def _run_train_val_once(
         self,
         *,
@@ -550,10 +673,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
     ) -> Dict[str, Any]:
         from pridict2.pridict.pridictv2.run_workflow import build_config_map, train_val_run
 
-        dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
-        dtensor_val, _ = self._build_datatensor(val_df, y_ref)
-        data_partitions = {0: {"train": dtensor_train, "validation": dtensor_val}}
-        run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
         batch_size = int(hyperparameters.get("batch_size", 128))
         num_epochs = int(hyperparameters.get("num_epochs", 20))
         trf_tup = self._build_trf_tup(
@@ -561,24 +680,32 @@ class PRIDICT2ModelWrapper(BasePEModel):
             batch_size=batch_size,
             num_epochs=num_epochs,
         )
-        experiment_options = {
-            "experiment_desc": str(hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")),
-            "model_name": "PE_RNN_distribution",
-            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
-            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
-            "seqlevel_featdim": int(hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))),
-            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
-        }
-        if bool(hyperparameters.get("freezing", False)):
-            experiment_options["freezing"] = True
-            experiment_options["trainable_layernames"] = list(
-                hyperparameters.get("trainable_layernames", ["decoder"])
-            )
+        dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
+        experiment_options = self._build_experiment_options(
+            hyperparameters,
+            norm_cols_tr=list(norm_cols_tr),
+            y_ref=y_ref,
+        )
         config_map = build_config_map(
             trf_tup,
             experiment_options,
             loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
         )
+
+        backend = str(trainer_backend).strip().lower()
+        if backend in {"pytorch-lightning", "lightning", "pl"}:
+            return self._run_train_val_lightning(
+                train_df=train_df,
+                val_df=val_df,
+                y_ref=y_ref,
+                hyperparameters=hyperparameters,
+                output_dir=output_dir,
+                run_suffix=run_suffix,
+                config_map=config_map,
+            )
+
+        data_partitions = {0: {"train": dtensor_train, "validation": self._build_datatensor(val_df, y_ref)[0]}}
+        run_gpu_map = {0: int(hyperparameters.get("gpu_index", 0))}
         run_output_dir = f"{output_dir}/{run_suffix}"
         statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
         train_val_run(
@@ -592,17 +719,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
         model_dir = f"{run_output_dir}/train_val/run_0"
         self.load_model(model_dir)
-        prepared_val = self.prepare_data(val_df, y_ref=y_ref)
-        pred_df = self._predict_from_loaded_or_current_model(dloader=prepared_val, y_ref=y_ref)
-        fold_metrics: Dict[str, float] = {}
-        for outcome in y_ref:
-            true_col = f"true_{outcome}"
-            pred_col = f"pred_{outcome}"
-            if true_col not in pred_df.columns or pred_col not in pred_df.columns:
-                continue
-            y_true = pd.to_numeric(pred_df[true_col], errors="coerce").to_numpy(dtype=np.float64)
-            y_pred = pd.to_numeric(pred_df[pred_col], errors="coerce").to_numpy(dtype=np.float64)
-            fold_metrics.update(regression_metrics(y_true, y_pred, prefix=outcome))
+        fold_metrics = self._metrics_from_validation_predictions(val_df, y_ref)
 
         return {
             "output_dir": run_output_dir,

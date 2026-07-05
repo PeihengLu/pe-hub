@@ -254,6 +254,40 @@ async def list_models():
     return {"models": models, "count": len(models)}
 
 
+@app.get("/models/{model_name}/training-presets")
+async def get_training_presets(
+    model_name: str,
+    study: Optional[str] = Query(None),
+    dataset: Optional[str] = Query(None),
+    cell_line: Optional[str] = Query(None),
+    pe_system: Optional[str] = Query(None),
+    hyperparameter_mode: Literal["merge", "replace"] = Query("merge"),
+):
+    """Resolve training hyperparameters for a model and dataset filter."""
+    model_name = model_name.strip().lower()
+    if not is_supported_model(model_name):
+        raise HTTPException(status_code=400, detail="Invalid model name")
+
+    from .training.hyperparameter_presets import resolve_hyperparameters
+
+    resolved = resolve_hyperparameters(
+        model_name,
+        study=study,
+        dataset=dataset,
+        cell_line=cell_line,
+        pe_system=pe_system,
+        user_overrides=None,
+        mode=hyperparameter_mode,
+    )
+    return {
+        "model": model_name,
+        "preset_key": resolved.preset_key,
+        "preset_source": resolved.preset_source,
+        "hyperparameter_mode": hyperparameter_mode,
+        "hyperparameters": resolved.hyperparameters,
+    }
+
+
 @app.get("/models/{model_name}/weights")
 async def list_model_weights(model_name: str):
     """List registered weight sets available for a model."""

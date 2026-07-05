@@ -1,7 +1,13 @@
 import { useMemo, type ReactNode } from 'react'
 import type { WeightSet } from '@apps/ensemble/services/api'
+import {
+  defaultSchedulerForModel,
+  epochBudgetForModel,
+  schedulerFormFieldsFor,
+  type SchedulerName,
+} from '@apps/ensemble/config/schedulerDefaults'
 
-export type SchedulerName = 'none' | 'step' | 'cosine' | 'exponential'
+export type { SchedulerName }
 
 export interface HyperparameterFormState {
   epochs: string
@@ -40,10 +46,7 @@ export const DEFAULT_HYPERPARAMETERS: HyperparameterFormState = {
   learningRate: '0.0001',
   weightDecay: '0',
   gradClip: '1',
-  scheduler: 'none',
-  schedulerStepSize: '10',
-  schedulerGamma: '0.95',
-  schedulerTMax: '10',
+  ...schedulerFormFieldsFor('none'),
   earlyStoppingPatience: '10',
   earlyStoppingMinDelta: '0',
   loadPretrained: false,
@@ -357,7 +360,14 @@ export default function TrainingHyperparametersPanel({
         <Field label="LR scheduler">
           <select
             value={values.scheduler}
-            onChange={(e) => patch({ scheduler: e.target.value as SchedulerName })}
+            onChange={(e) => {
+              const scheduler = e.target.value as SchedulerName
+              patch(
+                schedulerFormFieldsFor(scheduler, {
+                  epochBudget: epochBudgetForModel(modelName, values),
+                })
+              )
+            }}
             className={inputClass}
           >
             <option value="none">None</option>
