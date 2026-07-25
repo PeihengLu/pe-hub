@@ -100,6 +100,3 @@ else:
 PROJECT_ROOT = _resolve_project_root()
 DATA_ROOT = _resolve_data_root(PROJECT_ROOT)
 MODEL_ROOT = _resolve_model_root(PROJECT_ROOT)
-
-# Commonly used paths
-DEEPSPCAS9_MODEL_DIR = MODEL_ROOT.joinpath("DeepSpCas9").resolve()

@@ -21,8 +21,6 @@ import RNA
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as mt
 
-from .deepspcas9 import _calculate_DeepSpCas9_score
-
 
 def normalize_name(name: str) -> str:
     """Normalize column/feature/pe-system/cell-line/dataset name.
@@ -210,7 +208,10 @@ def batch_calculate_features(
     """
     Input DataFrame must have columns for PBS, RTT, LHA, RHA, target sequence, and PAM location (1-based index).
     Returns a DataFrame with features appended:
-      *_rna_mfe, *_tm_wallace, *_gc_content, target_deepspcas9
+      *_rna_mfe, *_tm_wallace, *_gc_content
+
+    DeepSpCas9 on-target scoring is owned by the PE-DB service
+    (services/pe-db/app/utils/deepspcas9.py); it is not computed here.
     """
     # copy to avoid mutating input
     df_in: pd.DataFrame = df.copy().reset_index(drop=True)
@@ -250,42 +251,6 @@ def batch_calculate_features(
     df_in["rtt_length"] = df_in[rtt_col].str.len().fillna(0)
     df_in["lha_length"] = df_in[lha_col].str.len().fillna(0)
     df_in["rha_length"] = df_in[rha_col].str.len().fillna(0)
-
-    # 5) DeepSpCas9 score for target (if pam_location valid)
-    # The DeepSpCas9 expects a 30-nt string: [-4] + 20nt guide + PAM + +3bp
-    def _extract_30nt(row: pd.Series) -> Optional[str]:
-        t = row[target_col] or ""
-        pam = row.get(pam_col, None)
-        if pam is None or not isinstance(pam, (int, float)) or np.isnan(pam):
-            return None
-        pam = int(pam)
-        # pam_location is 1-based in your code; slice in Python is 0-based
-        start = pam - 17  # pam - 17  (as in original)
-        end = pam + 13    # pam + 13 (exclusive index)
-        if start < 0 or end > len(t) or (end - start) != 30:
-            return None
-        return t[start:end]
-
-    df_in["_deepspcas9_target30"] = df_in.apply(_extract_30nt, axis=1)  # type: ignore[call-overload]
-
-    # collect list of sequences where we can compute the score
-    idx_to_seq = [(i, s) for i, s in enumerate(df_in["_deepspcas9_target30"].tolist()) if s]
-    if idx_to_seq:
-        seqs = [s for _, s in idx_to_seq]
-        # compute scores in batch - using your function that loads the TF model once
-        try:
-            scores = _calculate_DeepSpCas9_score(seqs)  # returns list aligned to seqs
-        except Exception as e:
-            # if TF model fails for some reason, set NaN and continue
-            scores = [float("nan")] * len(seqs)
-        # assign back to proper indices
-        for (i, _), sc in zip(idx_to_seq, scores):
-            df_in.loc[i, "deepspcas9_score"] = sc
-    else:
-        df_in["deepspcas9_score"] = np.nan
-
-    # cleanup intermediate column
-    df_in = df_in.drop(columns=["_deepspcas9_target30"], errors="ignore")
 
     return df_in
 
