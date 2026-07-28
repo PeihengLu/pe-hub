@@ -163,7 +163,7 @@ export type BenchmarkJobStatus = TrainingJobStatus
 
 export interface EvaluationRequest {
   model_name: string
-  benchmark_name: string
+  benchmark_name?: string
   weights: string
   split?: SplitExportParams
   study?: string[]
@@ -180,6 +180,8 @@ export interface EvaluationRequest {
   edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   device?: string
+  auto_training_benchmark?: boolean
+  allow_data_leak?: boolean
 }
 
 export interface BenchmarkJobCreatedResponse {
@@ -208,6 +210,8 @@ export interface BenchmarkJobStatusResponse {
     device?: string
     n_samples?: number
     metrics?: Record<string, number>
+    skipped?: boolean
+    skip_reason?: string
   }
 }
 

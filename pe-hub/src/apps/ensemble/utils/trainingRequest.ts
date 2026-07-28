@@ -32,23 +32,51 @@ export function buildTrainingSplitParams(config: {
   })
 }
 
+const DATASHEET_FILTER_KEYS = ['study', 'dataset', 'cell_line', 'pe_system'] as const
+
+const ROW_FILTER_KEYS = [
+  'edit_type',
+  'edit_length',
+  'edit_scope',
+  'experimental_method',
+  'target_context',
+  'scaffold_name',
+] as const
+
+function formatAttachedRowFilters(
+  filters: Record<string, string[] | number[]>
+): string {
+  const parts: string[] = []
+  for (const key of ROW_FILTER_KEYS) {
+    const values = filters[key]
+    if (!Array.isArray(values) || values.length === 0) continue
+    parts.push(`${key}=${values.join('|')}`)
+  }
+  return parts.join(', ')
+}
+
 export function buildDatasetLabel(
   filterRows: AttributeFilterRow[],
   group?: Pick<ExportGroup, 'study' | 'dataset' | 'cell_line' | 'pe_system'>
 ): string {
+  const filters = buildFilterParams(filterRows)
+  const attached = formatAttachedRowFilters(filters)
+
+  let base: string
   if (group) {
-    return `${group.study}/${group.dataset} · ${group.cell_line} · ${group.pe_system}`
+    base = `${group.study}/${group.dataset} · ${group.cell_line} · ${group.pe_system}`
+  } else {
+    const parts: string[] = []
+    for (const key of DATASHEET_FILTER_KEYS) {
+      const values = filters[key]
+      if (Array.isArray(values) && values.length > 0) {
+        parts.push(`${key}=${values.join('|')}`)
+      }
+    }
+    base = parts.length > 0 ? parts.join(', ') : 'all matching datasheets'
   }
 
-  const filters = buildFilterParams(filterRows)
-  const parts: string[] = []
-  for (const key of ['study', 'dataset', 'cell_line', 'pe_system'] as const) {
-    const values = filters[key]
-    if (Array.isArray(values) && values.length > 0) {
-      parts.push(`${key}=${values.join('|')}`)
-    }
-  }
-  return parts.length > 0 ? parts.join(', ') : 'all matching datasheets'
+  return attached ? `${base} (${attached})` : base
 }
 
 export function buildTrainingRequestForGroup(input: {

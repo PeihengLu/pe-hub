@@ -10,7 +10,10 @@ export interface DatasheetInfo {
 const CORE_METRIC_ORDER = ['pearson', 'spearman', 'mse', 'mae'] as const
 
 export function parseBenchmarkName(benchmarkName: string): DatasheetInfo {
-  const batchMatch = benchmarkName.match(/^([^/]+)\/([^·]+?)\s*·\s*([^·]+?)\s*·\s*(.+)$/)
+  const withoutAttachedFilters = benchmarkName.replace(/\s*\([^)]*\)\s*$/, '').trim()
+  const batchMatch = withoutAttachedFilters.match(
+    /^([^/]+)\/([^·]+?)\s*·\s*([^·]+?)\s*·\s*(.+)$/
+  )
   if (batchMatch) {
     return {
       study: batchMatch[1].trim(),
@@ -26,7 +29,7 @@ export function parseBenchmarkName(benchmarkName: string): DatasheetInfo {
     cell_line: '',
     pe_system: '',
   }
-  for (const part of benchmarkName.split(',')) {
+  for (const part of withoutAttachedFilters.split(',')) {
     const separatorIndex = part.indexOf('=')
     if (separatorIndex === -1) continue
     const key = part.slice(0, separatorIndex).trim()

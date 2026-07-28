@@ -6,10 +6,12 @@ import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import SelectMenu from '@components/SelectMenu'
 import ComputeJobList from '@apps/ensemble/components/ComputeJobList'
+import BenchmarkResultsTable from '@apps/ensemble/components/BenchmarkResultsTable'
 import ModelDataPanel from '@apps/ensemble/components/ModelDataPanel'
 import api from '@apps/ensemble/services/api'
 import { DEFAULT_EVAL_SPLIT } from '@apps/ensemble/config/splitParams'
 import {
+  buildAutoTrainingBenchmarkRequest,
   buildBenchmarkRequestForGroup,
   buildBenchmarkSplitParams,
 } from '@apps/ensemble/utils/benchmarkRequest'
@@ -21,6 +23,14 @@ import {
   TERMINAL_JOB_STATUSES,
 } from '@apps/ensemble/utils/jobStatus'
 import { buildBenchmarkResultsExport } from '@apps/ensemble/utils/exportBenchmarkResults'
+import {
+  emptyBenchmarkResultsTable,
+  loadBenchmarkResultsTable,
+  mergeBenchmarkJobIntoTable,
+  mergeBenchmarkJobsIntoTable,
+  saveBenchmarkResultsTable,
+  type BenchmarkTableMetric,
+} from '@apps/ensemble/utils/benchmarkResultsTable'
 import { downloadJson } from '@apps/database/utils/downloadCsv'
 import type { BenchmarkJobStatusResponse } from '@apps/ensemble/services/api'
 
@@ -56,8 +66,11 @@ export default function BenchmarkPage() {
     current: number
     total: number
   } | null>(null)
+  const [resultsTable, setResultsTable] = useState(loadBenchmarkResultsTable)
+  const [displayMetric, setDisplayMetric] = useState<BenchmarkTableMetric>('pearson')
   const logRef = useRef<HTMLPreElement>(null)
   const logOffsetRef = useRef(0)
+  const ingestingRef = useRef(false)
   const queryClient = useQueryClient()
 
   const {
@@ -104,7 +117,7 @@ export default function BenchmarkPage() {
       refetchIntervalInBackground: true,
     }
   )
-  const jobStatus = jobStatusResponse?.data
+  const jobStatus = jobStatusResponse?.data as BenchmarkJobStatusResponse | undefined
 
   useEffect(() => {
     if (!jobStatus?.status || !TERMINAL_JOB_STATUSES.has(jobStatus.status)) return
@@ -157,18 +170,81 @@ export default function BenchmarkPage() {
     }
   }, [logText])
 
+  useEffect(() => {
+    saveBenchmarkResultsTable(resultsTable)
+  }, [resultsTable])
+
+  useEffect(() => {
+    if (!jobStatus || jobStatus.status !== 'succeeded' || !jobStatus.result?.metrics) return
+    setResultsTable((prev) => mergeBenchmarkJobIntoTable(prev, jobStatus))
+  }, [jobStatus])
+
+  useEffect(() => {
+    if (!jobs?.length) return
+    const pending = jobs.filter(
+      (job) =>
+        job.status === 'succeeded' && !resultsTable.ingestedJobIds.includes(job.job_id)
+    )
+    if (pending.length === 0 || ingestingRef.current) return
+
+    let cancelled = false
+    ingestingRef.current = true
+
+    void (async () => {
+      try {
+        const responses = await Promise.all(
+          pending.map((job) => api.getBenchmarkStatus(job.job_id))
+        )
+        if (cancelled) return
+        setResultsTable((prev) =>
+          mergeBenchmarkJobsIntoTable(
+            prev,
+            responses.map((response) => response.data)
+          )
+        )
+      } catch {
+        // individual job status failures are surfaced elsewhere
+      } finally {
+        ingestingRef.current = false
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [jobs, resultsTable.ingestedJobIds])
+
   const incompleteRows = filterRows.filter(
     (row) => row.attribute !== '' && row.values.length === 0
   )
   const hasWeightSelection = weightId.trim().length > 0
   const hasRegisteredWeights = (weightSets?.length ?? 0) > 0
+  const selectedWeight = weightSets?.find((weight) => weight.id === weightId)
+  const isTrainedWeight = selectedWeight?.source === 'trained'
+  const hasActiveFilters = filterRows.some(
+    (row) => row.attribute !== '' && row.values.length > 0
+  )
+  const canUseAutoTrainingBenchmark =
+    isTrainedWeight && !batchBenchmark && !hasActiveFilters
   const canSubmit =
     incompleteRows.length === 0 &&
     hasWeightSelection &&
     hasRegisteredWeights &&
-    !weightsFetching
+    !weightsFetching &&
+    (canUseAutoTrainingBenchmark || hasActiveFilters)
 
   const benchmarkMutation = useMutation(async () => {
+    if (canUseAutoTrainingBenchmark) {
+      const response = await api.benchmark(
+        buildAutoTrainingBenchmarkRequest({
+          modelName,
+          device,
+          weights: weightId,
+        })
+      )
+      return { job_id: response.data.job_id, batch_count: 1 }
+    }
+
     const split = buildBenchmarkSplitParams({
       strategy: splitStrategy,
       trainPct,
@@ -261,6 +337,12 @@ export default function BenchmarkPage() {
     } finally {
       setExportingResults(false)
     }
+  }
+
+  const handleClearResultsTable = () => {
+    const empty = emptyBenchmarkResultsTable()
+    setResultsTable(empty)
+    saveBenchmarkResultsTable(empty)
   }
 
   const handleBenchmark = () => {
@@ -392,6 +474,12 @@ export default function BenchmarkPage() {
                   <code className="text-xs">services/pe-ensemble/weights/{modelName}/</code>.
                 </p>
               )}
+              {isTrainedWeight && !hasActiveFilters && !batchBenchmark && (
+                <p className="mt-1 text-xs text-slate-600">
+                  This weight was trained in PE-Ensemble. The held-out test set from that
+                  training run will be selected automatically — no dataset filters required.
+                </p>
+              )}
             </div>
 
             <div>
@@ -484,6 +572,21 @@ export default function BenchmarkPage() {
           )}
         </Card>
       </div>
+
+      <Card title="Results matrix">
+        <p className="text-sm text-slate-600 mb-3">
+          Rows are datasheets (with any per-row filters attached, e.g.{' '}
+          <code className="text-xs">edit_type=sub</code>). Columns are models. Values persist
+          across runs; repeating the same model and datasheet appends as{' '}
+          <code className="text-xs">original;new</code>.
+        </p>
+        <BenchmarkResultsTable
+          table={resultsTable}
+          displayMetric={displayMetric}
+          onDisplayMetricChange={setDisplayMetric}
+          onClear={handleClearResultsTable}
+        />
+      </Card>
 
       <Card title="Benchmark results">
         {!selectedJobId ? (
