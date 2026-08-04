@@ -34,5 +34,44 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DP_variant_A549_PE4max_epegRNA_Opti_220428"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 49893,
+      "target_uid_fingerprint": "sha1:674afcb5dfd659264fbdff35d04768e570f39517",
+      "vendor_training_lineage": [
+        {
+          "dataset": "deepprime-clinvar",
+          "study": "deepprime"
+        },
+        {
+          "cell_line": "a549",
+          "dataset": "deepprime-small",
+          "pe_system": "pe4max_epegrna",
+          "study": "deepprime"
+        }
+      ]
+    },
+    "dataset_name": "deepprime-clinvar + deepprime-small/a549-pe4max_epegrna",
+    "dataset_source": "vendor",
+    "filters": {
+      "cell_line": [
+        "a549"
+      ],
+      "dataset": [
+        "deepprime-clinvar",
+        "deepprime-small"
+      ],
+      "pe_system": [
+        "pe4max_epegrna"
+      ],
+      "study": [
+        "deepprime"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": null
+  }
 }

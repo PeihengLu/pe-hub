@@ -45,14 +45,14 @@
 \section{Introduction}
 
 (more reference)
-Prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome across numerous species, including humans. 
+Prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome on across multiple species, including human\cite{davisEfficientPrimeEditing2024}. 
 
 While CRISPR-Cas9 disrupts the genome with double strand breaks, and base editing accurately targets single base changes, prime editing is a more flexible 'genomic word processor' that can perform all possible edit types, including substitutions, insertions and deletions\cite{koeppelPredictionPrimeEditing2023}.
 
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.75\linewidth]{diagrams/illustration/prime editing process.png}
+    \includegraphics[width=0.75\linewidth]{diagrams/illustration/prime editing process.pdf}
     \caption{Prime editing components and mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
     A prime editor (PE) fuses a Cas9 nickase with reverse transcriptase; both protein modules are omitted here for visual clarity.
     The prime editing guide RNA (pegRNA) contains a target-directing \textit{spacer}, a Cas9 \textit{scaffold}, a \textit{primer-binding site} (PBS), and a \textit{reverse-transcriptase template} (RTT) encoding the desired change as left homology arm (LHA), \textit{edit}, and right homology arm (RHA); the \textit{PAM} (red) enables target recognition and nicking.}
@@ -60,28 +60,27 @@ While CRISPR-Cas9 disrupts the genome with double strand breaks, and base editin
 \end{figure}
 
 
-Prime editing installs programmed sequence changes through a nick-and-copy mechanism rather than double-strand break formation~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+Prime editing installs programmed sequence changes through a nick-and-copy mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
 After the prime editor--pegRNA complex binds the target locus and nicks the PAM-containing strand, the exposed 3$'$ end hybridizes to the pegRNA and primes reverse transcription of the desired edit into the genome (\autoref{fig:pe-process}, steps~1--3).
 The steps that follow are less deterministic.
 Reverse transcription generates a branched intermediate in which the newly synthesized edited 3$'$ flap and the displaced original 5$'$ flap can equilibrate between competing annealing configurations (step~4).
 Cellular flap-processing enzymes such as FEN1 preferentially excise the 5$'$ flap and ligate the edited strand when flap resolution favours the edit (step~5), but this excision step does not always work in the editor's favour: the edited flap may fail to invade the duplex, or 3$'$ exonucleases may degrade it instead, restoring the original sequence and leaving the target available for another round of editing from step~1~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
 Even when the edited strand is ligated in, the resulting heteroduplex still contains mismatches between the edited and unedited strands that must be resolved by mismatch repair (MMR) or replication (step~6).
-Because MMR can copy from either strand, it may reject the edit and rebuild the original allele, again resetting the locus and permitting re-binding of the PE--pegRNA complex as long as the PAM site remains intact~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
+Because MMR can copy from either strand, it may reject the edit and rebuild the original allele and reset the locus~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
 These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
 
 On top of the competing repair outcomes, editing efficiency is also heavily shaped by target context and pegRNA design.
-For a fixed pegRNA, integrating the same target sequence at different genomic loci can yield editing rates from near 0\% to over 90\%, demonstrating that cis-chromatin position effects and local epigenetic marks strongly modulate prime editing independently of guide sequence~\cite{liChromatinContextdependentRegulation2024a,mathisMachineLearningPrediction2024}.
+For a fixed pegRNA, integrating the same target sequence at different genomic loci can yield editing rates from near 0\% to over 90\%, demonstrating that cis-chromatin position effects and local epigenetic marks strongly modulate prime editing independently of guide sequence~\cite{liChromatinContextdependentRegulation2024, mathisMachineLearningPrediction2024}.
 Complementary high-throughput analyses further show that regional heterochromatin and nucleosome occlusion impede editing, while position-specific nucleotide composition in the target and pegRNA flanking regions---including PBS and reverse-transcriptase template (RTT) GC content, PAM choice, and the identity of the last templated nucleotide---can shift activity by orders of magnitude~\cite{kimPredictingEfficiencyPrime2021,kimChromatinStructureContextdependent2023}.
 pegRNA architecture adds another layer of control: optimal primer-binding site (PBS) length depends on delivery format and on melting temperature of PBS--target hybridization, because complementarity between the PBS and spacer can auto-inhibit target binding~\cite{ponnienselvanReducingInherentAutoinhibitory2023}, and degradation of the 3$'$ RTT--PBS extension can poison editing unless the pegRNA is stabilized, for example with engineered 3$'$ RNA structures~\cite{nelsonEngineeredPegRNAsImprove2022}.
 Nevertheless, many determinants remain only partly understood.
-The cis-chromatin environment and its intersection with trans-acting DNA repair proteins were long undercharacterized relative to pegRNA sequence alone, and context-dependent repressors such as HLTF are still being discovered~\cite{liChromatinContextdependentRegulation2024a}.
-For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}.
-Accordingly, early screens noted that the factors controlling prime editing had not been extensively investigated, and sequence-based predictors trained on them achieve only moderate rank correlations on held-out pegRNAs (Spearman $\rho \approx 0.47$--$0.81$)~\cite{kimPredictingEfficiencyPrime2021}.
-As a result, efficient prime editing often still requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022}.
-Together, these observations mean that many physically valid pegRNAs can be proposed for a given edit, yet their expected efficiencies can differ dramatically and remain difficult to rank reliably---motivating the computational applications performing in silico design of pegRNAs given a target sequence and a desired edit.
+The cis-chromatin environment and its intersection with trans-acting DNA repair proteins were long undercharacterized relative to pegRNA sequence alone, and context-dependent repressors such as HLTF are still being discovered~\cite{liChromatinContextdependentRegulation2024}.
+For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}. 
+As a result, efficient prime editing often requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022}. And given the large number of possible pegRNA designs with varying spacer location, PBS length and RTT length~\cite{hsuMechanisticMachineLearning2026}, as well as possible silent edits that can be performed to improve the editing efficiency~\cite{chenEnhancedPrimeEditing2021}, limiting the practicality of designing prime editors for real world applications.
 
-These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design using a model trained on various datasets.
-\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}.
+
+This motivates the development of computational applications performing in silico design of pegRNAs given a target sequence and a desired edit. These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design using a model trained on various datasets. There are three major family of models, conventional machine learning\cite{liEasyPrimeMachineLearning2021,koeppelPredictionPrimeEditing2023}, deep learning\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}, and mechanistic models
+\cite{hsuMechanisticMachineLearning2026}, each with their own advantages and disadvantages. In this review, we aim to provide a fair and detailed comparisons of three deep learning models with three distinctive backbone: PRIDICT RNN\cite{mathisMachineLearningPrediction2024}, DeepPrime CNN\cite{yuPredictionEfficienciesDiverse2023} and OPED Transformer\cite{liuDesignPrimeeditingGuide2023}.
 
 \section{Methods}
 
@@ -103,7 +102,7 @@ However, popular validation datasets such as Anazalone et al.\cite{anzaloneSearc
 We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Five studies are included - DeepPE from Kim et al\cite{kimPredictingEfficiencyPrime2021}; DeepPrime from yu et al\cite{yuPredictionEfficienciesDiverse2023}; MinsePIE from koeppel et al\cite{koeppelPredictionPrimeEditing2023}; PRIDICTv1 from schwank et al\cite{schwankgeraldPredictingPrimeEditing2023} and PRIDICTv2 from Mathis et al\cite{mathisMachineLearningPrediction2024}.
 
 \begin{enumerate}
-    \item \textbf{DeepPE}
+    \item \textbf{Kim et al. 2021}
     
     Kim et al.\cite{kimPredictingEfficiencyPrime2021} conducted one of the first big-data studies on prime editing efficiency, performing a high-throughput evaluation of PE2 activity using 54,836 pairs of pegRNAs and target sequences in HEK293T cells. The study identified factors affecting PE2 efficiency and developed three computational models (including the deep learning model DeepPE) to predict pegRNA efficiency. The data are organized into four datasets in the database.
 
@@ -114,9 +113,9 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     A separate endogenous validation dataset \nolinkurl{deeppe-endo} contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
 
-    \item \textbf{DeepPrime}
+    \item \textbf{Yu et al. 2023}
     
-    Yu et al.\cite{yuPredictionEfficienciesDiverse2023} systematically evaluated prime editing efficiencies for 338,996 pegRNA--target pairs (including 3,979 epegRNAs) in an error-free manner across eight PE systems and seven cell types. The study developed DeepPrime, a deep learning model that predicts PE efficiencies for all possible edit types up to 3~bp, and DeepPrime-FT, a fine-tuning strategy that adapts predictions to specific PE systems and cell types.
+    As a follow up study to Kim et al. 2021, Yu et al.\cite{yuPredictionEfficienciesDiverse2023} systematically evaluated prime editing efficiencies for 338,996 pegRNA--target pairs (including 3,979 epegRNAs) in an error-free manner across eight PE systems and seven cell types. The study developed DeepPrime, a deep learning model that predicts PE efficiencies for all possible edit types up to 3~bp, and DeepPrime-FT, a fine-tuning strategy that adapts predictions to specific PE systems and cell types.
 
     The main ClinVar library \nolinkurl{deepprime-clinvar} contains approximately 259,000 pegRNA--target pairs designed around ClinVar pathogenic variants. Efficiencies were measured on synthetic 74~bp target contexts via a plasmid-based assay, not at native genomic loci. Both pegRNAs and PE were delivered by plasmid transfection. This dataset spans multiple PE systems (PE2, PE2max, PE4max, NRCH-PE2, NRCH-PE2max, NRCH-PE4max, among others) and cell types (HEK293T, A549, DLD1, HeLa, MDA-MB-231, HCT116, and NIH3T3).
 
@@ -279,6 +278,15 @@ Model can perform exceptionally well if it is tested on examples that are too si
 
 In the context of prime editing efficiency prediction, data leakage can occur if the model is trained on target loci that are identical to the ones in the test set, inflating the performance metrics.
 
+To mitigate this, PE-Ensemble performs an automatic data-leak check before running evaluation. For each selected weight set, we load the set of training target loci stored as \nolinkurl{train_target_loci.json}; each locus is represented by a universal hash identifier (\texttt{target\_uid}) computed from the wild-type sequence and protospacer geometry. We compute \texttt{target\_uid} for every row in the requested evaluation split and detect whether any test loci overlap the model's training loci. By default, overlapping evaluation is aborted (and can optionally be allowed with a warning).
+
+For shipped vendor (pretrained) models, training provenance is reconstructed conservatively as:
+\begin{itemize}
+    \item \textbf{DeepPrime:} loci come from the DeepPrime author-provided ClinVar library and the fine-tuning sheets used to generate the distributed weight variants (e.g. Small and Off datasets).
+    \item \textbf{PRIDICTv2 (PRIDICT2):} loci are treated as the full PRIDICT1 target loci used for PRIDICT2 training (PRIDICT1 does not provide a vendor hold-out split in PE-DB, so all target loci in the selected PRIDICT1 Library 2 cell subsets are conservatively marked as “seen”).
+    \item \textbf{OPED:} loci come from DeepPE Library 1 and Library 2 (Position/Type), as represented in PE-DB standardized datasets \nolinkurl{deeppe\_ht}, \nolinkurl{deeppe\_position}, and \nolinkurl{deeppe\_type} (HEK293T; PE2 reporters).
+\end{itemize}
+
 \subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
 
 For a more consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets using the same set of training strategies.
@@ -310,7 +318,7 @@ PE-DB would provide the datasets in format required by each model, making the ev
 
 The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web service and communicate with each other via HTTP requests and API endpoints. The web interface is designed to be user friendly and accessible, with thorough documentation on the endpoints.
 
-However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation process.
+However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation on clusters. 
 
 \subsection{Introducing Custom Models}
 
@@ -345,7 +353,7 @@ To showcase this transfer learning + ensemble learning ability, we reproduced th
 
 (Your conclusion here.)
 
-OptiPrime is a SOTA mechanistic model for PE efficiency prediction, it will be added to the PE ensemble along with the lib-MMR and lib-CV high throughput libraries once the preprint is published\cite{hsuMechanisticMachineLearning2026}.  
+During the development of PE-DB and PE-Ensemble, David Liu et al. created a SOTA mechanistic model for PE efficiency prediction, OptiPrime\cite{hsuMechanisticMachineLearning2026}. At the time of writing, the preprint is still under review, thus no code and data are available. It will be added to the PE ensemble along with the lib-MMR and lib-CV high throughput libraries once the preprint is published.  
 
 
 \printbibliography

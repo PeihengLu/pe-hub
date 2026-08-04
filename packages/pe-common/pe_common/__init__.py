@@ -18,9 +18,13 @@ from .devices import (
 )
 from .sequence_utils import align_wt_mut_sequences, remove_padding
 from .data_utils import (
+    TARGET_UID_COLUMN,
+    add_target_uid,
     build_test_mask_from_group_id,
+    compute_target_uid,
     reassign_group_ids_by_target_location,
     target_location_group_series,
+    target_uid_series,
 )
 from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
 
@@ -50,6 +54,10 @@ __all__ = [
     "build_test_mask_from_group_id",
     "reassign_group_ids_by_target_location",
     "target_location_group_series",
+    "TARGET_UID_COLUMN",
+    "add_target_uid",
+    "compute_target_uid",
+    "target_uid_series",
     "SplitConfig",
     "assign_splits",
     "split_config_from_params",

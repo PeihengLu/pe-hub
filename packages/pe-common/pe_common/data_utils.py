@@ -2,15 +2,97 @@
 
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+
+TARGET_UID_COLUMN = "target_uid"
 
 
 def _stable_group_sort_key(value: Any) -> str:
     """Build a stable sort key across mixed Python scalar types."""
     return f"{type(value).__name__}:{value}"
+
+
+def _hash_token(prefix: str, text: str) -> str:
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    return f"{prefix}:{digest}"
+
+
+def compute_target_uid(
+    protospacer: Optional[str],
+    wt_sequence: Optional[str] = None,
+) -> str:
+    """Return a deterministic, dataset-independent identifier for a target locus.
+
+    The identifier is derived from the protospacer sequence (``ps:<sha1>``) so
+    that the same genomic target site resolves to the same ID in every dataset.
+    When no protospacer can be extracted, the padded WT sequence is used as a
+    fallback (``wt:<sha1>``). Returns an empty string when neither is available.
+    """
+    protospacer = ("" if protospacer is None else str(protospacer)).strip().upper()
+    if protospacer and protospacer != "NAN":
+        return _hash_token("ps", protospacer)
+    wt = ("" if wt_sequence is None else str(wt_sequence)).strip().upper()
+    if wt and wt != "NAN":
+        return _hash_token("wt", wt)
+    return ""
+
+
+def target_uid_series(
+    df: pd.DataFrame,
+    *,
+    wt_col: str = "wt_sequence",
+    protospacer_l_col: str = "protospacer_location_l",
+    protospacer_r_col: str = "protospacer_location_r",
+) -> pd.Series:
+    """Compute a universal ``target_uid`` for every row of a standardized frame.
+
+    Rows sharing a protospacer (i.e. targeting the same locus) receive an
+    identical ID regardless of which dataset they originate from. This is the
+    cross-dataset key used to record training provenance and to detect data
+    leakage between a model's training set and an evaluation benchmark.
+    """
+    protospacers = extract_protospacer_series(
+        df,
+        wt_col=wt_col,
+        protospacer_l_col=protospacer_l_col,
+        protospacer_r_col=protospacer_r_col,
+    )
+    if wt_col in df.columns:
+        wt = df[wt_col].astype("string")
+    else:
+        wt = pd.Series([pd.NA] * len(df), index=df.index, dtype="string")
+
+    uids = [
+        compute_target_uid(
+            None if ps is pd.NA else ps,
+            None if wt_value is pd.NA else wt_value,
+        )
+        for ps, wt_value in zip(protospacers, wt)
+    ]
+    return pd.Series(uids, index=df.index, dtype="string")
+
+
+def add_target_uid(
+    df: pd.DataFrame,
+    *,
+    column: str = TARGET_UID_COLUMN,
+    wt_col: str = "wt_sequence",
+    protospacer_l_col: str = "protospacer_location_l",
+    protospacer_r_col: str = "protospacer_location_r",
+) -> pd.DataFrame:
+    """Return a copy of ``df`` with a universal ``target_uid`` column added."""
+    output = df.copy()
+    output[column] = target_uid_series(
+        output,
+        wt_col=wt_col,
+        protospacer_l_col=protospacer_l_col,
+        protospacer_r_col=protospacer_r_col,
+    )
+    return output
 
 
 def build_test_mask_from_group_id(

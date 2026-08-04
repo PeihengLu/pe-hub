@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from pe_common.data_utils import TARGET_UID_COLUMN
 from pe_common.devices import AUTO_DEVICE, cuda_index_from_device, resolve_device, resolve_device_id
 from pe_common.splits import exclude_test_partition
 
@@ -17,6 +18,7 @@ from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
 from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, tee_stream_to_log
 from .hyperparameter_presets import resolve_hyperparameters_for_request
+from .schemas import TrainingRequest
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,42 @@ class TrainingError(Exception):
     """Raised when training input or execution fails."""
 
 
+def _extract_training_provenance(train_df) -> tuple[list[str], Dict[str, Any]]:
+    """Summarize the target loci a training frame covers for leak auditing."""
+    from ..models.weights_registry import loci_fingerprint
+
+    loci: list[str] = []
+    if TARGET_UID_COLUMN in train_df.columns:
+        loci = sorted(
+            {
+                str(value)
+                for value in train_df[TARGET_UID_COLUMN].dropna().tolist()
+                if str(value)
+            }
+        )
+
+    has_original_test_split = False
+    if "split_source" in train_df.columns:
+        has_original_test_split = bool(
+            (train_df["split_source"].astype("string") == "original_fold").any()
+        )
+
+    provenance = {
+        "target_uid_fingerprint": loci_fingerprint(loci),
+        "n_target_loci": len(loci),
+        "loci_recorded": bool(loci),
+        "has_original_test_split": has_original_test_split,
+    }
+    return loci, provenance
+
+
 def _training_metadata_from_request(
     request: TrainingRequest,
     *,
     n_rows: int,
     train_result: Dict[str, Any],
     device_id: str,
+    data_provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     filters = {
         key: normalize_filter_param(getattr(request, key))
@@ -56,17 +88,20 @@ def _training_metadata_from_request(
             "pearson": train_result.get("val_pearson"),
             "spearman": train_result.get("val_spearman"),
         }
+    training: Dict[str, Any] = {
+        "dataset_source": request.dataset_source,
+        "dataset_name": request.dataset_name,
+        "filters": filters,
+        "split": request.split.model_dump(),
+        "hyperparameters": request.hyperparameters or {},
+        "model_kwargs": request.model_kwargs or {},
+        "n_train_rows": n_rows,
+        "device": device_id,
+    }
+    if data_provenance is not None:
+        training["data_provenance"] = data_provenance
     return {
-        "training": {
-            "dataset_source": request.dataset_source,
-            "dataset_name": request.dataset_name,
-            "filters": filters,
-            "split": request.split.model_dump(),
-            "hyperparameters": request.hyperparameters or {},
-            "model_kwargs": request.model_kwargs or {},
-            "n_train_rows": n_rows,
-            "device": device_id,
-        },
+        "training": training,
         "metrics": metrics,
         "notes": request.notes,
     }
@@ -131,7 +166,11 @@ def execute_training(
             if train_df.empty:
                 raise TrainingError("No non-test rows available for training.")
 
-            _log(f"Resolved {len(train_df)} training rows")
+            train_target_loci, data_provenance = _extract_training_provenance(train_df)
+            _log(
+                f"Resolved {len(train_df)} training rows "
+                f"covering {data_provenance['n_target_loci']} target loci"
+            )
 
             _raise_if_cancelled()
             model = ModelFactory.create_model(
@@ -161,6 +200,7 @@ def execute_training(
                 n_rows=int(len(train_df)),
                 train_result=result,
                 device_id=resolved_device_id,
+                data_provenance=data_provenance,
             )
             weights_id: Optional[str] = None
             weights_label: Optional[str] = None
@@ -170,6 +210,7 @@ def execute_training(
                     model,
                     metadata=metadata,
                     notes=request.notes,
+                    train_target_loci=train_target_loci,
                 )
                 entry = weights_registry.get_manifest(model_name, weights_id)
                 weights_label = entry.get("label")

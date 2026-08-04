@@ -24,7 +24,14 @@ class EvaluationRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     model_name: str
-    benchmark_name: str
+    benchmark_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Human-readable benchmark label. When omitted and "
+            "auto_training_benchmark is enabled, derived from the weight set's "
+            "recorded training metadata."
+        ),
+    )
     weights: str = Field(..., min_length=1, description="Registered weight set ID")
     split: SplitQueryParams = Field(default_factory=default_evaluation_split)
     study: Optional[FilterValue] = None
@@ -41,6 +48,23 @@ class EvaluationRequest(BaseModel):
     scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
     device: Optional[str] = "auto"
+    auto_training_benchmark: bool = Field(
+        default=True,
+        description=(
+            "When True (default), evaluation filters and split are taken from the "
+            "weight set's recorded training metadata so the held-out test "
+            "partition matches training. Set False to supply a custom benchmark."
+        ),
+    )
+    allow_data_leak: bool = Field(
+        default=False,
+        description=(
+            "When False (default), evaluation aborts with a parseable data_leak "
+            "error result if the test split overlaps the model's recorded "
+            "training loci or leak cannot be ruled out (e.g. no original test "
+            "split). Set True to proceed anyway and attach a leak warning."
+        ),
+    )
 
 
 class EvaluationJobSummary(BaseModel):

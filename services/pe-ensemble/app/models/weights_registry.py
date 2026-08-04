@@ -6,6 +6,7 @@ All pretrained and service-trained weights live under ``WEIGHTS_ROOT`` (default:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,14 @@ from .registry import model_registry
 
 REGISTRY_FILENAME = "registry.json"
 MANIFEST_FILENAME = "manifest.json"
+TRAIN_LOCI_FILENAME = "train_target_loci.json"
+
+
+def loci_fingerprint(loci: Iterable[str]) -> str:
+    """Return a deterministic fingerprint over a set of target-locus IDs."""
+    unique = sorted({str(value) for value in loci if value})
+    digest = hashlib.sha1("\n".join(unique).encode("utf-8")).hexdigest()
+    return f"sha1:{digest}"
 
 
 def _known_models() -> tuple[str, ...]:
@@ -103,6 +112,20 @@ def _write_manifest(entry_dir: Path, manifest: Dict[str, Any]) -> None:
     entry_dir.mkdir(parents=True, exist_ok=True)
     with open(entry_dir / MANIFEST_FILENAME, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def _normalized_loci_list(train_target_loci: Optional[Iterable[str]]) -> Optional[list[str]]:
+    if train_target_loci is None:
+        return None
+    return sorted({str(value) for value in train_target_loci if value})
+
+
+def _write_training_loci(entry_dir: Path, loci: Optional[list[str]]) -> None:
+    if loci is None:
+        return
+    with open(entry_dir / TRAIN_LOCI_FILENAME, "w", encoding="utf-8") as handle:
+        json.dump({"target_uids": loci}, handle)
         handle.write("\n")
 
 
@@ -302,8 +325,14 @@ def register_trained_model(
     notes: Optional[str] = None,
     weight_id: Optional[str] = None,
     label: Optional[str] = None,
+    train_target_loci: Optional[Iterable[str]] = None,
 ) -> str:
-    """Persist a trained in-memory model wrapper into the registry."""
+    """Persist a trained in-memory model wrapper into the registry.
+
+    When ``train_target_loci`` is provided, the universal target-locus IDs the
+    model was trained on are written to a ``train_target_loci.json`` sidecar so
+    that evaluation can detect data leakage between train and test data.
+    """
     from .registry import model_registry
 
     metadata = dict(metadata or {})
@@ -312,11 +341,14 @@ def register_trained_model(
     if notes:
         metadata["notes"] = notes
 
+    loci = _normalized_loci_list(train_target_loci)
+
     spec = model_registry.get(model)
     format_name = spec.weight_format
 
     def populate(dest: Path) -> None:
         wrapper.save_to_registry(dest)
+        _write_training_loci(dest, loci)
 
     auto_label = label
     if auto_label is None:
@@ -332,3 +364,76 @@ def register_trained_model(
         metadata=metadata,
         populate=populate,
     )
+
+
+def write_training_provenance(
+    model: str,
+    weight_id: str,
+    *,
+    training: Dict[str, Any],
+    train_target_loci: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    """Backfill or update manifest training metadata and loci sidecar."""
+    entry_dir = resolve_dir(model, weight_id)
+    manifest = get_manifest(model, weight_id)
+    manifest["training"] = dict(training)
+    _write_manifest(entry_dir, manifest)
+    _write_training_loci(entry_dir, _normalized_loci_list(train_target_loci))
+    return manifest
+
+
+def load_training_loci(model: str, weight_id: str) -> Optional[set[str]]:
+    """Return the universal target-locus IDs a weight set was trained on.
+
+    Returns ``None`` when provenance is unavailable (e.g. vendor pretrained
+    weights), which callers should treat as "training data unknown".
+    """
+    try:
+        entry_dir = resolve_dir(model, weight_id)
+    except ValueError:
+        # PRIDICT2 vendor runs are multi-head (e.g. decoder_HEK.pkl), and the
+        # UI selects weights using a `{base_run_id}__{cell_type}` suffix.
+        # Training provenance sidecars are stored under the base run
+        # directory, so normalize the suffix here.
+        if model == "pridict2" and "__" in weight_id:
+            base_id = weight_id.rsplit("__", 1)[0]
+            if base_id and base_id != weight_id:
+                try:
+                    entry_dir = resolve_dir(model, base_id)
+                except ValueError:
+                    return None
+            else:
+                return None
+        else:
+            return None
+    loci_path = entry_dir / TRAIN_LOCI_FILENAME
+    if not loci_path.is_file():
+        return None
+    try:
+        with open(loci_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    uids = payload.get("target_uids")
+    if not isinstance(uids, list):
+        return None
+    return {str(value) for value in uids if value}
+
+
+def load_training_provenance(model: str, weight_id: str) -> Optional[Dict[str, Any]]:
+    """Return the recorded training ``data_provenance`` block, if any."""
+    training = load_training_metadata(model, weight_id)
+    if training is None:
+        return None
+    provenance = training.get("data_provenance")
+    return provenance if isinstance(provenance, dict) else None
+
+
+def load_training_metadata(model: str, weight_id: str) -> Optional[Dict[str, Any]]:
+    """Return the full ``training`` block from a weight manifest, if recorded."""
+    try:
+        manifest = get_manifest(model, weight_id)
+    except ValueError:
+        return None
+    training = manifest.get("training")
+    return training if isinstance(training, dict) else None

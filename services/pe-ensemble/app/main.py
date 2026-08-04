@@ -40,6 +40,7 @@ from .evaluation.schemas import (
     EvaluationLogResponse,
     EvaluationRequest,
 )
+from .evaluation.benchmark import BenchmarkResolutionError, resolve_evaluation_request
 from .ensemble.combine import combine_method_help
 from .ensemble.jobs import (
     create_job as create_ensemble_job,
@@ -471,6 +472,11 @@ async def evaluate_model(request: EvaluationRequest):
     try:
         model_registry.validate_weight_selection(model_name, weight_id)
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        request = resolve_evaluation_request(request)
+    except BenchmarkResolutionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     job_id = create_eval_job(request)

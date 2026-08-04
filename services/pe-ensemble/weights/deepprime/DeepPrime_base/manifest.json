@@ -19,5 +19,31 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DeepPrime_base"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 49840,
+      "target_uid_fingerprint": "sha1:044029846d5e26666d19852ab49295fff4720c83",
+      "vendor_training_lineage": [
+        {
+          "dataset": "deepprime-clinvar",
+          "study": "deepprime"
+        }
+      ]
+    },
+    "dataset_name": "deepprime-clinvar",
+    "dataset_source": "vendor",
+    "filters": {
+      "dataset": [
+        "deepprime-clinvar"
+      ],
+      "study": [
+        "deepprime"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": null
+  }
 }

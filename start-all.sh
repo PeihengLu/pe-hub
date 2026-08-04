@@ -252,11 +252,14 @@ cleanup() {
     local pid
     echo ""
     echo "Stopping services ..."
-    for pid in "${PIDS[@]}"; do
-        if kill -0 "${pid}" 2>/dev/null; then
-            kill "${pid}" 2>/dev/null || true
-        fi
-    done
+    # Guard empty PIDS under `set -u` (bash 3.2 / macOS default).
+    if ((${#PIDS[@]})); then
+        for pid in "${PIDS[@]}"; do
+            if kill -0 "${pid}" 2>/dev/null; then
+                kill "${pid}" 2>/dev/null || true
+            fi
+        done
+    fi
     wait 2>/dev/null || true
 }
 

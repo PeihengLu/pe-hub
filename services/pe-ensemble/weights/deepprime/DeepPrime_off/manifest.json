@@ -19,5 +19,31 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DeepPrime_off"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 14457,
+      "target_uid_fingerprint": "sha1:6262b98686fbc247db96eecaa8540a94760da2da",
+      "vendor_training_lineage": [
+        {
+          "dataset": "deepprime-off",
+          "study": "deepprime"
+        }
+      ]
+    },
+    "dataset_name": "deepprime-off",
+    "dataset_source": "vendor",
+    "filters": {
+      "dataset": [
+        "deepprime-off"
+      ],
+      "study": [
+        "deepprime"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": null
+  }
 }

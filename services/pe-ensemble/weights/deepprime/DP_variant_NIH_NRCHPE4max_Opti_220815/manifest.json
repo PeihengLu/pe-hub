@@ -34,5 +34,44 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DP_variant_NIH_NRCHPE4max_Opti_220815"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 49892,
+      "target_uid_fingerprint": "sha1:8992cb9dc16612230226f99ae08437b5e8fc7e16",
+      "vendor_training_lineage": [
+        {
+          "dataset": "deepprime-clinvar",
+          "study": "deepprime"
+        },
+        {
+          "cell_line": "nih3t3",
+          "dataset": "deepprime-small",
+          "pe_system": "nrch_pe4max",
+          "study": "deepprime"
+        }
+      ]
+    },
+    "dataset_name": "deepprime-clinvar + deepprime-small/nih3t3-nrch_pe4max",
+    "dataset_source": "vendor",
+    "filters": {
+      "cell_line": [
+        "nih3t3"
+      ],
+      "dataset": [
+        "deepprime-clinvar",
+        "deepprime-small"
+      ],
+      "pe_system": [
+        "nrch_pe4max"
+      ],
+      "study": [
+        "deepprime"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": null
+  }
 }

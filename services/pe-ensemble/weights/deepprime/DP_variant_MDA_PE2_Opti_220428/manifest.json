@@ -34,5 +34,44 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/deepprime/models/DeepPrime/DP_variant_MDA_PE2_Opti_220428"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 49889,
+      "target_uid_fingerprint": "sha1:4031b91d7cac993168f70d077da786746228ef80",
+      "vendor_training_lineage": [
+        {
+          "dataset": "deepprime-clinvar",
+          "study": "deepprime"
+        },
+        {
+          "cell_line": "mda_mb_231",
+          "dataset": "deepprime-small",
+          "pe_system": "pe2",
+          "study": "deepprime"
+        }
+      ]
+    },
+    "dataset_name": "deepprime-clinvar + deepprime-small/mda_mb_231-pe2",
+    "dataset_source": "vendor",
+    "filters": {
+      "cell_line": [
+        "mda_mb_231"
+      ],
+      "dataset": [
+        "deepprime-clinvar",
+        "deepprime-small"
+      ],
+      "pe_system": [
+        "pe2"
+      ],
+      "study": [
+        "deepprime"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": null
+  }
 }

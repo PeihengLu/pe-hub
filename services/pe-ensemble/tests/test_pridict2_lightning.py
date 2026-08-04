@@ -1,11 +1,9 @@
 """Tests for PRIDICT2 Lightning training helpers."""
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import torch
 
-from app.models.pridict2_lightning import (
+from app.models.pridict2_wrapper import (
     _PRIDICT2LightningModule,
     build_pernn_distribution_model,
     build_pridict_loss,

@@ -137,13 +137,20 @@ def mark_skipped(job_id: str, result: Dict[str, Any], *, reason: str) -> Dict[st
     return update_job(job_id, **fields)
 
 
-def mark_failed(job_id: str, error: str) -> Dict[str, Any]:
-    return update_job(
-        job_id,
-        status="failed",
-        finished_at=_utc_now_iso(),
-        error=error,
-    )
+def mark_failed(
+    job_id: str,
+    error: str,
+    *,
+    result: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    fields: Dict[str, Any] = {
+        "status": "failed",
+        "finished_at": _utc_now_iso(),
+        "error": error,
+    }
+    if result is not None:
+        fields["result"] = result
+    return update_job(job_id, **fields)
 
 
 def mark_cancelled(job_id: str, *, reason: str = "Cancelled by user") -> Dict[str, Any]:

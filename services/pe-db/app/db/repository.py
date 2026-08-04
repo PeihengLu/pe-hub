@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..loaders import PEDataLoader
 from ..utils.json_utils import dataframe_to_json_records
-from pe_common.data_utils import reassign_group_ids_by_target_location
+from pe_common.data_utils import (
+    TARGET_UID_COLUMN,
+    reassign_group_ids_by_target_location,
+    target_uid_series,
+)
 from pe_common.splits import SplitConfig, assign_splits
 from .models import Dataset, Datasheet, Scaffold, Study
 from .schemas import (
@@ -38,6 +42,10 @@ def _attach_split_metadata(converted: pd.DataFrame, standardized: pd.DataFrame) 
             output[column] = standardized[column].to_numpy()
     if "original_fold" in standardized.columns:
         output["original_fold"] = standardized["original_fold"].to_numpy()
+    # Universal, dataset-independent target-locus ID. Computed in standardized
+    # space (the model-format columns may not retain the protospacer) so that
+    # training/evaluation consumers can record provenance and detect data leaks.
+    output[TARGET_UID_COLUMN] = target_uid_series(standardized).to_numpy()
     return output
 
 

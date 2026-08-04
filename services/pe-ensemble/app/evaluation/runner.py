@@ -10,7 +10,9 @@ from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
+from .benchmark import BenchmarkResolutionError, resolve_evaluation_request
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
+from .leakage import assess_leakage, leak_error_payload
 from .schemas import EvaluationRequest
 
 logger = logging.getLogger(__name__)
@@ -70,10 +72,19 @@ def execute_evaluation(
     with context:
         if job_id:
             mark_running(job_id)
+        try:
+            request = resolve_evaluation_request(request)
+        except BenchmarkResolutionError as exc:
+            if job_id:
+                mark_failed(job_id, str(exc))
+            raise EvaluationError(str(exc)) from exc
+
         _log(
             f"Starting evaluation for model={model_name} benchmark={request.benchmark_name} "
             f"device={resolved_device_id}"
         )
+        if request.auto_training_benchmark:
+            _log("Using training-recorded filters and split for test-set selection")
 
         try:
             _raise_if_cancelled()
@@ -120,6 +131,34 @@ def execute_evaluation(
 
             _log(f"Resolved {len(test_df)} test rows")
 
+            leak = assess_leakage(
+                test_df=test_df,
+                split=request.split,
+                model=model_name,
+                weights_id=request.weights,
+            )
+            if leak is not None and leak.is_leak and not request.allow_data_leak:
+                payload = leak_error_payload(
+                    leak,
+                    model=model_name,
+                    benchmark_name=request.benchmark_name,
+                    weights=request.weights,
+                    device_id=resolved_device_id,
+                    n_samples=int(len(test_df)),
+                )
+                message = (
+                    f"Aborting evaluation: potential data leak ({leak.reason}). "
+                    f"{leak.detail.get('message', '')}"
+                )
+                _log(message)
+                if job_id:
+                    mark_failed(
+                        job_id,
+                        f"{payload['error_type']}: {leak.reason}",
+                        result=payload,
+                    )
+                return payload
+
             _raise_if_cancelled()
             model = ModelFactory.create_model(model_name, device=device)
 
@@ -146,7 +185,14 @@ def execute_evaluation(
             "device": resolved_device_id,
             "n_samples": int(len(test_df)),
             "metrics": metrics,
+            "auto_training_benchmark": request.auto_training_benchmark,
         }
+        if leak is not None and leak.is_leak and request.allow_data_leak:
+            payload["leak_warning"] = {"reason": leak.reason, **leak.detail}
+            _log(
+                f"Warning: proceeded despite potential data leak ({leak.reason}); "
+                "metrics may be optimistic."
+            )
         _log(f"Evaluation succeeded; n_samples={payload['n_samples']}")
         if job_id:
             mark_succeeded(job_id, payload)
