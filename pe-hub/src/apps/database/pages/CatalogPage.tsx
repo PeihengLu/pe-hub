@@ -4,6 +4,7 @@ import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import peDbApi from '@apps/database/services/peDbApi'
+import StatisticsCharts from '@apps/database/components/StatisticsCharts'
 import { useCatalogFilterOptions } from '@/hooks/useCatalogFilterOptions'
 
 type Tab = 'studies' | 'datasets' | 'datasheets' | 'statistics'
@@ -154,19 +155,12 @@ export default function CatalogPage() {
       )}
 
       {tab === 'statistics' && statsQuery.data && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <StatCard label="Total entries" value={statsQuery.data.total_entries} />
-          <StatCard label="Studies" value={statsQuery.data.total_studies} />
-          <Card title="Edits by type" className="sm:col-span-2">
-            <DataTable
-              headers={['Study', 'Edit type', 'Count']}
-              rows={(statsQuery.data.edit_type ?? []).map((r) => [
-                r.study,
-                r.edit_type,
-                String(r.count),
-              ])}
-            />
-          </Card>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <StatCard label="Total entries" value={statsQuery.data.total_entries} />
+            <StatCard label="Studies" value={statsQuery.data.total_studies} />
+          </div>
+          <StatisticsCharts stats={statsQuery.data} />
         </div>
       )}
     </div>

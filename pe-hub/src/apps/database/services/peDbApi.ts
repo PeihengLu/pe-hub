@@ -59,6 +59,8 @@ export interface Statistics {
   total_studies: number
   edit_type: { study: string; edit_type: string; count: number }[]
   edit_length: { study: string; edit_length: number; count: number }[]
+  pegRNA_delivery_method: { study: string; delivery_method: string; count: number }[]
+  pe_delivery_method: { study: string; delivery_method: string; count: number }[]
   edit_scope: { study: string; edit_scope: string; count: number }[]
   experimental_method: { study: string; experimental_method: string; count: number }[]
   target_context: { study: string; target_context: string; count: number }[]
