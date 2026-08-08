@@ -24,7 +24,6 @@ SUPPORTED_STUDIES = {"deeppe", "deepprime", "pridict2", "pridict1", "minsepie"}
 PARTIAL_STANDARDIZABLE_DATASETS: set[tuple[str, str]] = {
     ("pridict1", "endogenous"),
     ("pridict2", "trip_analysis"),
-    ("deepprime", "deepprime_off"),
     ("deepprime", "deepprime_off_subpool"),
 }
 
@@ -2066,7 +2065,21 @@ def standardize_pe_data(
     if study == "deeppe":
         _standardize_deeppe_ontarget(data, cell_line, pe_system, normalized_dataset)
     elif study == "deepprime":
-        if normalized_dataset in {"deepprime_off", "deepprime_off_subpool"}:
+        if normalized_dataset == "deepprime_off":
+            # Library-Off PE2 exports already use the DeepPrime masked-sequence layout
+            # (see also yumin-c/DeepPrime DeepOff_dataset_220604.csv). PE4max-LM and
+            # other mismatch-only Library-Off sheets lack wt/mut sequences and are
+            # not fully standardizable yet.
+            if {"wt_sequence", "mut_sequence"}.issubset(data.columns):
+                _standardize_deepprime_ontarget(
+                    data, cell_line, pe_system, normalized_dataset
+                )
+            else:
+                raise ValueError(
+                    f"DeepPrime-Off datasheet {cell_line}-{pe_system} lacks "
+                    "wt_sequence/mut_sequence and cannot be fully standardized."
+                )
+        elif normalized_dataset == "deepprime_off_subpool":
             _standardize_deepprime_off(data, cell_line, pe_system, normalized_dataset)
         else:
             _standardize_deepprime_ontarget(data, cell_line, pe_system, normalized_dataset)
@@ -2136,12 +2149,12 @@ def _standardize_deepprime_off(
     *,
     study_key: str = "deepprime",
 ) -> None:
-    """Partial standardization for DeepPrime off-target mismatch libraries.
+    """Partial standardization for DeepPrime Off-subpool mismatch tables.
 
-    Supports ``deepprime-off`` and ``deepprime-off-subpool`` exports. Some sheets
-    (e.g. hek293t-pe2) are already in DeepPrime model layout with ``type_sub`` /
-    ``type_ins`` / ``type_del``; others use the supplementary ``edit_type`` column
-    (``transv``, ``transi``, ``transv2``, ``Ins``, ``Del``).
+    Sequence-complete Library-Off PE2 data is handled by
+    ``_standardize_deepprime_ontarget``. Subpool sheets typically expose
+    ``edit_type`` (``transv``, ``transi``, ``transv2``, ``Ins``, ``Del``) or
+    type flags without recoverable 74 bp target sequences.
     """
     cell_line = _normalize_name(cell_line)
     pe_system = _normalize_name(pe_system)

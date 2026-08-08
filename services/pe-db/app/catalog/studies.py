@@ -121,14 +121,16 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         study_key="deepprime",
         name="deepprime-off",
         description=(
-            "Off-target mismatch library (DeepPrime-Off); synthetic mismatch reporters."
+            "Off-target mismatch library (DeepPrime-Off); synthetic mismatch reporters. "
+            "HEK293T PE2 sheet is fully sequence-standardized; PE4max-LM mismatch-only "
+            "sheet is not yet sequence-complete."
         ),
         pegRNA_delivery_method="plasmid_transfection",
         pe_delivery_method="plasmid_transfection",
         edit_scope="off_target",
         experimental_method="in_vitro",
         target_context="non_endogenous",
-        standardizable=False,
+        standardizable=True,
     ),
     DatasetRecord(
         study_key="deepprime",
