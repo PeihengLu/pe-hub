@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -7,10 +7,12 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import type { PieSectorDataItem } from 'recharts/types/polar/Pie'
 import type { Statistics } from '@apps/database/services/peDbApi'
 import Card from '@components/Card'
 
@@ -166,6 +168,44 @@ function StudyCompositionTooltip({
   )
 }
 
+function renderActivePieShape(props: PieSectorDataItem) {
+  const {
+    cx = 0,
+    cy = 0,
+    innerRadius = 0,
+    outerRadius = 0,
+    startAngle,
+    endAngle,
+    fill,
+  } = props
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius + 10}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        stroke="#ffffff"
+        strokeWidth={2}
+        style={{ filter: 'brightness(1.08)', cursor: 'pointer' }}
+      />
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={outerRadius + 12}
+        outerRadius={outerRadius + 16}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        opacity={0.35}
+      />
+    </g>
+  )
+}
+
 function CategoryPieChart({
   title,
   rows,
@@ -175,6 +215,8 @@ function CategoryPieChart({
   rows: StatRow[]
   studyColors: Record<string, string>
 }) {
+  const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined)
+
   const { pieData, compositionByCategory, grandTotal } = useMemo(() => {
     const totals = new Map<string, number>()
     const composition = new Map<string, Map<string, number>>()
@@ -217,20 +259,30 @@ function CategoryPieChart({
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius="75%"
+                outerRadius="70%"
+                activeIndex={activeIndex}
+                activeShape={renderActivePieShape}
+                onMouseEnter={(_, index) => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(undefined)}
                 label={({ name, percent }) =>
                   `${name} (${((percent ?? 0) * 100).toFixed(0)}%)`
                 }
                 labelLine
               >
-                {pieData.map((entry, index) => (
-                  <Cell
-                    key={entry.name}
-                    fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
-                    stroke="#ffffff"
-                    strokeWidth={1}
-                  />
-                ))}
+                {pieData.map((entry, index) => {
+                  const isDimmed =
+                    activeIndex !== undefined && activeIndex !== index
+                  return (
+                    <Cell
+                      key={entry.name}
+                      fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                      stroke="#ffffff"
+                      strokeWidth={1}
+                      fillOpacity={isDimmed ? 0.45 : 1}
+                      style={{ cursor: 'pointer', outline: 'none' }}
+                    />
+                  )
+                })}
               </Pie>
               <Tooltip
                 content={
