@@ -1098,6 +1098,240 @@ standard_pe_data_columns = [
         'lha_location_l', 'lha_location_r', 'rha_location_l', 'rha_location_r', 
         'spcas9_score', 'editing_efficiency', 'original_fold']
 
+# Endogenous extension: genomic coordinates only. Gene annotation / chromatin /
+# expression are recovered later from (build, chr, start, end, strand) plus
+# datasheet cell-line context. Edit type/length/efficiency stay in PE core.
+endo_standard_columns = [
+    "endo_genome_build",
+    "endo_chr",
+    "endo_start",
+    "endo_end",
+    "endo_strand",
+    "endo_coord_ref",
+    "endo_coord_source",
+    "endo_locus_id",
+]
+
+
+def _empty_endo_coordinate_frame(index: pd.Index) -> pd.DataFrame:
+    """Return nullable endogenous coordinate columns for ``index``."""
+    n = len(index)
+    return pd.DataFrame(
+        {
+            "endo_genome_build": pd.Series([pd.NA] * n, index=index, dtype="string"),
+            "endo_chr": pd.Series([pd.NA] * n, index=index, dtype="string"),
+            "endo_start": pd.Series([pd.NA] * n, index=index, dtype="Int64"),
+            "endo_end": pd.Series([pd.NA] * n, index=index, dtype="Int64"),
+            "endo_strand": pd.Series([pd.NA] * n, index=index, dtype="Int64"),
+            "endo_coord_ref": pd.Series([pd.NA] * n, index=index, dtype="string"),
+            "endo_coord_source": pd.Series([pd.NA] * n, index=index, dtype="string"),
+            "endo_locus_id": pd.Series([pd.NA] * n, index=index, dtype="string"),
+        },
+        index=index,
+    )
+
+
+def _attach_endo_coordinate_columns(
+    output_df: pd.DataFrame,
+    endo_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
+    """Ensure endogenous coordinate columns exist; overwrite with ``endo_df`` when given."""
+    out = output_df.copy()
+    empty = _empty_endo_coordinate_frame(out.index)
+    if endo_df is None:
+        for column in endo_standard_columns:
+            if column not in out.columns:
+                out[column] = empty[column]
+    else:
+        aligned = endo_df.reindex(out.index)
+        for column in endo_standard_columns:
+            if column in aligned.columns:
+                out[column] = aligned[column]
+            elif column not in out.columns:
+                out[column] = empty[column]
+
+    obsolete = [
+        column
+        for column in out.columns
+        if column.startswith("endo_") and column not in endo_standard_columns
+    ]
+    if obsolete:
+        out = out.drop(columns=obsolete)
+    return out
+
+
+def _minsepie_endo_coordinates(experiments: pd.Series) -> pd.DataFrame:
+    """Map MinSePIE experiments to hg38 protospacer coordinates when known."""
+    meta = _load_minsepie_genomic_loci()
+    loci = meta.get("loci", {})
+    rows: list[dict[str, Any]] = []
+    for experiment in experiments.astype(str):
+        target_key = _minsepie_genomic_target_key(experiment)
+        locus = loci.get(target_key)
+        if not locus or "spacer_start" not in locus:
+            rows.append(
+                {
+                    "endo_genome_build": pd.NA,
+                    "endo_chr": pd.NA,
+                    "endo_start": pd.NA,
+                    "endo_end": pd.NA,
+                    "endo_strand": pd.NA,
+                    "endo_coord_ref": pd.NA,
+                    "endo_coord_source": pd.NA,
+                    "endo_locus_id": target_key,
+                }
+            )
+            continue
+        # JSON spacer_start is 1-based; store 0-based half-open protospacer interval.
+        spacer_start_0 = int(locus["spacer_start"]) - 1
+        rows.append(
+            {
+                "endo_genome_build": "hg38",
+                "endo_chr": str(locus["chrom"]),
+                "endo_start": spacer_start_0,
+                "endo_end": spacer_start_0 + 20,
+                "endo_strand": int(locus["assembly_strand"]),
+                "endo_coord_ref": "protospacer",
+                "endo_coord_source": "minsepie_genomic_loci.json",
+                "endo_locus_id": target_key,
+            }
+        )
+    return pd.DataFrame(rows, index=experiments.index)
+
+
+_DEEPPE_GENOMIC_LOCI_PATH = DATA_ROOT / "raw" / "deeppe" / "deeppe_genomic_loci.json"
+_PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH = (
+    DATA_ROOT / "raw" / "pridict1" / "pridict1_library2_genomic_loci.json"
+)
+
+
+@lru_cache(maxsize=1)
+def _load_deeppe_genomic_loci() -> dict[str, Any]:
+    """Load hg38 protospacer anchors for DeepPE endogenous wide targets."""
+    if not _DEEPPE_GENOMIC_LOCI_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing DeepPE genomic loci metadata: {_DEEPPE_GENOMIC_LOCI_PATH}"
+        )
+    with _DEEPPE_GENOMIC_LOCI_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@lru_cache(maxsize=1)
+def _load_pridict1_library2_genomic_loci() -> dict[str, Any]:
+    """Load hg38/mm39 anchors for PRIDICT1 library2-invivo Names."""
+    if not _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.exists():
+        raise FileNotFoundError(
+            "Missing PRIDICT1 library2 genomic loci metadata: "
+            f"{_PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH}"
+        )
+    with _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _deeppe_endo_coordinates(wt_sequences: pd.Series) -> pd.DataFrame:
+    """Map DeepPE endogenous wide-target sequences to hg38 protospacer coordinates."""
+    meta = _load_deeppe_genomic_loci()
+    loci = meta.get("loci", {})
+    rows: list[dict[str, Any]] = []
+    for seq in wt_sequences.astype(str).str.upper().str.replace("U", "T", regex=False):
+        locus = loci.get(seq)
+        if not locus or "spacer_start" not in locus:
+            rows.append(
+                {
+                    "endo_genome_build": pd.NA,
+                    "endo_chr": pd.NA,
+                    "endo_start": pd.NA,
+                    "endo_end": pd.NA,
+                    "endo_strand": pd.NA,
+                    "endo_coord_ref": pd.NA,
+                    "endo_coord_source": pd.NA,
+                    "endo_locus_id": pd.NA,
+                }
+            )
+            continue
+        spacer_start_0 = int(locus["spacer_start"]) - 1
+        rows.append(
+            {
+                "endo_genome_build": "hg38",
+                "endo_chr": str(locus["chrom"]),
+                "endo_start": spacer_start_0,
+                "endo_end": spacer_start_0 + 20,
+                "endo_strand": int(locus["assembly_strand"]),
+                "endo_coord_ref": "protospacer",
+                "endo_coord_source": "deeppe_genomic_loci.json",
+                "endo_locus_id": f"{locus['chrom']}:{locus['spacer_start']}",
+            }
+        )
+    return pd.DataFrame(rows, index=wt_sequences.index)
+
+
+def _pridict1_library2_endo_coordinates(
+    names: pd.Series,
+    genes: pd.Series,
+) -> pd.DataFrame:
+    """Map PRIDICT1 library2-invivo Name values to curated genomic coordinates."""
+    meta = _load_pridict1_library2_genomic_loci()
+    loci = meta.get("loci", {})
+    rows: list[dict[str, Any]] = []
+    for name, gene in zip(names.astype(str), genes.astype(str)):
+        locus = loci.get(name)
+        if not locus:
+            rows.append(
+                {
+                    "endo_genome_build": pd.NA,
+                    "endo_chr": pd.NA,
+                    "endo_start": pd.NA,
+                    "endo_end": pd.NA,
+                    "endo_strand": pd.NA,
+                    "endo_coord_ref": pd.NA,
+                    "endo_coord_source": pd.NA,
+                    "endo_locus_id": gene if gene and gene != "nan" else name,
+                }
+            )
+            continue
+        build = str(locus.get("genome_build") or "hg38")
+        chrom = str(locus["chrom"])
+        strand = locus.get("assembly_strand")
+        try:
+            strand_val: Any = int(strand) if strand is not None else pd.NA
+        except (TypeError, ValueError):
+            strand_val = pd.NA
+        coord_ref = str(locus.get("coord_ref") or "variant")
+        if coord_ref == "protospacer" and "spacer_start" in locus:
+            start_0 = int(locus["spacer_start"]) - 1
+            end_0 = start_0 + 20
+        elif "variant_start" in locus and "variant_end" in locus:
+            # JSON stores 1-based inclusive variant coords from Ensembl VEP.
+            start_0 = int(locus["variant_start"]) - 1
+            end_0 = int(locus["variant_end"])
+        else:
+            rows.append(
+                {
+                    "endo_genome_build": pd.NA,
+                    "endo_chr": pd.NA,
+                    "endo_start": pd.NA,
+                    "endo_end": pd.NA,
+                    "endo_strand": pd.NA,
+                    "endo_coord_ref": pd.NA,
+                    "endo_coord_source": pd.NA,
+                    "endo_locus_id": gene if gene and gene != "nan" else name,
+                }
+            )
+            continue
+        rows.append(
+            {
+                "endo_genome_build": build,
+                "endo_chr": chrom,
+                "endo_start": start_0,
+                "endo_end": end_0,
+                "endo_strand": strand_val,
+                "endo_coord_ref": coord_ref,
+                "endo_coord_source": "pridict1_library2_genomic_loci.json",
+                "endo_locus_id": gene if gene and gene != "nan" else name,
+            }
+        )
+    return pd.DataFrame(rows, index=names.index)
+
 
 def _coerce_original_fold(
     original_fold: Optional[pd.Series | np.ndarray],
@@ -1592,6 +1826,10 @@ def _standardize_deeppe_ontarget(
     if data is None:
         data = pd.read_csv(DATA_ROOT / "exported" / "deeppe" / dataset / input_name)
     prepared = _prepare_deeppe_export_df(data)
+    endo_coords = None
+    if dataset == "deeppe_endo":
+        # Map using the pre-alignment 47 bp wide target (alignment may inject Ns).
+        endo_coords = _deeppe_endo_coordinates(prepared["wt_sequence"])
     _standardize_deepprime_ontarget(
         prepared,
         cell_line,
@@ -1599,6 +1837,14 @@ def _standardize_deeppe_ontarget(
         dataset,
         study_key="deeppe",
     )
+    if endo_coords is not None:
+        output_path = (
+            DATA_ROOT / "standardized" / "deeppe" / dataset / f"{cell_line}-{pe_system}.parquet"
+        )
+        output_df = pd.read_parquet(output_path)
+        output_df = _attach_endo_coordinate_columns(output_df, endo_coords)
+        output_df.to_parquet(output_path, index=False)
+        logger.info("Attached DeepPE endogenous coordinates: %s", output_path)
 
 
 def _standardize_pridict2_library_diverse(
@@ -1848,6 +2094,12 @@ def _standardize_pridict1(
         pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r, 
         spcas9_score, editing_efficiency)
 
+    if dataset == "library2_invivo" and {"Name", "Gene"}.issubset(df.columns):
+        output_df = _attach_endo_coordinate_columns(
+            output_df,
+            _pridict1_library2_endo_coordinates(df["Name"], df["Gene"]),
+        )
+
     output_path = DATA_ROOT / 'standardized' / 'pridict1' / dataset / f"{output_name}"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_df.to_parquet(output_path, index=False)
@@ -1998,6 +2250,10 @@ def _standardize_minsepie(
         spcas9_score, editing_efficiency,
     )
     output_df = fill_missing_spcas9_scores(output_df)
+    output_df = _attach_endo_coordinate_columns(
+        output_df,
+        _minsepie_endo_coordinates(df["experiment"]),
+    )
 
     output_path = DATA_ROOT / "standardized" / "minsepie" / dataset / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2117,7 +2373,20 @@ def standardize_pe_data(
             "Standardization did not produce expected output file: "
             f"{output_path}"
         )
-    return pd.read_parquet(output_path)
+    result = pd.read_parquet(output_path)
+    record = get_dataset_record(study, dataset)
+    if record is not None and record.target_context == "endogenous":
+        # Guarantee the endogenous coordinate extension on every endogenous parquet.
+        # Populated values (e.g. MinSePIE) are preserved; missing columns become null.
+        missing = any(column not in result.columns for column in endo_standard_columns)
+        obsolete = any(
+            column.startswith("endo_") and column not in endo_standard_columns
+            for column in result.columns
+        )
+        if missing or obsolete:
+            result = _attach_endo_coordinate_columns(result)
+            result.to_parquet(output_path, index=False)
+    return result
 
 
 def _write_partial_standardized_output(
@@ -2284,6 +2553,47 @@ def _standardize_pridict1_endo(
     )
 
 
+def _pridict2_trip_endo_coordinates(data: pd.DataFrame) -> pd.DataFrame:
+    """Map PRIDICT2 TRIP barcode rows to hg38 integration coordinates."""
+    rows: list[dict[str, Any]] = []
+    has_chr = "chromosome" in data.columns
+    has_pos = "position" in data.columns
+    has_barcode = "barcode" in data.columns
+    for idx in data.index:
+        barcode = str(data.at[idx, "barcode"]) if has_barcode else pd.NA
+        chrom = data.at[idx, "chromosome"] if has_chr else pd.NA
+        pos = data.at[idx, "position"] if has_pos else pd.NA
+        if pd.isna(chrom) or pd.isna(pos):
+            rows.append(
+                {
+                    "endo_genome_build": pd.NA,
+                    "endo_chr": pd.NA,
+                    "endo_start": pd.NA,
+                    "endo_end": pd.NA,
+                    "endo_strand": pd.NA,
+                    "endo_coord_ref": pd.NA,
+                    "endo_coord_source": pd.NA,
+                    "endo_locus_id": barcode,
+                }
+            )
+            continue
+        # Published TRIP positions are 1-based hg38 (bowtie2 / ePRIDICT position_hg38).
+        pos_1 = int(pos)
+        rows.append(
+            {
+                "endo_genome_build": "hg38",
+                "endo_chr": str(chrom),
+                "endo_start": pos_1 - 1,
+                "endo_end": pos_1,
+                "endo_strand": pd.NA,
+                "endo_coord_ref": "trip_integration",
+                "endo_coord_source": "pridict2 trip_analysis export",
+                "endo_locus_id": barcode,
+            }
+        )
+    return pd.DataFrame(rows, index=data.index)
+
+
 def _standardize_pridict2_trip(
     data: pd.DataFrame,
     cell_line: str,
@@ -2315,16 +2625,21 @@ def _standardize_pridict2_trip(
     type_del = pd.Series(False, index=data.index, dtype=bool)
     edit_len = pd.Series(1.0, index=data.index, dtype=float)
 
+    partial_df = pd.DataFrame(
+        {
+            "type_sub": type_sub,
+            "type_ins": type_ins,
+            "type_del": type_del,
+            "edit_len": edit_len,
+            "editing_efficiency": editing_efficiency.astype(float),
+        }
+    )
+    partial_df = _attach_endo_coordinate_columns(
+        partial_df,
+        _pridict2_trip_endo_coordinates(data),
+    )
     _write_partial_standardized_output(
-        pd.DataFrame(
-            {
-                "type_sub": type_sub,
-                "type_ins": type_ins,
-                "type_del": type_del,
-                "edit_len": edit_len,
-                "editing_efficiency": editing_efficiency.astype(float),
-            }
-        ),
+        partial_df,
         study="pridict2",
         dataset=dataset,
         cell_line=cell_line,

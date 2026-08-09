@@ -1,0 +1,528 @@
+{
+  "_comment": "GRCh38/hg38 protospacer anchors for DeepPE endogenous validation. Keys=47bp wide targets. spacer_start 1-based; protospacer at [4,24) in wide window.",
+  "genome_build": "hg38",
+  "coord_ref": "protospacer",
+  "spacer_offset": 4,
+  "loci": {
+    "CCCAAAGCGCATCCAGCACCGACATGGTGAACAAGGCCCGTGGCAGG": {
+      "chrom": "2",
+      "spacer_start": 169479555,
+      "assembly_strand": -1,
+      "wide_start": 169479532,
+      "wide_end": 169479578,
+      "match": "exact_rc"
+    },
+    "TGTAGGCGCCGATGACCTCGTCCACGGTCACATTCTGGGCTGCAGGC": {
+      "chrom": "19",
+      "spacer_start": 45138529,
+      "assembly_strand": -1,
+      "wide_start": 45138506,
+      "wide_end": 45138552,
+      "match": "exact_rc"
+    },
+    "AAGAACCTTCCTGTTAATGTACGTTGGCTACTTTGTGGCTGCCAGCT": {
+      "chrom": "4",
+      "spacer_start": 54049030,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AAGACAACGTTCGTTCTGTGCCAGAGGATGACCAGCGACCCTGAGCT": {
+      "chrom": "6",
+      "spacer_start": 108212219,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "AAGGGGGATATGGTAGCTCCAACTGGGTGACCAGCTACCTCCTAGCT": {
+      "chrom": "16",
+      "spacer_start": 76355415,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "ACATACCTGTTATCGTCTTCCCGAAGGGTCCCATTTAAGCGAGAGCT": {
+      "chrom": "11",
+      "spacer_start": 64769221,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "ACCTGAAGAAAAGAGCAAGCGCACAGGGTTACTTCGTGGGGAGAGCT": {
+      "chrom": "1",
+      "spacer_start": 157589206,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "ACTAATTCGACATCAGTTTCATCGAGGAAAGGTAAGAAGAGCCAGCT": {
+      "chrom": "15",
+      "spacer_start": 64380962,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "ACTGCCGATACCTGAACTTCACTAAGGGAGAAGAGATATCTGTAGCT": {
+      "chrom": "14",
+      "spacer_start": 39236971,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "AGAAGGGGACCCTTCCTCTGTTGAAGGACCAGGTGAGACAGCCAGCT": {
+      "chrom": "17",
+      "spacer_start": 39905431,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AGCAGATGTTAACCATGCTGCCAAAGGAAATTCAGGCTTGGCTAGCT": {
+      "chrom": "15",
+      "spacer_start": 84604218,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "AGCAGATTTGTAATCTCGATGTTTTGGTAGTTTCTCAATAAAGAGCT": {
+      "chrom": "2",
+      "spacer_start": 73844832,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AGCAGTTCCTTCTAGAGAAGCTGAAGGTAAGCCTGTTACTTGAAGCT": {
+      "chrom": "11",
+      "spacer_start": 111554572,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "AGGTGCCATCGTCACGATCTCTTCTGGCTCCTGCTGCAAACCCAGCT": {
+      "chrom": "16",
+      "spacer_start": 84130035,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AGTTCTACGTGAACAGCACACTTAAGGAACTGAGGAGGCTCTTAGCT": {
+      "chrom": "14",
+      "spacer_start": 59605415,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AGTTGACAAGACATTATCAGCTACTGGTTGGCCGTTATTTATCAGCT": {
+      "chrom": "X",
+      "spacer_start": 135904527,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "AGTTGATGACAGTCCAAGCACTAGTGGAGGAAGTTCCGATGGAAGCT": {
+      "chrom": "3",
+      "spacer_start": 23208724,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "ATGTGCGAGTTCAAGTGCTACCCGAGGTGCGAGGCCAGCTCGGAGCT": {
+      "chrom": "19",
+      "spacer_start": 44865284,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CAAGCACTGTCTGTACATACATTTTGGGGTCCTTAAATGGGGGAGCT": {
+      "chrom": "7",
+      "spacer_start": 148783787,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CACAGCTACCCACTTGTTGCCACCAGGTAAGTAAGACTAAAGAAGCT": {
+      "chrom": "16",
+      "spacer_start": 69270264,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CAGGGGGGCTCACATCGATCAGGACGGTGCTGTCCTCTTCCTGAGCT": {
+      "chrom": "2",
+      "spacer_start": 241190098,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CAGGGGTGGCTCACCTCTAGGTACCGGCTTTCCCCTCTTAGAGAGCT": {
+      "chrom": "5",
+      "spacer_start": 76953203,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CATCTGCAGAGTTTCTGCCATTACTGGGTCGATTTGCAGTCGGAGCT": {
+      "chrom": "14",
+      "spacer_start": 88596775,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CCAAAGAATCTTTCATTTTCTTTCAGGGTCACGATCACCGGTGAGCT": {
+      "chrom": "11",
+      "spacer_start": 119055516,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CCGTGTGCGTACGGCATGACCTCGCGGAGGCCATCCATGGCGAAGCT": {
+      "chrom": "21",
+      "spacer_start": 33027255,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CCTAAGAAGGTCGACCTCATCATCTGGGAGATCGAGGTGCCAAAGCT": {
+      "chrom": "17",
+      "spacer_start": 57110118,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CCTACCGTCTTGGAATCTAACTCATGGTGGGGCTGACCTAATAAGCT": {
+      "chrom": "17",
+      "spacer_start": 57258333,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CCTCAACATCTATAAAGACCGTCCTGGCAGATACATCTGGATCAGCT": {
+      "chrom": "X",
+      "spacer_start": 106993313,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CCTCTACGCCCTGCTTCGCGCATTCGGCTGGGCGCGCGTGGCCAGCT": {
+      "chrom": "17",
+      "spacer_start": 8003564,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CCTTCACTCGAACTTTGACTTGATCGGGTTCAAAACCGCATACAGCT": {
+      "chrom": "8",
+      "spacer_start": 102560538,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CCTTCCCTGTGCAGCTATCCGTTTTGGTCGGATGCCGGAGGCTAGCT": {
+      "chrom": "6",
+      "spacer_start": 35423936,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CGCAGACACGGCTGGGCACAAGACTGGACTTAGACACAGCTCAAGCT": {
+      "chrom": "3",
+      "spacer_start": 131016250,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CGTTTGTCCCTCCAGCATCTGCTCTGGCTCCATGGCGGACCCTAGCT": {
+      "chrom": "2",
+      "spacer_start": 32039428,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CTGCCATCTTCATTTTTGAACTTTTGGGTTCAAACTCAGAAGGAGCT": {
+      "chrom": "19",
+      "spacer_start": 46040542,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CTGGGCATCTGGAGGATTGTGATCAGGATCCAAAGAGGTAATGAGCT": {
+      "chrom": "3",
+      "spacer_start": 100609939,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CTGTGCACATTTATGTCACCCAGCTGGCTGAGAAGTTCGACCTAGCT": {
+      "chrom": "15",
+      "spacer_start": 45094968,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "CTTACGAACGACCTGACAGCCAAGAGGCTCCTACATGTGAAGGAGCT": {
+      "chrom": "7",
+      "spacer_start": 12581097,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CTTCAATAATCAGCCAGCCTTCACTGGAGATGAACATGGCTCAAGCT": {
+      "chrom": "3",
+      "spacer_start": 151116374,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "CTTGATTCAACGTGCTGTTGCTGCTGGGGTGTGCTGGAACAGGAGCT": {
+      "chrom": "7",
+      "spacer_start": 16465516,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GAACCTGACACTTATATCTTCTCTAGGTAAGGCACTCACACTCAGCT": {
+      "chrom": "19",
+      "spacer_start": 57750890,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GAAGATGAGGCGGCGATTGGAATCTGGTGACAAGTGGTTCTCCAGCT": {
+      "chrom": "1",
+      "spacer_start": 11802950,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GAAGGTCATGCTGTGCCGCTTTCAAGGGAGTGCTGTCCAGTTTAGCT": {
+      "chrom": "6",
+      "spacer_start": 149632812,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GAGATGATAGCAAAAATGCACATCCGGGGCATTGTCAAGGTGAAGCT": {
+      "chrom": "13",
+      "spacer_start": 101395195,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GAGTGCACTGTCACGGGTTTTCTGCGGGACAAGCTGCAGTACAAGCT": {
+      "chrom": "16",
+      "spacer_start": 70654613,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GATAACTTTAGCACCTTATTCCTTTGGCCCAGACAGCTTTGTTAGCT": {
+      "chrom": "2",
+      "spacer_start": 101004271,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GCAGGAACTCAAAGCAGCCGCTGATGGCGTACTATCTGAAGTGAGCT": {
+      "chrom": "15",
+      "spacer_start": 65129142,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GCCCACATCACCCAGTCCCGAACATGGGTTTCTGTCCACTGCCAGCT": {
+      "chrom": "11",
+      "spacer_start": 128489446,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GCCCATGCCCATCGAAGTCCCAGATGGCCACAAGGGGCCTGCTAGCT": {
+      "chrom": "17",
+      "spacer_start": 35127255,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GCCTGGGCATCTTCGTCAGCAAAGTGGAGGAAGGCAGCAGTGCAGCT": {
+      "chrom": "10",
+      "spacer_start": 101023946,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GCTCATGCTGTTTGTCTACTGCACAGGTGAGGGAACCCCCAGAAGCT": {
+      "chrom": "22",
+      "spacer_start": 22244838,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GCTGGAAGCCCATCACCGACTATGTGGACCAGCAGTTTGAGCAAGCT": {
+      "chrom": "22",
+      "spacer_start": 19720323,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GCTGGGGGTTACATGGCCGTAGCGTGGGCTGACGAATAAGGGTAGCT": {
+      "chrom": "3",
+      "spacer_start": 137765489,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GCTTCACTGCTACGTCCTCGCCGTTGGTGGTGGTGATGCCCAGAGCT": {
+      "chrom": "13",
+      "spacer_start": 37105122,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GGAAACTCTAGAGCACCGTTTATTAGGTAAGCATGTAAACTGAAGCT": {
+      "chrom": "18",
+      "spacer_start": 62161132,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GGCACAAGCGCACTTGCGGGCATCAGGCACATCTTCGCCCACCAGCT": {
+      "chrom": "5",
+      "spacer_start": 177467780,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GGCCACACAATAGTGACAACTGTGAGGCATGTCTGCAGGGCTTAGCT": {
+      "chrom": "3",
+      "spacer_start": 46500644,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GGCTCCCCGTGTCCAAGAAAACCCTGGTGAGTGATGAGGCTCTAGCT": {
+      "chrom": "11",
+      "spacer_start": 66567983,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GGGCCCGCGCTCACCTGGGAGATGTGGGACTGGGTCCTCTCGCAGCT": {
+      "chrom": "18",
+      "spacer_start": 48619733,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GGGCTGACACTAAGACGGTTAGTGTGGTTGTGGGCCGTGCTCTAGCT": {
+      "chrom": "1",
+      "spacer_start": 204618456,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "GGTGGATTTGTGTGTACCCATAACAGGGTCATTTTCCATGTCAAGCT": {
+      "chrom": "4",
+      "spacer_start": 56973233,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GTAAATACCTGAAAATGCTTAAAGAGGAAAAGAGGGAAGAAGAAGCT": {
+      "chrom": "8",
+      "spacer_start": 140515157,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "GTGGTGAGCCAAGTGAAAATAGCGAGGAACCCAAACTGTGGGGAGCT": {
+      "chrom": "19",
+      "spacer_start": 52076084,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TAAGTTGGACCATTATTACAGAATTGGTGAGTAAAACCTGAGGAGCT": {
+      "chrom": "16",
+      "spacer_start": 47497467,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TACCCACCTGGCCGTTGGCCTTCGCGGGGGAAGCGCCTGCTGCAGCT": {
+      "chrom": "1",
+      "spacer_start": 32335944,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TCACATTGTTGTTCACCTCCTCGATGGCATTCACCCTCTTCGAAGCT": {
+      "chrom": "22",
+      "spacer_start": 37623367,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TCACTCTTCCAGCCGCGTTGTCCATGGTGAGGATGCGGTCCCCAGCT": {
+      "chrom": "1",
+      "spacer_start": 22003032,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TCATCAACACTAAGTTTATGTTTTTGGAACAGCTCCTATATAAAGCT": {
+      "chrom": "2",
+      "spacer_start": 112066944,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TCCAACAGAATTTGCCATTTTCAGTGGAAAACAAGTGGTCGTTAGCT": {
+      "chrom": "5",
+      "spacer_start": 86619349,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TCCTGTATGAATCTTTCCACGCCCTGGCTCCGAGGGTCTTCAGAGCT": {
+      "chrom": "22",
+      "spacer_start": 46308574,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TGAAGGGAGCCCTGACAAGGTGTATGGGTCGGTGTGTGGCCTTAGCT": {
+      "chrom": "1",
+      "spacer_start": 247921905,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TGACCTAGACGGGTCGGGGGATCCTGGCGGCTTAGGGGACTGGAGCT": {
+      "chrom": "X",
+      "spacer_start": 55488410,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TGCTCAATTCTGAAGTCACTTTTTTGGTTGTAGAAATGACTGTAGCT": {
+      "chrom": "5",
+      "spacer_start": 115279704,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TGGAGACACGGTAAGCTCCATAGCCGGCCAAACATCCAACAAAAGCT": {
+      "chrom": "6",
+      "spacer_start": 52681858,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TGGAGGCGGAGCTGCGGAGCATGCAGGATGTGGTGGAGGACTTAGCT": {
+      "chrom": "12",
+      "spacer_start": 52235319,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TGGGCACGCTGTTTGCCAACATTGAGGACATCTACGAGTTCAGAGCT": {
+      "chrom": "19",
+      "spacer_start": 39415398,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TGGGTCCGCTGGTGCACTACGAGCTGGGAGCGCTGGCTGAAGCAGCT": {
+      "chrom": "15",
+      "spacer_start": 84621740,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TGGTCGGCCTGAAGAAAAAGAGTGCGGATGATGTGAAGAAGGTAGCT": {
+      "chrom": "22",
+      "spacer_start": 36815173,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TGTGGTGCAGCACTTCTGTTCAGCCGGACACAATTCATCACCCAGCT": {
+      "chrom": "20",
+      "spacer_start": 45788969,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TGTTTTGATAGTTGCCTTATGCTTTGGATACAGAATGTTGACAAGCT": {
+      "chrom": "2",
+      "spacer_start": 202513790,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TTCGTGACAACCTCTACCTCCGCACGGTGCCATGTGAGTACAAAGCT": {
+      "chrom": "7",
+      "spacer_start": 79007096,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TTTCGAAGTTCTATCAGTTCTCGACGGAGATATTTCACCTGACAGCT": {
+      "chrom": "3",
+      "spacer_start": 100728758,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    },
+    "TTTCTTCTTCTGCTCTGTTCCAGTTGGCCTAGAGAATAAAGGTAGCT": {
+      "chrom": "13",
+      "spacer_start": 36329494,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TTTGATTTACAGGATCTCCAAAGATGGGTAAATGGTGCTAATGAGCT": {
+      "chrom": "4",
+      "spacer_start": 114663987,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TTTGTTAGGGCTGTGCTCAATGACTGGATGTTCCCTATATGCAAGCT": {
+      "chrom": "13",
+      "spacer_start": 95560378,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TTTTAGAGTCTTCAGCCGTGCTCTTGGTATATTGTTCTTGGACAGCT": {
+      "chrom": "4",
+      "spacer_start": 67740670,
+      "assembly_strand": 1,
+      "match": "exact_spacer_pam"
+    },
+    "TTTTTCCGCTTCTTCTCAATCATCTGGGCCAGGAAGTTCCCAAAGCT": {
+      "chrom": "12",
+      "spacer_start": 132690296,
+      "assembly_strand": -1,
+      "match": "exact_rc_spacer_pam"
+    }
+  }
+}

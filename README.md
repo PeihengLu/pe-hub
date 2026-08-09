@@ -205,35 +205,64 @@ curl -X POST 'http://localhost:8000/api/export?force_standardize=true'
 
 Although I am trying my best to scour the internet for all the relevant data, I am sure there are many studies that I have missed. If you have data that you would like to contribute to the database, please convert it to the format specified below and submit a pull request.
 
-### Contribution format
+### Catalog metadata
 
-To start with, the metadata of the study should be included in the pull request, containing the following information for advanced search and filtering:
+Register the study and dataset(s) in [`services/pe-db/app/catalog/studies.py`](services/pe-db/app/catalog/studies.py), and place raw source files under `datasets/raw/<study>/`.
 
-- `Study`: The name of the study that the data originated from
-- `Published Time`: The time that the study was published, in YYYYMM format
+**Study**
 
-For each dataset, you should indicate:
+- `key` — short identifier (e.g. `deepprime`)
+- `display_name` — human-readable study name
+- `publication_date` — publication date
+- `authors` — citation authors string
 
-- `PE System`: The version of the prime editor used in the study
-- `Cell Line`: The cell line used in the study
-- `Dataset Type`: The type of study, which can be either `Library`(0), `Off-target`(1), `Endogenous`(2)
+**Dataset** (one or more per study)
 
-The data should be in the form of a csv file, containing the following columns:
+- `name` — dataset name within the study
+- `description` — short description of the screen / validation set
+- `pegRNA_delivery_method` / `pe_delivery_method` — how each component was delivered
+- `edit_scope` — `on_target` or `off_target`
+- `experimental_method` — `in_vitro` or `in_vivo`
+- `target_context` — `endogenous` (native chromosomal locus) or `non_endogenous` (synthetic reporter / cassette)
+- `standardizable` — `True` when rows can be fully converted to the shared schema below
 
-- `WT Sequence`: The wild type sequence of the target loci
-- `MT Sequence`: The mutated sequence of the target loci after prime editing
-- `protospacer Location`: The relative index of the pegRNA in the WT and MT sequence, in the format of `start-end`, both inclusive
-- `PBS Location`: The relative index of the PBS in the WT and MT sequence
-- `RT Location WT`: The relative index of the RT in the WT sequence, note that this would be differet from the MT sequence if there is an insertion or deletion
-- `RT Location MT`: The relative index of the RT in the MT sequence
-- `Efficiency`: The efficiency of the prime editing, which is the percentage of the MT sequence in the total sequence
+Each datasheet is identified by `{cell_line}-{pe_system}` under the dataset (e.g. `hek293t-pe2`).
 
-The rest of the columns are optional, but can be included if available:
+### Standardized edit format (PE core)
 
-- `Chromatin State`: The chromatin state of the target loci
-- `Indel Percentage`: The percentage of indels in the total sequence
+Contributed edit-level tables should use the shared standardized columns (parquet or CSV). All geometry positions are **0-based, half-open** `[left, right)` within `wt_sequence` / `mut_sequence` (sequences may be padded with `N` so WT and Mut share length).
 
-To add a new study to the catalog, also register it in `services/pe-db/app/catalog/studies.py` and add raw files under `datasets/raw/<study>/`.
+| Column | Type | Description |
+|---|---|---|
+| `group_id` | int | Identifier for a unique protospacer within the datasheet |
+| `type_sub` / `type_ins` / `type_del` | bool | Intended edit class (mutually exclusive) |
+| `edit_len` | int | Edit length (bp) |
+| `wt_sequence` | str | Wild-type target-strand sequence |
+| `mut_sequence` | str | Edited target-strand sequence |
+| `protospacer_location_l` / `_r` | int | Protospacer interval in the sequences |
+| `pbs_location_l` / `_r` | int | PBS interval |
+| `rtt_location_l` / `_r` | int | Reverse-transcriptase template interval |
+| `lha_location_l` / `_r` | int | Left homology arm interval |
+| `rha_location_l` / `_r` | int | Right homology arm interval |
+| `spcas9_score` | float | Optional SpCas9 / DeepSpCas9 score (`NaN` if unknown) |
+| `editing_efficiency` | float | Measured prime-editing efficiency |
+| `original_fold` | float | Optional source train/val/test fold id (`NaN` if none) |
+
+### Endogenous extension (chromosomal edits)
+
+If `target_context` is `endogenous` (edits measured at native chromosomal locations), also include these columns. Values may be null when a field is unknown; the columns themselves should still be present.
+
+| Column | Type | Description |
+|---|---|---|
+| `endo_genome_build` | str | Assembly, e.g. `hg38`, `mm39` |
+| `endo_chr` | str | Chromosome |
+| `endo_start` / `endo_end` | int | 0-based half-open genomic interval |
+| `endo_strand` | int | `+1` or `-1` (null if unknown) |
+| `endo_coord_ref` | str | What the interval anchors, e.g. `protospacer`, `variant`, `trip_integration` |
+| `endo_coord_source` | str | Provenance string for the coordinates |
+| `endo_locus_id` | str | Optional convenience label (gene, barcode, site name, …) |
+
+Gene / chromatin / expression annotations are **not** stored here; they can be recovered later from coordinates plus cell-line context.
 
 ## Citation
 
