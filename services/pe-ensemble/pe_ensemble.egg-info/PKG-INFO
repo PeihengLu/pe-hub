@@ -15,6 +15,8 @@ Requires-Dist: scipy>=1.7.0
 Requires-Dist: requests>=2.28.0
 Requires-Dist: pydantic>=2.0.0
 Requires-Dist: python-multipart>=0.0.6
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: optuna>=3.0.0
 Requires-Dist: tqdm>=4.65.0
 Requires-Dist: matplotlib>=3.5.0
 Requires-Dist: prettytable>=3.5.0
@@ -68,6 +70,11 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 - `GET /evaluate/status/{job_id}` - Benchmark job status and metrics
 - `GET /evaluate/logs/{job_id}` - Benchmark job logs
 - `GET /evaluate/jobs` - List recent benchmark jobs
+- `POST /ensemble` - Queue an asynchronous multi-model ensemble job
+- `GET /ensemble/methods` - List supported fusion methods (no retrain)
+- `GET /ensemble/status/{job_id}` - Ensemble job status and metrics
+- `GET /ensemble/logs/{job_id}` - Ensemble job logs
+- `GET /ensemble/jobs` - List recent ensemble jobs
 
 ## Running Locally
 
