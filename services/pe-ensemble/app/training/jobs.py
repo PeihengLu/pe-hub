@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..compute.job_cancel import JobCancelledError
+from ..compute.manifest_io import read_json_retry, write_json_atomic
 from .config import jobs_root
 from .schemas import JobStatus, TrainingJobSummary, TrainingRequest
 
@@ -28,10 +29,7 @@ def _job_dir(job_id: str) -> Path:
 
 
 def _write_manifest(job_dir: Path, manifest: Dict[str, Any]) -> None:
-    job_dir.mkdir(parents=True, exist_ok=True)
-    with open(job_dir / MANIFEST_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    write_json_atomic(job_dir / MANIFEST_FILENAME, manifest)
 
 
 def create_job(request: TrainingRequest, *, job_id: Optional[str] = None) -> str:
@@ -69,11 +67,10 @@ def create_job(request: TrainingRequest, *, job_id: Optional[str] = None) -> str
 
 
 def get_job(job_id: str) -> Dict[str, Any]:
-    manifest_path = _job_dir(job_id) / MANIFEST_FILENAME
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"Unknown training job: {job_id}")
-    with open(manifest_path, encoding="utf-8") as handle:
-        return json.load(handle)
+    return read_json_retry(
+        _job_dir(job_id) / MANIFEST_FILENAME,
+        missing_message=f"Unknown training job: {job_id}",
+    )
 
 
 def list_jobs(*, limit: int = 50) -> List[Dict[str, Any]]:
@@ -87,8 +84,12 @@ def list_jobs(*, limit: int = 50) -> List[Dict[str, Any]]:
         manifest_path = entry / MANIFEST_FILENAME
         if not manifest_path.is_file():
             continue
-        with open(manifest_path, encoding="utf-8") as handle:
-            manifests.append(json.load(handle))
+        manifests.append(
+            read_json_retry(
+                manifest_path,
+                missing_message=f"Unknown training job: {entry.name}",
+            )
+        )
     manifests.sort(key=lambda manifest: manifest.get("created_at", ""), reverse=True)
     return manifests[:limit]
 

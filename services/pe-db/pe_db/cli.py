@@ -10,11 +10,7 @@ from typing import Any, List, Optional
 
 import pandas as pd
 
-from pe_db._bootstrap import ensure_service_root_on_path
-
-ensure_service_root_on_path()
-
-from app.library import (  # noqa: E402
+from pe_db.library import (
     PeDbLibraryError,
     filter_data,
     list_output_formats,

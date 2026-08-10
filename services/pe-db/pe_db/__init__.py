@@ -5,11 +5,7 @@ path for headless use (``PE_DB_MODE=library`` in PE Ensemble).
 """
 from __future__ import annotations
 
-from pe_db._bootstrap import ensure_service_root_on_path
-
-ensure_service_root_on_path()
-
-from app.library import (  # noqa: E402
+from pe_db.library import (
     PeDbLibraryError,
     ensure_plugins_loaded,
     filter_data,

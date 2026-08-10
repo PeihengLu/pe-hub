@@ -19,17 +19,10 @@ def pe_db_library_mode(monkeypatch):
         path = str(entry)
         if path not in sys.path:
             sys.path.insert(0, path)
-    # Drop cached ensemble/pe-db app modules so pe_db bootstrap resolves correctly.
+    # Drop cached pe_db modules so collision-safe bootstrap reloads.
     for name in list(sys.modules):
-        if name == "app" or name.startswith("app."):
-            mod = sys.modules[name]
-            mod_file = getattr(mod, "__file__", "") or ""
-            if "services/pe-ensemble" in mod_file.replace("\\", "/"):
-                continue
-            if "services/pe-db" in mod_file.replace("\\", "/") or name.startswith("pe_db"):
-                del sys.modules[name]
-    if "pe_db" in sys.modules:
-        del sys.modules["pe_db"]
+        if name == "pe_db" or name.startswith("pe_db.") or name.startswith("pe_db_service_app"):
+            del sys.modules[name]
     yield
 
 

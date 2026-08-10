@@ -31,9 +31,20 @@ def _fetch_via_library(
 ) -> Dict[str, Any]:
     try:
         from pe_db.library import filter_from_params
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        if missing == "pe_db" or missing.startswith("pe_db."):
+            raise PeDbAccessError(
+                "PE_DB_MODE=library requires the pe-db package. "
+                "Install with: pip install -e services/pe-db"
+            ) from exc
+        raise PeDbAccessError(
+            f"PE-DB library import failed (missing dependency: {missing}). "
+            "Install pe-db and its dependencies with: pip install -e services/pe-db"
+        ) from exc
     except ImportError as exc:
         raise PeDbAccessError(
-            "PE_DB_MODE=library requires the pe-db package. "
+            "PE_DB_MODE=library could not import pe-db. "
             "Install with: pip install -e services/pe-db"
         ) from exc
     return filter_from_params(params, progress_callback=progress_callback)
@@ -55,9 +66,20 @@ def reload_pe_db_plugins() -> Dict[str, Any]:
     if pe_db_mode() == "library":
         try:
             from pe_db.library import reload_plugins
+        except ModuleNotFoundError as exc:
+            missing = exc.name or ""
+            if missing == "pe_db" or missing.startswith("pe_db."):
+                raise PeDbAccessError(
+                    "PE_DB_MODE=library requires the pe-db package. "
+                    "Install with: pip install -e services/pe-db"
+                ) from exc
+            raise PeDbAccessError(
+                f"PE-DB library import failed (missing dependency: {missing}). "
+                "Install pe-db and its dependencies with: pip install -e services/pe-db"
+            ) from exc
         except ImportError as exc:
             raise PeDbAccessError(
-                "PE_DB_MODE=library requires the pe-db package. "
+                "PE_DB_MODE=library could not import pe-db. "
                 "Install with: pip install -e services/pe-db"
             ) from exc
         loaded = reload_plugins()

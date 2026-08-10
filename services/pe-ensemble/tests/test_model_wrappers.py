@@ -108,10 +108,10 @@ class TestDeepPrimeWrapper:
         with pytest.raises(ValueError, match="weights is required"):
             model.evaluate(test_data, weights="")
     
-    def test_train_not_implemented(self, model):
-        """Test that training raises NotImplementedError"""
+    def test_train_requires_split_or_val_data(self, model):
+        """Training needs PE-DB split assignments or an explicit validation frame."""
         train_data = pd.DataFrame()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ValueError, match="split"):
             model.train(train_data)
 
 

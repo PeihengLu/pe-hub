@@ -206,8 +206,8 @@ def test_delete_plugin_removes_directory(plugins_root: Path, monkeypatch: pytest
 
 
 def test_notify_pe_db_plugin_reload_handles_error(monkeypatch: pytest.MonkeyPatch):
-    from app.plugins import manager as plugin_manager
     from app.plugins.manager import notify_pe_db_plugin_reload
+    from app.training import pe_db_access
 
     class FakeResponse:
         status_code = 500
@@ -216,8 +216,9 @@ def test_notify_pe_db_plugin_reload_handles_error(monkeypatch: pytest.MonkeyPatc
         def json(self):
             return {}
 
+    monkeypatch.setattr(pe_db_access, "pe_db_mode", lambda: "http")
     monkeypatch.setattr(
-        plugin_manager.requests,
+        pe_db_access.requests,
         "post",
         lambda *args, **kwargs: FakeResponse(),
     )

@@ -83,8 +83,8 @@ overall_status=0
 for suite in "${SUITES[@]}"; do
     IFS="|" read -r label tests_path extra_path <<< "${suite}"
 
-    if [[ ! -d "${tests_path}" ]]; then
-        echo "▶ ${label}: no tests directory (${tests_path}), skipping"
+    if [[ ! -e "${tests_path}" ]]; then
+        echo "▶ ${label}: no tests path (${tests_path}), skipping"
         RESULTS+=("SKIP  ${label} (no tests)")
         continue
     fi
