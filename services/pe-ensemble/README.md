@@ -74,8 +74,10 @@ model-specific conversion logic.
 
 ## Weights registry
 
-All pretrained and service-trained weights live under `services/pe-ensemble/weights/`
-and are **tracked in git** (~630 MB of checkpoints). Each weight set has a
+Pretrained vendor (and plugin) weights live under `services/pe-ensemble/weights/`
+and are **tracked in git**. Locally trained weight sets use the same on-disk
+layout but are **gitignored**; they are indexed in `local_registry.json` while
+`registry.json` only lists git-tracked sources. Each weight set has a
 `manifest.json`; trained runs get structured IDs like
 `deepprime__hek293t-pe2max__20260608__a1b2c3`. Override the path with
 `WEIGHTS_ROOT` only when mounting an external volume.

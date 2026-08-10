@@ -213,4 +213,65 @@ def test_rebuild_index_from_manifests(weights_root: Path):
 
     payload = weights_registry.rebuild_index()
     assert payload["count"] == 1
+    assert payload["tracked_count"] == 1
+    assert payload["local_count"] == 0
     assert weights_registry.list_weight_ids("deepprime") == ["DeepPrime_base"]
+    assert (weights_root / "registry.json").is_file()
+    assert (weights_root / "local_registry.json").is_file()
+
+
+def test_rebuild_index_splits_vendor_and_trained(weights_root: Path):
+    vendor_dir = weights_root / "oped" / "pegRNA_vendor"
+    vendor_dir.mkdir(parents=True)
+    (vendor_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "pegRNA_vendor",
+                "model": "oped",
+                "label": "vendor",
+                "source": "vendor",
+                "format": "oped_state_dict",
+                "created_at": "2026-06-08T00:00:00Z",
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    trained_dir = weights_root / "oped" / "oped__custom__20260611__abc123"
+    trained_dir.mkdir(parents=True)
+    (trained_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "oped__custom__20260611__abc123",
+                "model": "oped",
+                "label": "trained",
+                "source": "trained",
+                "format": "oped_state_dict",
+                "created_at": "2026-06-11T00:00:00Z",
+                "files": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = weights_registry.rebuild_index()
+    assert payload["tracked_count"] == 1
+    assert payload["local_count"] == 1
+
+    tracked = json.loads((weights_root / "registry.json").read_text(encoding="utf-8"))
+    local = json.loads((weights_root / "local_registry.json").read_text(encoding="utf-8"))
+    assert [e["id"] for e in tracked["entries"]] == ["pegRNA_vendor"]
+    assert [e["id"] for e in local["entries"]] == ["oped__custom__20260611__abc123"]
+
+    # Runtime listing merges both indexes (sorted by id).
+    assert weights_registry.list_weight_ids("oped") == [
+        "oped__custom__20260611__abc123",
+        "pegRNA_vendor",
+    ]
+
+
+def test_is_git_tracked_source():
+    assert weights_registry.is_git_tracked_source("vendor")
+    assert weights_registry.is_git_tracked_source("plugin")
+    assert not weights_registry.is_git_tracked_source("trained")
+    assert not weights_registry.is_git_tracked_source(None)

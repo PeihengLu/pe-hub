@@ -2,7 +2,11 @@
 
 All pretrained and service-trained weights live under ``WEIGHTS_ROOT`` (default:
 ``services/pe-ensemble/weights``). Each weight set is a directory with a
-``manifest.json``; ``registry.json`` at the root is a fast aggregate index.
+``manifest.json``.
+
+Git-tracked sources (``vendor``, ``plugin``) are indexed in ``registry.json``.
+Local / user-trained weights are indexed in ``local_registry.json``, which is
+gitignored along with the weight directories themselves.
 """
 from __future__ import annotations
 
@@ -20,8 +24,17 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from .registry import model_registry
 
 REGISTRY_FILENAME = "registry.json"
+LOCAL_REGISTRY_FILENAME = "local_registry.json"
 MANIFEST_FILENAME = "manifest.json"
 TRAIN_LOCI_FILENAME = "train_target_loci.json"
+
+# Sources whose weight files and registry entries are committed to git.
+GIT_TRACKED_SOURCES = frozenset({"vendor", "plugin"})
+
+
+def is_git_tracked_source(source: Optional[str]) -> bool:
+    """Return True when ``source`` should be indexed in the committed registry."""
+    return (source or "trained") in GIT_TRACKED_SOURCES
 
 
 def loci_fingerprint(loci: Iterable[str]) -> str:
@@ -57,10 +70,41 @@ def _registry_path() -> Path:
     return weights_root() / REGISTRY_FILENAME
 
 
+def _local_registry_path() -> Path:
+    return weights_root() / LOCAL_REGISTRY_FILENAME
+
+
 @contextmanager
 def _registry_lock():
     """Best-effort serialization for registry writes (atomic replace)."""
     yield
+
+
+def _write_registry_payload(path: Path, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    payload = {
+        "version": 1,
+        "updated_at": _utc_now_iso(),
+        "count": len(entries),
+        "entries": entries,
+    }
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    tmp_path.replace(path)
+    return payload
+
+
+def _load_registry_entries(path: Path) -> List[Dict[str, Any]]:
+    if not path.is_file():
+        return []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = payload.get("entries")
+    return list(entries) if isinstance(entries, list) else []
 
 
 def _utc_now_iso() -> str:
@@ -143,13 +187,17 @@ def _manifest_summary(manifest: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def rebuild_index() -> Dict[str, Any]:
-    """Rebuild ``registry.json`` by scanning per-entry manifests."""
+    """Rebuild git-tracked and local registry indexes from per-entry manifests.
+
+    Returns the merged payload (tracked + local) for callers that want a full
+    snapshot; only ``registry.json`` is meant to be committed.
+    """
     root = weights_root()
     root.mkdir(parents=True, exist_ok=True)
-    entries: List[Dict[str, Any]] = []
+    tracked: List[Dict[str, Any]] = []
+    local: List[Dict[str, Any]] = []
     model_dirs = sorted(p for p in root.iterdir() if p.is_dir())
     for model_dir in model_dirs:
-        model = model_dir.name
         if not model_dir.is_dir():
             continue
         for entry_dir in sorted(model_dir.iterdir()):
@@ -157,41 +205,54 @@ def rebuild_index() -> Dict[str, Any]:
             if not entry_dir.is_dir() or not manifest_path.is_file():
                 continue
             manifest = _read_manifest(manifest_path)
-            entries.append(_manifest_summary(manifest))
+            summary = _manifest_summary(manifest)
+            if is_git_tracked_source(summary.get("source")):
+                tracked.append(summary)
+            else:
+                local.append(summary)
 
-    payload = {
-        "version": 1,
-        "updated_at": _utc_now_iso(),
-        "count": len(entries),
-        "entries": entries,
-    }
-    registry_path = _registry_path()
-    tmp_path = registry_path.with_suffix(".json.tmp")
     with _registry_lock():
-        with open(tmp_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-        tmp_path.replace(registry_path)
-    return payload
+        tracked_payload = _write_registry_payload(_registry_path(), tracked)
+        local_payload = _write_registry_payload(_local_registry_path(), local)
+
+    return {
+        "version": 1,
+        "updated_at": tracked_payload["updated_at"],
+        "count": tracked_payload["count"] + local_payload["count"],
+        "entries": tracked + local,
+        "tracked_count": tracked_payload["count"],
+        "local_count": local_payload["count"],
+    }
+
+
+def _merged_registry_entries(*, force_rebuild: bool = False) -> List[Dict[str, Any]]:
+    registry_file = _registry_path()
+    local_file = _local_registry_path()
+    if force_rebuild or not registry_file.is_file():
+        return rebuild_index()["entries"]
+
+    tracked = _load_registry_entries(registry_file)
+    local = _load_registry_entries(local_file)
+    if not tracked and not local:
+        return rebuild_index()["entries"]
+
+    # Older checkouts mixed trained entries into registry.json; split on read.
+    if any(not is_git_tracked_source(entry.get("source")) for entry in tracked):
+        return rebuild_index()["entries"]
+
+    return tracked + local
 
 
 def list_entries(model: str) -> List[Dict[str, Any]]:
     """List manifest summaries for a model (rebuilds index if missing)."""
     _assert_known_model(model)
+    entries = [
+        entry
+        for entry in _merged_registry_entries()
+        if entry.get("model") == model
+    ]
+    return sorted(entries, key=lambda entry: str(entry.get("id") or ""))
 
-    registry_file = _registry_path()
-    if not registry_file.is_file():
-        rebuild_index()
-    else:
-        with open(registry_file, encoding="utf-8") as handle:
-            payload = json.load(handle)
-        if not payload.get("entries"):
-            rebuild_index()
-
-    with open(registry_file, encoding="utf-8") as handle:
-        payload = json.load(handle)
-
-    return [entry for entry in payload.get("entries", []) if entry.get("model") == model]
 
 
 def list_weight_ids(model: str) -> List[str]:

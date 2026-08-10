@@ -1,5 +1,5 @@
 {
-  "count": 44,
+  "count": 42,
   "entries": [
     {
       "created_at": "2026-06-08T15:10:18Z",
@@ -212,36 +212,6 @@
       "source": "plugin"
     },
     {
-      "created_at": "2026-06-11T14:25:20Z",
-      "format": "oped_state_dict",
-      "id": "oped__custom__20260611__69a987",
-      "label": "Oped - custom (2026-06-11)",
-      "metrics": {
-        "validation": {
-          "pearson": 1.0,
-          "spearman": 1.0
-        }
-      },
-      "model": "oped",
-      "notes": null,
-      "source": "trained"
-    },
-    {
-      "created_at": "2026-06-11T14:43:05Z",
-      "format": "oped_state_dict",
-      "id": "oped__hek-k562__20260611__209fc1",
-      "label": "Oped - hek k562 (2026-06-11)",
-      "metrics": {
-        "validation": {
-          "pearson": 0.3352438376463264,
-          "spearman": 0.4271784671574473
-        }
-      },
-      "model": "oped",
-      "notes": null,
-      "source": "trained"
-    },
-    {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "oped_state_dict",
       "id": "pegRNA_Model_Merged_saved.order3_decoder_weights",
@@ -452,6 +422,6 @@
       "source": "vendor"
     }
   ],
-  "updated_at": "2026-08-10T15:20:55Z",
+  "updated_at": "2026-08-10T18:01:36Z",
   "version": 1
 }

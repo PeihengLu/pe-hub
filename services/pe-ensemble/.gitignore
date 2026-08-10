@@ -1,6 +1,14 @@
-# Transient registry lock/write artifacts only (weight files are versioned in-repo)
+# Transient registry lock/write artifacts
 weights/registry.json.tmp
+weights/local_registry.json.tmp
 weights/.registry.lock
+
+# Local / user-trained weight index (vendor+plugin stay in registry.json)
+weights/local_registry.json
+
+# Locally trained weight sets (IDs: model__scope__YYYYMMDD__shortid)
+# Vendor pridict IDs use only two "__" segments and remain tracked.
+weights/*/*__*__*__*/
 
 # Training / eval / ensemble / validation job state and logs (runtime artifacts)
 jobs/**
