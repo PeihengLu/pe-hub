@@ -190,6 +190,7 @@ def execute_training(
             if model_name == "pridict2":
                 with tee_stream_to_log(
                     _progress_log if job_id else None,
+                    stderr=True,
                     cancel_check=_raise_if_cancelled if job_id else None,
                 ):
                     result = model.train(train_df, hyperparameters=hyperparameters)

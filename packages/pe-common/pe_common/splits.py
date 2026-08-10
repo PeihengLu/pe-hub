@@ -560,27 +560,51 @@ def exclude_test_partition(
     return df.loc[df[split_col].astype(str) != "test"].copy().reset_index(drop=True)
 
 
+def select_cv_fold_partitions(
+    df: pd.DataFrame,
+    *,
+    split_col: str = SPLIT_COLUMN,
+) -> pd.DataFrame:
+    """Return all rows assigned to a CV fold label (``fold_0``, ``fold_1``, …)."""
+    fold_labels = list_assigned_folds(df, split_col=split_col)
+    if not fold_labels:
+        return df.iloc[0:0].copy()
+    split_series = df[split_col].astype(str)
+    return df.loc[split_series.isin(fold_labels)].copy().reset_index(drop=True)
+
+
 def select_evaluation_partition(
     df: pd.DataFrame,
     *,
     split_col: str = SPLIT_COLUMN,
     require_test: bool = True,
 ) -> pd.DataFrame:
-    """Keep rows assigned to the test partition for model evaluation."""
+    """Keep rows used for model evaluation.
+
+    Prefer an explicit ``test`` holdout when present. Otherwise, when CV fold
+    labels are assigned (``fold_0``, ``fold_1``, …), return all fold rows as a
+    pooled validation set so cross-validation exports do not require designating
+    one fold as ``test``.
+    """
     if split_col not in df.columns:
         return df.copy()
     labels = _split_labels(df, split_col)
-    if "test" not in labels:
-        if require_test:
-            raise ValueError(
-                "Evaluation data has no test partition. "
-                "Fetch from PE-DB with a split strategy that defines test rows."
-            )
-        return df.copy()
-    test_df = select_split_partition(df, "test", split_col=split_col)
-    if test_df.empty:
-        raise ValueError("Test partition is empty.")
-    return test_df
+    if "test" in labels:
+        test_df = select_split_partition(df, "test", split_col=split_col)
+        if test_df.empty:
+            raise ValueError("Test partition is empty.")
+        return test_df
+
+    fold_df = select_cv_fold_partitions(df, split_col=split_col)
+    if not fold_df.empty:
+        return fold_df
+
+    if require_test:
+        raise ValueError(
+            "Evaluation data has no test partition or CV fold assignments. "
+            "Fetch from PE-DB with a split strategy that defines test rows or CV folds."
+        )
+    return df.copy()
 
 
 def iter_assigned_cv_folds(

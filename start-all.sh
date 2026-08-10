@@ -36,7 +36,7 @@ Usage: $(basename "$0") [OPTIONS]
 Start PE Database, PE Ensemble API, and PE Hub (Vite frontend).
 
 Options:
-  --install                 Install Python and npm dependencies before starting
+  --install                 Init submodules and install Python and npm dependencies before starting
   --no-reload               Disable uvicorn auto-reload on both backends
   --force-reexport          Re-export raw study files on PE-DB startup (also re-standardizes)
   --pe-db-port PORT         PE Database listen port (default: \$PE_DB_PORT or 8000)
@@ -336,6 +336,11 @@ start_frontend() {
 }
 
 if [[ "${INSTALL_DEPS}" == true ]]; then
+    if [[ -f "${REPO_ROOT}/.gitmodules" ]] && git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Initializing and updating git submodules ..."
+        git -C "${REPO_ROOT}" submodule update --init --recursive
+    fi
+
     echo "Installing PE Database dependencies ..."
     "${PYTHON}" -m pip install -r "${PE_DB_DIR}/requirements.txt"
     "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common" --no-deps

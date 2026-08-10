@@ -13,6 +13,7 @@ from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
+from ..training.progress_log import tee_stream_to_log
 from .combine import combine_predictions
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
 from .schemas import EnsembleMember, EnsembleRequest
@@ -120,6 +121,8 @@ def _predict_member(
     test_df: pd.DataFrame,
     *,
     device,
+    progress_log: Optional[Callable[[str], None]] = None,
+    cancel_check: Optional[Callable[[], None]] = None,
 ) -> List[float]:
     model_name = member.model_name.strip().lower()
     model = ModelFactory.create_model(model_name, device=device)
@@ -129,8 +132,13 @@ def _predict_member(
         prepared = model.prepare_data(test_df)
         return model.predict(prepared)
     if model_name == "pridict2":
-        dloader = model.prepare_data(test_df, y_ref=["averageedited"])
-        return model.predict(dloader)
+        with tee_stream_to_log(
+            progress_log,
+            stderr=True,
+            cancel_check=cancel_check,
+        ):
+            dloader = model.prepare_data(test_df, y_ref=["averageedited"])
+            return model.predict(dloader)
     feature_df = test_df.copy()
     for column in ("Efficiency", "PE_efficiency", "averageedited"):
         if column in feature_df.columns:
@@ -235,7 +243,13 @@ def execute_ensemble(
                     f"Predicting with member {index}/{len(request.members)} "
                     f"({model_name}, weights={member.weights})"
                 )
-                predictions = _predict_member(member, member_df, device=device)
+                predictions = _predict_member(
+                    member,
+                    member_df,
+                    device=device,
+                    progress_log=_progress_log,
+                    cancel_check=_raise_if_cancelled,
+                )
                 member_frames.append(member_df)
                 member_predictions.append(predictions)
 

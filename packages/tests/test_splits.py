@@ -198,6 +198,52 @@ def test_select_evaluation_partition():
     assert test_df["value"].tolist() == [2, 3]
 
 
+def test_select_evaluation_partition_uses_cv_folds_when_no_test():
+    df = pd.DataFrame(
+        {
+            "split": ["fold_0", "fold_0", "fold_1", "fold_1", "fold_2"],
+            "value": [1, 2, 3, 4, 5],
+        }
+    )
+    eval_df = select_evaluation_partition(df)
+    assert len(eval_df) == 5
+    assert set(eval_df["value"]) == {1, 2, 3, 4, 5}
+
+
+def test_select_evaluation_partition_prefers_test_over_cv_folds():
+    df = pd.DataFrame(
+        {
+            "split": ["test", "test", "fold_0", "fold_1"],
+            "value": [1, 2, 3, 4],
+        }
+    )
+    eval_df = select_evaluation_partition(df)
+    assert len(eval_df) == 2
+    assert eval_df["value"].tolist() == [1, 2]
+
+
+def test_select_evaluation_partition_cv_with_author_folds():
+    df = pd.DataFrame(
+        {
+            "group_id": list(range(5)) * 2,
+            "original_fold": [0.0, 1.0, 2.0, 3.0, 4.0] * 2,
+            "wt_sequence": ["N" * 4 + "A" * 20 + "N" * 10] * 10,
+            "protospacer_location_l": [4] * 10,
+            "protospacer_location_r": [24] * 10,
+        }
+    )
+    config = split_config_from_params(
+        strategy="cv",
+        cv_folds=5,
+        use_original_fold=True,
+        original_fold_test_value=-1.0,
+    )
+    out, _ = assign_splits(df, config)
+    eval_df = select_evaluation_partition(out)
+    assert len(eval_df) == len(out)
+    assert set(eval_df["split"]) == {"fold_0", "fold_1", "fold_2", "fold_3", "fold_4"}
+
+
 def test_use_original_fold_ignores_group_id_conflicts():
     df = pd.DataFrame(
         {

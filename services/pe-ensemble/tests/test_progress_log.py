@@ -80,3 +80,21 @@ def test_tee_stream_to_log_captures_stdout_lines():
         "epoch 0 | train_loss=0.1",
         "epoch 1 | train_loss=0.05",
     ]
+
+
+def test_tee_stream_to_log_suppresses_tqdm_stderr():
+    lines: list[str] = []
+    buffer = io.StringIO()
+    original_stderr = sys.stderr
+    sys.stderr = buffer
+    try:
+        with tee_stream_to_log(lines.append, stderr=True):
+            sys.stderr.write("\raligning sequences:  50%|████     | 5/10 [00:01<00:01, 5.00it/s]")
+            sys.stderr.write("\raligning sequences: 100%|████| 10/10 [00:01<00:00, 9.00it/s]")
+            sys.stderr.flush()
+            print("prediction started")
+    finally:
+        sys.stderr = original_stderr
+    assert buffer.getvalue() == ""
+    assert lines == ["prediction started"]
+    assert "aligning" not in "".join(lines)

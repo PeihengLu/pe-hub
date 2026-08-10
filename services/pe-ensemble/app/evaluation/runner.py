@@ -9,6 +9,7 @@ from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
+from ..training.progress_log import tee_stream_to_log
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .benchmark import BenchmarkResolutionError, resolve_evaluation_request
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
@@ -166,6 +167,14 @@ def execute_evaluation(
                 prepared = model.prepare_data(test_df)
                 _raise_if_cancelled()
                 metrics = model.evaluate(prepared, weights=request.weights)
+            elif model_name == "pridict2":
+                _raise_if_cancelled()
+                with tee_stream_to_log(
+                    _progress_log if job_id else None,
+                    stderr=True,
+                    cancel_check=_raise_if_cancelled if job_id else None,
+                ):
+                    metrics = model.evaluate(test_df, weights=request.weights)
             else:
                 _raise_if_cancelled()
                 metrics = model.evaluate(test_df, weights=request.weights)

@@ -175,9 +175,11 @@ export default function SplitAssignmentPanel({
                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
               />
               <span className="mt-1 block text-xs text-slate-500">
-                Rows with this original_fold value become the test partition. Use -1 for
-                DeepPrime-style held-out test; use 0–4 for PRIDICT2 CV test folds (match run_N
-                weights). For Train / val / test, non-test rows are then split into train and val.
+                For Train / test / holdout, rows with this original_fold value become the test
+                partition; remaining rows are split into train and val. For CV, this is optional:
+                when unset or unmatched, all author CV folds are used for evaluation. Use -1 for
+                DeepPrime-style held-out test; use 0–4 for PRIDICT2 to hold out a single fold when
+                needed (match run_N weights).
               </span>
             </label>
           )}
