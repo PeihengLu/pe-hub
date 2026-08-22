@@ -10,6 +10,7 @@ SCAFFOLD_ID_CONVENTIONAL = 1
 SCAFFOLD_ID_OPTIMIZED = 2
 SCAFFOLD_ID_MINSEPIE_18NT = 3
 SCAFFOLD_ID_MINSEPIE_CODON_VARIANT = 4
+SCAFFOLD_ID_OPTIPRIME_BLPI_FE = 5
 
 # Literature canonical gRNA scaffolds (5'→3', RNA written as DNA alphabet).
 SCAFFOLD_CONVENTIONAL = (
@@ -24,6 +25,10 @@ SCAFFOLD_MINSEPIE_18NT = (
 )
 SCAFFOLD_MINSEPIE_CODON_VARIANT = (
     "GTTTAAGAGCTAAGCTGGAAACAGCATAGCAAGTTTAAATAAGGCTAGTCCGTTATCAACTCGAAAGAGTGGCACCGAGTCGGTGC"
+)
+# Hsu et al. 2026 (OptiPrime) — BlpI_F+E scaffold with tevoPreQ1 motif.
+SCAFFOLD_OPTIPRIME_BLPI_FE = (
+    "GTTTAAGAGCTAAGCTGGAAACAGCATAGCAAGTTTAAATAAGGCTAGTCCGTTATCAACTTGAAAAAGTGGCACCGAGTCGGTGC"
 )
 
 # Catalog scaffold_id per MinSePIE exported dataset (Koeppel et al. 2023 library types).
@@ -68,6 +73,12 @@ PEGRNA_SCAFFOLDS: tuple[PegRNAScaffold, ...] = (
         name="MinSePIE codon variant",
         sequence=SCAFFOLD_MINSEPIE_CODON_VARIANT,
         description="Custom scaffold for barnacle codon-variant libraries (Koeppel et al. 2023 ST6).",
+    ),
+    PegRNAScaffold(
+        scaffold_id=SCAFFOLD_ID_OPTIPRIME_BLPI_FE,
+        name="OptiPrime BlpI F+E",
+        sequence=SCAFFOLD_OPTIPRIME_BLPI_FE,
+        description="BlpI_F+E scaffold used in Hsu et al. 2026 (OptiPrime) Lib-MMR and Lib-CV screens.",
     ),
 )
 

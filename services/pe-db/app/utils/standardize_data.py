@@ -20,7 +20,7 @@ from ..catalog.studies import get_dataset_record
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-SUPPORTED_STUDIES = {"deeppe", "deepprime", "pridict2", "pridict1", "minsepie"}
+SUPPORTED_STUDIES = {"deeppe", "deepprime", "pridict2", "pridict1", "minsepie", "optiprime"}
 PARTIAL_STANDARDIZABLE_DATASETS: set[tuple[str, str]] = {
     ("pridict1", "endogenous"),
     ("pridict2", "trip_analysis"),
@@ -57,6 +57,11 @@ DATASETS = {
         "library_insert_codon_variant",
         "library_insert_codon_hek3",
         "library_insert_piggybac",
+    ],
+    "optiprime": [
+        "lib_mmr",
+        "lib_mmr_controls",
+        "lib_cv",
     ],
 }
 
@@ -100,6 +105,7 @@ def export_original_data(study: Optional[str] = None, force_reexport: bool = Fal
         ],
         "pridict2": [_export_pridict2_library_diverse_datasheets, _export_pridict2_endogenous_datasheets],
         "minsepie": [_export_minsepie_datasheets],
+        "optiprime": [_export_optiprime_datasheets],
     }
 
     target_studies = sorted(exporters) if study is None else [study]
@@ -2361,6 +2367,8 @@ def standardize_pe_data(
             )
     elif study == "minsepie":
         _standardize_minsepie(data, cell_line, pe_system, normalized_dataset)
+    elif study == "optiprime":
+        _standardize_optiprime(data, cell_line, pe_system, normalized_dataset)
     else:
         raise ValueError(f"Unsupported study: {study}")
 
@@ -2645,3 +2653,242 @@ def _standardize_pridict2_trip(
         cell_line=cell_line,
         pe_system=pe_system,
     )
+
+
+# ---------------------------------------------------------------------------
+# OptiPrime (Hsu et al. 2026)
+# ---------------------------------------------------------------------------
+
+_OPTIPRIME_XLSX = "41587_2026_3261_MOESM3_ESM.xlsx"
+_OPTIPRIME_CONDITIONS = [
+    ("hek293t", "pe2", "HEK293T_PE2_editing"),
+    ("hek293t", "pe4", "HEK293T_PE4_editing"),
+    ("hela", "pe2", "HeLa_PE2_editing"),
+    ("hela", "pe4", "HeLa_PE4_editing"),
+]
+# Lib-MMR Design category == "Endogenous" are positive-control pegRNAs previously
+# used at endogenous loci, but assayed here in the same lentiviral reporter screen.
+_OPTIPRIME_LIBMMR_ENDO_CATEGORY = "Endogenous"
+
+
+def _optiprime_build_export_frame(
+    sub: pd.DataFrame,
+    *,
+    wt_col: str,
+    mut_col: str,
+    spacer_col: str,
+    pbs_col: str,
+    hom_col: str,
+    eff_col: str,
+) -> pd.DataFrame:
+    """Map OptiPrime supplementary columns into the shared export CSV schema."""
+    exported = pd.DataFrame()
+    exported["wt_sequence"] = sub[wt_col].astype(str).str.upper().str.strip()
+    exported["mut_sequence"] = sub[mut_col].astype(str).str.upper().str.strip()
+    exported["spacer"] = sub[spacer_col].astype(str).str.strip()
+    exported["pbs"] = sub[pbs_col].astype(str).str.strip()
+    exported["homology_arm"] = sub[hom_col].astype(str).str.strip()
+    exported["measured_pe_efficiency"] = pd.to_numeric(sub[eff_col], errors="coerce")
+    exported["deepspcas9_score"] = 0.0
+
+    wt_seqs = exported["wt_sequence"]
+    mut_seqs = exported["mut_sequence"]
+    wt_lens = wt_seqs.str.len()
+    mut_lens = mut_seqs.str.len()
+    exported["type_sub"] = wt_lens == mut_lens
+    exported["type_ins"] = wt_lens < mut_lens
+    exported["type_del"] = wt_lens > mut_lens
+    exported["edit_len"] = (mut_lens - wt_lens).abs().clip(lower=1)
+
+    sub_mask = exported["type_sub"]
+    if sub_mask.any():
+        def _count_diffs(row: pd.Series) -> int:
+            return sum(1 for a, b in zip(row["wt_sequence"], row["mut_sequence"]) if a != b)
+
+        exported.loc[sub_mask, "edit_len"] = exported.loc[sub_mask].apply(_count_diffs, axis=1)
+    return exported
+
+
+def _optiprime_write_condition_csvs(
+    df: pd.DataFrame,
+    *,
+    dataset_key: str,
+    wt_col: str,
+    mut_col: str,
+    spacer_col: str,
+    pbs_col: str,
+    hom_col: str,
+) -> None:
+    """Write one CSV per cell-line / PE-system condition for an OptiPrime dataset."""
+    for cell_line, pe_system, eff_col in _OPTIPRIME_CONDITIONS:
+        out_dir = DATA_ROOT / "exported" / "optiprime" / dataset_key.replace("_", "-")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{cell_line}-{pe_system}.csv"
+
+        mask = pd.to_numeric(df[eff_col], errors="coerce").notna()
+        sub = df.loc[mask].copy()
+        if sub.empty:
+            logger.warning("No valid rows for %s %s-%s", dataset_key, cell_line, pe_system)
+            continue
+
+        exported = _optiprime_build_export_frame(
+            sub,
+            wt_col=wt_col,
+            mut_col=mut_col,
+            spacer_col=spacer_col,
+            pbs_col=pbs_col,
+            hom_col=hom_col,
+            eff_col=eff_col,
+        )
+        exported.to_csv(out_path, index=False)
+        logger.info("Exported %s rows to %s", len(exported), out_path)
+
+
+def _export_optiprime_datasheets() -> None:
+    """Export OptiPrime Lib-MMR / Lib-CV tables, splitting endogenous controls out of Lib-MMR."""
+    xlsx_path = DATA_ROOT / "raw" / "optiprime" / _OPTIPRIME_XLSX
+    if not xlsx_path.exists():
+        logger.warning("OptiPrime supplementary XLSX not found at %s", xlsx_path)
+        return
+
+    # --- Lib-MMR: split Design category == Endogenous into lib-mmr-controls ---
+    lib_mmr = pd.read_excel(xlsx_path, sheet_name="Supp Table 4 LibMMR", header=0)
+    logger.info("Read %s rows from Supp Table 4 LibMMR", len(lib_mmr))
+    category = lib_mmr["Design category"].astype(str).str.strip()
+    endo_mask = category.eq(_OPTIPRIME_LIBMMR_ENDO_CATEGORY)
+    lib_mmr_cols = dict(
+        wt_col="Designed target (ps-pam-edit)",
+        mut_col="Designed edited target (ps-pam-edit)",
+        spacer_col="Designed 5G pegRNA spacer",
+        pbs_col="PBS",
+        hom_col="Homology arm",
+    )
+    _optiprime_write_condition_csvs(
+        lib_mmr.loc[~endo_mask].copy(),
+        dataset_key="lib_mmr",
+        **lib_mmr_cols,
+    )
+    _optiprime_write_condition_csvs(
+        lib_mmr.loc[endo_mask].copy(),
+        dataset_key="lib_mmr_controls",
+        **lib_mmr_cols,
+    )
+    logger.info(
+        "Lib-MMR split: %s primary rows, %s endogenous-control rows",
+        int((~endo_mask).sum()),
+        int(endo_mask.sum()),
+    )
+
+    # --- Lib-CV ---
+    lib_cv = pd.read_excel(xlsx_path, sheet_name="Supp Table 5 LibCV", header=0)
+    logger.info("Read %s rows from Supp Table 5 LibCV", len(lib_cv))
+    _optiprime_write_condition_csvs(
+        lib_cv,
+        dataset_key="lib_cv",
+        wt_col="unedited_target",
+        mut_col="edited_target",
+        spacer_col="spacer",
+        pbs_col="pbs_bind",
+        hom_col="homology_arm",
+    )
+
+
+def _standardize_optiprime(
+    data: pd.DataFrame,
+    cell_line: str,
+    pe_system: str,
+    dataset: str,
+) -> None:
+    """Standardize OptiPrime Lib-MMR / Lib-MMR-controls / Lib-CV data to the shared PE schema."""
+    dataset = _normalize_name(dataset)
+    cell_line = _normalize_name(cell_line)
+    pe_system = _normalize_name(pe_system)
+    output_name = f"{cell_line}-{pe_system}.parquet"
+
+    logger.info(
+        "Standardizing optiprime dataset=%s cell_line=%s pe_system=%s rows=%s",
+        dataset, cell_line, pe_system, len(data),
+    )
+
+    df = data.copy()
+
+    # Derive edit type flags
+    mutation_flags = df[["type_sub", "type_ins", "type_del"]].fillna(False).astype(bool)
+    valid_mask = mutation_flags.any(axis=1)
+    df = df.loc[valid_mask].reset_index(drop=True)
+    mutation_flags = df[["type_sub", "type_ins", "type_del"]].fillna(False).astype(bool)
+    df[["type_sub", "type_ins", "type_del"]] = mutation_flags
+    df["mut_type"] = np.select(
+        [mutation_flags["type_sub"], mutation_flags["type_ins"], mutation_flags["type_del"]],
+        [0, 1, 2], default=-1,
+    )
+
+    # OptiPrime target sequences use the same layout as DeepPrime:
+    # 4 bp pad + 20 bp protospacer + PAM + downstream
+    PROTOSPACER_L, PROTOSPACER_R = 4, 24
+    wt_sequence = df["wt_sequence"].astype(str).str.upper()
+    protospacer = wt_sequence.str.slice(PROTOSPACER_L, PROTOSPACER_R)
+    df["group_id"] = protospacer.map(hash).groupby(protospacer).ngroup()
+
+    # Compute PBS location from spacer and PBS columns
+    pbs_seq = df["pbs"].astype(str).str.upper()
+    pbs_len = pbs_seq.str.len()
+    nick_pos = PROTOSPACER_R - 3  # nick between positions 17-18 of protospacer
+    df["pbs_l"] = nick_pos - pbs_len
+    df["pbs_r"] = nick_pos
+
+    # RTT: from nick to end of edited sequence (homology arm end)
+    hom_seq = df["homology_arm"].astype(str).str.upper()
+    hom_len = hom_seq.str.len()
+    df["rtt_l"] = nick_pos
+    # RTT right = nick + (mut_len - nick) for the full extension length
+    # More precisely, the RT covers from nick to the end of homology in mut
+    wt_len = wt_sequence.str.len()
+    mut_sequence = df["mut_sequence"].astype(str).str.upper()
+    mut_len = mut_sequence.str.len()
+    df["rtt_r"] = mut_len - PROTOSPACER_L  # approximate: RTT extends to near end of edited target
+
+    # LHA: from PBS right to edit position
+    # Find edit position by comparing wt and mut sequences
+    def _find_edit_pos(wt, mut):
+        for i, (a, b) in enumerate(zip(wt, mut)):
+            if a != b:
+                return i
+        return min(len(wt), len(mut))
+
+    edit_positions = [_find_edit_pos(w, m) for w, m in zip(wt_sequence, mut_sequence)]
+    df["lha_l"] = nick_pos
+    df["lha_r"] = edit_positions
+
+    # RHA: from edit end to RTT right
+    edit_len = df["edit_len"].astype(int)
+    df["rha_l"] = pd.Series(edit_positions) + np.where(df["type_del"], 0, edit_len)
+    df["rha_r"] = df["rtt_r"]
+
+    # Align wt/mut sequences
+    def _align_row(row):
+        return align_wt_mut_sequences(
+            str(row["wt_sequence"]),
+            str(row["mut_sequence"]),
+            int(row["lha_r"]),
+            edit_length=int(row["edit_len"]),
+            edit_type=int(row["mut_type"]),
+        )
+
+    aligned = df.apply(_align_row, axis=1, result_type="expand")
+    aligned.columns = ["wt_aligned", "mut_aligned"]
+
+    output_df = _build_standardized_output_df(
+        df["group_id"], df["type_sub"], df["type_ins"], df["type_del"], df["edit_len"],
+        aligned["wt_aligned"], aligned["mut_aligned"],
+        PROTOSPACER_L, PROTOSPACER_R,
+        df["pbs_l"], df["pbs_r"], df["rtt_l"], df["rtt_r"],
+        df["lha_l"], df["lha_r"], df["rha_l"], df["rha_r"],
+        df["deepspcas9_score"], df["measured_pe_efficiency"],
+        original_fold=None,
+    )
+
+    output_path = DATA_ROOT / "standardized" / "optiprime" / dataset / output_name
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_df.to_parquet(output_path, index=False)
+    logger.info("Saved standardized optiprime data: %s (%s rows)", output_path, len(output_df))

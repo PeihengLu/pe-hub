@@ -213,6 +213,7 @@ model_registry = ModelRegistry()
 def _register_builtin_models() -> None:
     from .deepprime_wrapper import DeepPrimeModelWrapper
     from .oped_wrapper import OPEDModelWrapper
+    from .optiprime_wrapper import OptiPrimeModelWrapper
     from .pridict2_wrapper import PRIDICT2ModelWrapper
 
     def _validate_pridict2_weight(weight_id: str) -> None:
@@ -244,6 +245,19 @@ def _register_builtin_models() -> None:
             weight_format="oped_state_dict",
             architecture_builder=_build_oped_architecture,
             architecture_from_cli=_oped_architecture_from_cli,
+        )
+    )
+    model_registry.register(
+        ModelSpec(
+            name="optiprime",
+            wrapper_class=OptiPrimeModelWrapper,
+            display_name="OptiPrime",
+            description=(
+                "Mechanistic ML model (ODE kinetics + HetFormer) for PE efficiency prediction"
+            ),
+            model_type="mechanistic_ml",
+            pe_db_format="optiprime",
+            weight_format="optiprime_ensemble",
         )
     )
     model_registry.register(

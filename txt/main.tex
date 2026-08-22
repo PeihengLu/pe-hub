@@ -70,17 +70,25 @@ Because MMR can copy from either strand, it may reject the edit and rebuild the 
 These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
 
 On top of the competing repair outcomes, editing efficiency is also heavily shaped by target context and pegRNA design.
-For a fixed pegRNA, integrating the same target sequence at different genomic loci can yield editing rates from near 0\% to over 90\%, demonstrating that cis-chromatin position effects and local epigenetic marks strongly modulate prime editing independently of guide sequence~\cite{liChromatinContextdependentRegulation2024, mathisMachineLearningPrediction2024}.
-Complementary high-throughput analyses further show that regional heterochromatin and nucleosome occlusion impede editing, while position-specific nucleotide composition in the target and pegRNA flanking regions---including PBS and reverse-transcriptase template (RTT) GC content, PAM choice, and the identity of the last templated nucleotide---can shift activity by orders of magnitude~\cite{kimPredictingEfficiencyPrime2021,kimChromatinStructureContextdependent2023}.
+Cis-chromatin position effects and local epigenetic marks can strongly modulate prime editing even for a fixed pegRNA~\cite{liChromatinContextdependentRegulation2024,mathisMachineLearningPrediction2024}.
+Because these locus-level effects are largely separable from pegRNA sequence design and are typically modelled as a separate problem (e.g.\ ePRIDICT), chromatin context is not the focus of this study.
+Instead, this work centres on sequence-level determinants of efficiency.
+High-throughput analyses show that position-specific nucleotide composition in the target and pegRNA flanking regions---including PBS and reverse-transcriptase template (RTT) GC content, PAM choice, and the identity of the last templated nucleotide---can shift activity by orders of magnitude~\cite{kimPredictingEfficiencyPrime2021,kimChromatinStructureContextdependent2023}.
 pegRNA architecture adds another layer of control: optimal primer-binding site (PBS) length depends on delivery format and on melting temperature of PBS--target hybridization, because complementarity between the PBS and spacer can auto-inhibit target binding~\cite{ponnienselvanReducingInherentAutoinhibitory2023}, and degradation of the 3$'$ RTT--PBS extension can poison editing unless the pegRNA is stabilized, for example with engineered 3$'$ RNA structures~\cite{nelsonEngineeredPegRNAsImprove2022}.
-Nevertheless, many determinants remain only partly understood.
-The cis-chromatin environment and its intersection with trans-acting DNA repair proteins were long undercharacterized relative to pegRNA sequence alone, and context-dependent repressors such as HLTF are still being discovered~\cite{liChromatinContextdependentRegulation2024}.
-For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}. 
-As a result, efficient prime editing often requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022}. And given the large number of possible pegRNA designs with varying spacer location, PBS length and RTT length~\cite{hsuMechanisticMachineLearning2026}, as well as possible silent edits that can be performed to improve the editing efficiency~\cite{chenEnhancedPrimeEditing2021}, limiting the practicality of designing prime editors for real world applications.
+Nevertheless, many sequence determinants remain only partly understood.
+For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}.
+As a result, efficient prime editing often requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022,hsuMechanisticMachineLearning2026}.
+The large number of possible pegRNA designs---varying spacer location, PBS length, and RTT length~\cite{hsuMechanisticMachineLearning2026}, as well as silent edits that can improve efficiency~\cite{chenEnhancedPrimeEditing2021}---further limits the practicality of designing prime editors for real-world applications by hand.
 
 
-This motivates the development of computational applications performing in silico design of pegRNAs given a target sequence and a desired edit. These applications generally work in two stages. First, a number of pegRNAs are proposed using physical constraints, such as PAM locations and LHA length limits. Most applications follow similar principles in this step. The second and much more interesting is ranking all of the proposed pegRNA design using a model trained on various datasets. There are three major family of models, conventional machine learning\cite{liEasyPrimeMachineLearning2021,koeppelPredictionPrimeEditing2023}, deep learning\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}, and mechanistic models
-\cite{hsuMechanisticMachineLearning2026}, each with their own advantages and disadvantages. In this review, we aim to provide a fair and detailed comparisons of three deep learning models with three distinctive backbone: PRIDICT RNN\cite{mathisMachineLearningPrediction2024}, DeepPrime CNN\cite{yuPredictionEfficienciesDiverse2023} and OPED Transformer\cite{liuDesignPrimeeditingGuide2023}.
+This motivates computational tools for in silico pegRNA design given a target sequence and a desired edit.
+Such tools generally operate in two stages.
+First, candidate pegRNAs are proposed from physical constraints such as PAM availability and limits on PBS and RTT length; most pipelines follow similar principles here.
+The second, more consequential stage ranks those candidates with a model trained on experimental efficiency data.
+Three major model families have emerged---conventional machine learning~\cite{liEasyPrimeMachineLearning2021,koeppelPredictionPrimeEditing2023}, deep learning~\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023,schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}, and mechanistic models~\cite{hsuMechanisticMachineLearning2026}---each with distinct strengths and limitations.
+Yet these models are trained and released on heterogeneous datasets, input formats, and evaluation protocols, which makes fair comparison difficult and leaves little shared infrastructure for combining complementary predictors.
+
+To address this gap, I present a prime editing benchmarking platform that unifies large-scale experimental datasets under a common schema, evaluates state-of-the-art efficiency predictors side by side, and supports training custom models as well as ensembles that mix newly trained weights with vendor-provided ones.
 
 \section{Methods}
 
@@ -99,7 +107,7 @@ However, popular validation datasets such as Anazalone et al.\cite{anzaloneSearc
 
 \subsubsection{Data Source}
 
-We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Five studies are included - DeepPE from Kim et al\cite{kimPredictingEfficiencyPrime2021}; DeepPrime from yu et al\cite{yuPredictionEfficienciesDiverse2023}; MinsePIE from koeppel et al\cite{koeppelPredictionPrimeEditing2023}; PRIDICTv1 from schwank et al\cite{schwankgeraldPredictingPrimeEditing2023} and PRIDICTv2 from Mathis et al\cite{mathisMachineLearningPrediction2024}.
+We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Six studies are included - 
 
 \begin{enumerate}
     \item \textbf{Kim et al. 2021}
@@ -123,7 +131,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     Two off-target datasets are also stored in the database: a mismatch library \nolinkurl{deepprime-off} and its sub-pools \nolinkurl{deepprime-off-subpool}, which profile PE editing efficiencies at mismatched target sites. 
 
-    \item \textbf{MinsePIE}
+    \item \textbf{Koeppel et al. 2023}
     
     Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} focused specifically on prime editing insertion efficiency, designing a library of 3,604 insertion sequences of various lengths (1--69~nt) and measuring their insertion frequencies at four endogenous genomic target sites (HEK3, EMX1, FANCF, and the safe-harbor CLYBL locus) in three human cell lines (HEK293T, HAP1, and HAP1 $\Delta$MLH1). The study identified that insertion length, nucleotide composition (particularly cytosine content), and secondary structure of the insert sequence all affect insertion rates, and discovered that the 3$'$ flap nucleases TREX1 and TREX2 suppress the insertion of longer sequences. These findings were combined into the MinsePIE machine learning model, which predicts relative insertion frequencies with $R = 0.70$.
 
@@ -135,7 +143,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     \nolinkurl{library-insert-piggybac} (Set~1 screens in HAP1 with PiggyBac-integrated PE2).
     Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located.
 
-    \item \textbf{PRIDICTv1}
+    \item \textbf{Schwank et al. 2023}
     
     Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} performed a high-throughput screen analyzing prime editing outcomes of 92,423 pegRNAs targeting a highly diverse set of 13,349 human pathogenic mutations, including base substitutions, insertions, and deletions. The study identified sequence context features that influence prime editing and trained PRIDICT (PRIme editing guide preDICTion), an attention-based bidirectional recurrent neural network that predicts both editing efficiency and product purity.
 
@@ -145,15 +153,22 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
 
     A separate endogenous validation dataset \nolinkurl{pridict1-endo} contains arrayed pegRNA experiments at 15 genomic loci in HEK293T and K562 (three pegRNAs per locus from library~1: the endogenous-target pegRNA, \emph{endo}, plus the highest- and lowest-PRIDICT-scoring candidates, \emph{best} and \emph{worst}). Edit types are taken from the authors' endogenous CRISPResso batch amplicons (PRIDICT supplementary files): 44 pegRNAs install a 1-bp substitution and locus~3 uses a 10-bp deletion; there are no insertion edits in this validation set.
 
-    \item \textbf{PRIDICTv2}
+    \item \textbf{Mathis et al. 2024}
     
-    Mathis et al.\cite{mathisMachineLearningPrediction2024} extended the PRIDICT framework with PRIDICT2.0, a model that predicts PE efficiency for all edit types up to 15~bp in length, in both mismatch repair-deficient and mismatch repair-proficient cell lines, as well as in vivo. The study also developed ePRIDICT, a model that quantifies how local chromatin environments impact prime editing rates.
-
     The library-diverse dataset extends the PRIDICT1 approach with a broader range of edit types, screened in HEK293T, K562, and K562 MLH1$^{-/-}$ (mismatch repair-deficient) cell lines using the same self-targeting lentiviral reporter system (non-endogenous targets). The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
 
     The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
 
     A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at 1,202 endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. Every integration was edited with the same prime-editing pegRNA (\nolinkurl{TRIP\_pegRNA\_GtoC}), a uniform 1-bp G$\to$C substitution. Similarly, due to the lack of support for chromatin coordinate translation, this dataset currently has partial standardization support (entry-level fields only).
+
+    \item \textbf{Hsu et al. 2026}
+    
+    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime, a mechanistic machine learning model that embeds prime editing biochemistry into its architecture. To train and benchmark the model, the authors performed two large paired pegRNA--target lentiviral reporter screens in HEK293T (partially mismatch-repair deficient) and HeLa (mismatch-repair proficient) cells, measuring editing with both PE2 and PE4. In both screens, pegRNA--target pairs were packaged into lentiviral libraries and transduced at low multiplicity of infection (MOI~$<0.3$); after selection for integrated library members, cells were transfected with PE construct plasmids (PEmax-Cas9 with tevoPreQ1 epegRNAs) to induce editing. Efficiencies are therefore measured on synthetic reporter cassettes rather than native chromosomal loci.
+
+    The Lib-MMR library \nolinkurl{lib-mmr} comprises ${\sim}$9,964 pegRNAs targeting 200 randomly selected exonic sites with diverse edit types, including single and multi-base substitutions, insertions, deletions, and PAM edits. The supplementary table also lists 36 additional pegRNAs with \nolinkurl{Design category = Endogenous}; these are positive controls whose sequences were previously used to edit endogenous loci (RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, and HEXA), but in this study they were assayed in the same lentiviral reporter format as the rest of Lib-MMR. PE DB therefore stores them separately as \nolinkurl{lib-mmr-controls} so that users can include or exclude reference pegRNAs without mixing them into the primary MMR diversity library.
+
+    The Lib-CV library \nolinkurl{lib-cv} contains 10,406 pegRNAs designed to correct 944 ClinVar pathogenic variants, including up to nine silent edit combinations per variant to evade mismatch repair. Like Lib-MMR, Lib-CV uses the lentiviral pegRNA--target reporter system with PE2/PE4 plasmid transfection in HEK293T and HeLa. Across the two libraries, the authors report 74,769 editing measurements spanning 1,290 unique target sites in these four cell-line/PE-system combinations. Supplementary Table~3 (\nolinkurl{Endo\_gRNAs}) lists additional endogenous pegRNA designs used elsewhere in the paper but does not include the high-throughput efficiency measurements exported here.
+    
 \end{enumerate}
 
 \begin{figure}[ht]
@@ -163,7 +178,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     \label{fig:data_composition}
 \end{figure}
 
-\autoref{fig:data_composition} summarizes the composition of data from the studies. In total, there are 715,055 pegRNA-target pairs from 5 studies. 
+\autoref{fig:data_composition} summarizes the composition of data from the studies. In total, there are ${\sim}$790,000 pegRNA--target pairs from six studies. 
 
 DeepPrime and PRIDICTv2 has good coverage of all editing types, with PRIDICTv2 having a larger range of edit length, from 1 to 15bp compared to DeepPrime's 1-3bp in the main library and up to 6bp in the fine-tuning subsets. 
 
@@ -191,8 +206,13 @@ The exported data can be used to construct the SQLite database containing study 
 
 As briefly mentioned above, a standardized format was devised as a mediator to simply conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
 
-The standardization process for most datasets are straightforward, as they provides all necessary information in either the publication or supplementary files. MinsePIE however requires some additional effort in locating the target context sequence as they did not use conventional genome reference coordinate system.
-% TODO: more on MinsePIE
+The standardization process for non-chromosomal datasets are straightforward, as they provide all necessary information in either the publication or supplementary files. Endogenous datasets such as PRIDICT2 TRIP analysis requires additional effort in translating the genomic coordinates to the target context sequence. MinsePIE on the other hand requires a number of non-conventional steps to reconstruct the sequence.
+
+MinsePIE reports insertion efficiencies at endogenous loci, but the supplementary tables identify each target only by a short name (HEK3, EMX1, FANCF, CLYBL, and so on) together with the pegRNA spacer, PBS, and homology-arm (HA) sequences from Supplementary Table~6 (ST6). No genomic coordinates or extended wild-type context windows are provided, so the wide target-strand sequences required by the shared PE schema must be reconstructed rather than looked up from the publication.
+
+During exportation, each MOESM5 experiment string is mapped to the corresponding ST6 pegRNA row so that spacer, PBS, HA, and annotated insertion position (\texttt{+N}) are attached to every measured insert. Where the HA encodes a non-\texttt{+1} insertion, an \texttt{-Ins-} marker splits the RTT-oriented HA into left and right segments; on the target strand these become the reverse complements of HA-right (immediately 3$'$ of the SpCas9 nick between protospacer positions 17 and 18) and HA-left (further 3$'$ of the insertion).
+
+The genomic anchors themselves were obtained by exact (and reverse-complement) mapping of the ST6 spacers onto GRCh38/hg38, not from author-supplied coordinates. Classic PE-site coordinates cited elsewhere in the literature were checked and discarded when they did not contain the MinsePIE spacer: in particular, the HEK3 site used throughout the study maps to \textit{LINC01509} on chromosome~9 rather than the chromosome~11 locus often associated with HEK293 editing screens. For the 18-nt library, the Methods text places HEK3-S2--S6 within approximately 1~kb of that HEK3 anchor, which constrained local search when whole-genome scans were inconclusive; sites that differed from the reference by a single base (HEK3-S3/S5/S6 and some codon-variant pegRNAs) were placed by homology-arm context and the cached window was patched so that the ST6 spacer sits at a fixed 100~bp offset within a 220~bp flank. The resulting loci table (\nolinkurl{minsepie\_genomic\_loci.json}) stores chromosome, 1-based spacer start, assembly strand, and the reference window for each of the 17 ST6 targets. Standardization then inserts the measured sequence at the nick/HA-derived edit position to produce length-matched WT (N-padded at the insertion) and Mut sequences, and records the corresponding hg38 protospacer interval.
 
 
 \subsubsection{Database Design}
@@ -260,6 +280,10 @@ We are only considering models with general prime editing efficiency prediction 
     \item \textbf{OPED}
     
     Liu et al.\cite{liuDesignPrimeeditingGuide2023} developed Optimized Prime Editing Design (OPED), an interpretable nucleotide language model that applies transfer learning to pegRNA efficiency prediction. A transformer encoder extracts features from the 47-bp target sequence, while custom transformer decoders model the PBS and RT template sequences and their cross-sequence dependencies; attention weights provide post-hoc interpretability of individual nucleotide contributions. OPED was initially trained on the DeepPE high-throughput training set and validated on three held-out DeepPE subsets that were never used during training. On the HT-test, Type-test, and Position-test sets ($n = 4{,}457$, 403, and 200, respectively), OPED achieved Pearson $r = 0.769$, 0.612, and 0.628 and Spearman $R = 0.798$, 0.624, and 0.562; pegRNAs with higher predicted scores showed 8.0-, 3.1-, and 2.2-fold higher measured editing efficiencies. When retrained on the PRIDICT library~1 training split, OPED reported $r = 0.912$ and $R = 0.905$ for editing efficiency and $r = 0.810$ and $R = 0.826$ for unintended editing rates on the test set ($n = 18{,}485$), consistently outperforming DeepPE, Easy-Prime, and PRIDICT. Experimental validation with optimized pegRNAs yielded up to 44-fold higher editing efficiencies than competing design tools across PE2, PE3/PE3b, and ePE systems, and the authors released the OPEDVar database of optimized designs from over two billion candidate pegRNAs.
+
+    \item \textbf{OptiPrime}
+    
+    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime as a mechanistic model for prime editing efficiency prediction. OptiPrime is a kinetic model that uses machine learning to predict the kinetic parameters of the prime editing reaction. 
 \end{enumerate}
 
 On top of the three deep learning models, a small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
@@ -278,7 +302,7 @@ Model can perform exceptionally well if it is tested on examples that are too si
 
 In the context of prime editing efficiency prediction, data leakage can occur if the model is trained on target loci that are identical to the ones in the test set, inflating the performance metrics.
 
-To mitigate this, PE-Ensemble performs an automatic data-leak check before running evaluation. For each selected weight set, we load the set of training target loci stored as \nolinkurl{train_target_loci.json}; each locus is represented by a universal hash identifier (\texttt{target\_uid}) computed from the wild-type sequence and protospacer geometry. We compute \texttt{target\_uid} for every row in the requested evaluation split and detect whether any test loci overlap the model's training loci. By default, overlapping evaluation is aborted (and can optionally be allowed with a warning).
+To mitigate this, PE-Ensemble performs an automatic data-leak check before running evaluation. For each selected weight set, we load the set of training target loci stored as \nolinkurl{train_target_loci.json}; each locus is represented by a universal hash identifier (\texttt{target\_uid}) computed from the wild-type protospacer sequence. We compute \texttt{target\_uid} for every row in the requested evaluation split and detect whether any test loci overlap the model's training loci. By default, overlapping evaluation is aborted (and can optionally be allowed with a warning).
 
 For shipped vendor (pretrained) models, training provenance is reconstructed conservatively as:
 \begin{itemize}
@@ -289,7 +313,7 @@ For shipped vendor (pretrained) models, training provenance is reconstructed con
 
 \subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
 
-For a more consistent evaluation of model architectures, techniques such as transfer learning that were not universally applied in all the studies need to be filtered out. To accomplish this, all models were retrained from scratch and evaluated on each of the datasets using the same set of training strategies.
+All models but OptiPrime were train
 
 PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED fine-tuning within this environment, providing a consistent optimizer and learning-rate scheduler interface without re-implementing each vendor's original training scripts.
 
@@ -339,21 +363,16 @@ To leverage the ever increasing capability and usage of LLMs, we also provided a
 
 \subsection{PE Ensemble}
 
-(show findings after working with a couple of ensembles, if there is any)
-
-(Test ensemble performance)
-
 The retrained weights for all models on each dataset as well as script to train each model was also available in the study, so users also have the option to apply transfer learning, produce and upload custom weights to use in the ensemble. Make sure to choose the option to freeze the representation learning layers when using a pre-trained model.
 
-To showcase this transfer learning + ensemble learning ability, we reproduced the training process from PRIDICT 2.0 using the PE ensemble and PE DB tool. 
+To showcase this transfer learning + ensemble learning ability, we reproduced the training process from PRIDICT 2.0 using the PE ensemble and PE DB tool. Mathis et al first performed based training on a. PRIDICT library 1 and b. PRIDICT library 1 + DeepPrime ClinVar datasets, producing two pretrained models. They are then both fine-tuned on the PRIDICT 2 library-diverse dataset's HEK293T and K562 cell lines respectively, resulting in four fine-tuned models. The model are then grouped by cell line and each group was ensembled using average pooling to produce the final PRIDICT 2.0 model for HEK and K562 cell lines respectively.
 
-(Do the experiment)
+Leveraging PE-DB's capability to merge, parse and serve dataset, the data preparation process was very straightforward. The DeepPrime ClinVar dataset and PRIDICT library 1 can be joined together using the data export function.
 
 \section{Discussion}
 
 (Your conclusion here.)
 
-During the development of PE-DB and PE-Ensemble, David Liu et al. created a SOTA mechanistic model for PE efficiency prediction, OptiPrime\cite{hsuMechanisticMachineLearning2026}. At the time of writing, the preprint is still under review, thus no code and data are available. It will be added to the PE ensemble along with the lib-MMR and lib-CV high throughput libraries once the preprint is published.  
 
 
 \printbibliography
@@ -364,7 +383,7 @@ During the development of PE-DB and PE-Ensemble, David Liu et al. created a SOTA
 \section{PE Database catalog: studies}
 \label{app:studies}
 
-The following five studies are registered in PE DB (\nolinkurl{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
+The following six studies are registered in PE DB (\nolinkurl{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
 
 \begin{table}[ht]
     \centering
@@ -378,6 +397,7 @@ The following five studies are registered in PE DB (\nolinkurl{catalog/studies.p
         \nolinkurl{deepprime}  & DeepPrime & 2023-04-20 & Yu et al. \\
         \nolinkurl{pridict1}   & PRIDICT1  & 2023-08-01 & Mathis et al. \\
         \nolinkurl{pridict2}   & PRIDICT2  & 2024-06-01 & Mathis et al. \\
+        \nolinkurl{optiprime}  & OptiPrime & 2026-08-12 & Hsu et al. \\
         \hline
     \end{tabular}
     \caption{Study catalog entries in PE DB.}
@@ -387,7 +407,7 @@ The following five studies are registered in PE DB (\nolinkurl{catalog/studies.p
 \section{PE Database catalog: datasets}
 \label{app:datasets}
 
-Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \nolinkurl{on\_target} or \nolinkurl{off\_target}; \emph{experimental method} is \nolinkurl{in\_vitro} or \nolinkurl{in\_vivo}; \emph{target context} is \nolinkurl{endogenous} (native chromosomal locus) or \nolinkurl{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \nolinkurl{True} for full conversion to the shared standardized format and \nolinkurl{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 20 datasets; subsections below repeat the catalog descriptions verbatim.
+Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \nolinkurl{on\_target} or \nolinkurl{off\_target}; \emph{experimental method} is \nolinkurl{in\_vitro} or \nolinkurl{in\_vivo}; \emph{target context} is \nolinkurl{endogenous} (native chromosomal locus) or \nolinkurl{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \nolinkurl{True} for full conversion to the shared standardized format and \nolinkurl{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 23 datasets; subsections below repeat the catalog descriptions verbatim.
 
 \begin{longtable}{@{}p{0.17\textwidth}p{0.09\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.08\textwidth}p{0.08\textwidth}p{0.10\textwidth}p{0.08\textwidth}@{}}
     \caption{Dataset catalog attributes in PE DB (summary).} \label{tab:app-datasets-summary} \\
@@ -425,6 +445,9 @@ Each dataset belongs to one study and is described by catalog metadata seeded in
     \nolinkurl{deeppe-type} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
     \nolinkurl{deeppe-position} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
     \nolinkurl{deeppe-endo} & deeppe & plasmid & plasmid & on\_target & in\_vitro & endogenous & yes \\
+    \nolinkurl{lib-mmr} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{lib-mmr-controls} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{lib-cv} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
 \end{longtable}
 
 \subsection{DeepPE (\texorpdfstring{\nolinkurl{deeppe}}{deeppe})}
@@ -496,6 +519,17 @@ Diverse-library pegRNAs validated at endogenous mouse liver loci (PRIDICT2 suppl
 
 \paragraph{\nolinkurl{trip-analysis}.}
 TRIP library editing survey at endogenous genomic integrations in K562 (supplementary table 12; Fig.~3 / Ext. Fig.~4--5; PE2). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; partial standardization.
+
+\subsection{OptiPrime (\texorpdfstring{\nolinkurl{optiprime}}{optiprime})}
+
+\paragraph{\nolinkurl{lib-mmr}.}
+Lib-MMR primary library (${\sim}$9,964 pegRNAs) targeting 200 exonic sites with diverse edit types (substitutions, insertions, deletions, PAM edits); excludes 36 endogenous-site positive controls. Lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{lib-mmr-controls}.}
+Lib-MMR endogenous-site positive controls (36 pegRNAs previously used to edit RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, and HEXA). Assayed in the same lentiviral pegRNA--target reporter screen as Lib-MMR (not arrayed endogenous locus editing); PE2/PE4 plasmid transfection in HEK293T and HeLa. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+
+\paragraph{\nolinkurl{lib-cv}.}
+Lib-CV (${\sim}$10,406 pegRNAs) correcting 944 ClinVar pathogenic variants with up to nine silent edit combinations; lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable. 
 
 \section{PE Database API and deployment}
 \label{app:api}
@@ -602,6 +636,8 @@ Splits are \textbf{group-aware}: rows sharing a \nolinkurl{group\_id} (protospac
         Location strings, correction length, RT overhang features; PRIDICT2 adds normalized continuous inputs. \\
         \nolinkurl{oped} & OPED~\cite{liuDesignPrimeeditingGuide2023} &
         \nolinkurl{Target(47bp)}, \nolinkurl{PBS}, \nolinkurl{RT}, \nolinkurl{Efficiency}. \\
+        \nolinkurl{optiprime} & OptiPrime~\cite{hsuMechanisticMachineLearning2026} &
+        \nolinkurl{spacer}, \nolinkurl{rtt}, \nolinkurl{pbs}, \nolinkurl{full\_unedited}, \nolinkurl{full\_edited}, editor metadata. \\
         \hline
     \end{tabular}
     \caption{Model-format schemas produced by \nolinkurl{/api/filter}.}

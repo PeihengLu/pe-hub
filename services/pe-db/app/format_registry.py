@@ -8,6 +8,7 @@ import pandas as pd
 from .utils.convert_data import (
     standardized_to_deepprime_dataframe,
     standardized_to_oped_dataframe,
+    standardized_to_optiprime_dataframe,
     standardized_to_pridict_dataframe,
 )
 
@@ -82,6 +83,7 @@ def _register_builtin_formats() -> None:
     register_format("pridict", standardized_to_pridict_dataframe)
     register_format("pridict2", standardized_to_pridict_dataframe)
     register_format("oped", standardized_to_oped_dataframe)
+    register_format("optiprime", standardized_to_optiprime_dataframe)
 
 
 _register_builtin_formats()

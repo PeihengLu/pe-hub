@@ -18,6 +18,7 @@ from .scaffolds import (
     MINSEPIE_DATASET_SCAFFOLD_ID,
     SCAFFOLD_ID_CONVENTIONAL,
     SCAFFOLD_ID_OPTIMIZED,
+    SCAFFOLD_ID_OPTIPRIME_BLPI_FE,
     default_scaffold_for_pridict,
     scaffold_id_from_deepprime_label,
 )
@@ -182,6 +183,36 @@ def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> lis
     return rows
 
 
+def build_optiprime_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
+    """Hsu et al. 2026 used BlpI_F+E scaffold with tevoPreQ1 for all library screens."""
+    scaffold_id = SCAFFOLD_ID_OPTIPRIME_BLPI_FE
+    specs = [
+        ("optiprime", "lib-mmr", "hek293t", "pe2"),
+        ("optiprime", "lib-mmr", "hek293t", "pe4"),
+        ("optiprime", "lib-mmr", "hela", "pe2"),
+        ("optiprime", "lib-mmr", "hela", "pe4"),
+        ("optiprime", "lib-mmr-controls", "hek293t", "pe2"),
+        ("optiprime", "lib-mmr-controls", "hek293t", "pe4"),
+        ("optiprime", "lib-mmr-controls", "hela", "pe2"),
+        ("optiprime", "lib-mmr-controls", "hela", "pe4"),
+        ("optiprime", "lib-cv", "hek293t", "pe2"),
+        ("optiprime", "lib-cv", "hek293t", "pe4"),
+        ("optiprime", "lib-cv", "hela", "pe2"),
+        ("optiprime", "lib-cv", "hela", "pe4"),
+    ]
+    return [
+        DatasheetScaffoldAssignment(
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            scaffold_id=scaffold_id,
+            scaffold_source="optiprime_blpi_fe_scaffold",
+        )
+        for study, dataset, cell_line, pe_system in specs
+    ]
+
+
 def build_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
     """Infer scaffold_id for every known exported datasheet from raw study metadata."""
     return (
@@ -189,6 +220,7 @@ def build_scaffold_assignments(data_root: Optional[Path] = None) -> list[Datashe
         + build_deeppe_scaffold_assignments()
         + build_pridict_scaffold_assignments()
         + build_minsepie_scaffold_assignments(data_root)
+        + build_optiprime_scaffold_assignments()
     )
 
 

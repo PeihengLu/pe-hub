@@ -10,3 +10,6 @@
 [submodule "vendor/models/PRIDICT2"]
 	path = vendor/models/pridict2
 	url = git@github.com:PeihengLu/PRIDICT2.git
+[submodule "vendor/models/optiprime"]
+	path = vendor/models/optiprime
+	url = https://github.com/alvin-hsu/optiprime-src.git

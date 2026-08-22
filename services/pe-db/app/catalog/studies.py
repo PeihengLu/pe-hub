@@ -81,6 +81,12 @@ STUDY_REGISTRY: tuple[StudyRecord, ...] = (
         publication_date=date(2021, 2, 1),
         authors="Kim et al.",
     ),
+    StudyRecord(
+        key="optiprime",
+        display_name="OptiPrime",
+        publication_date=date(2026, 8, 12),
+        authors="Hsu et al.",
+    ),
 )
 
 _DEEPPE_HT_DESCRIPTION = (
@@ -350,6 +356,55 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="optiprime",
+        name="lib-mmr",
+        description=(
+            "Lib-MMR primary library (~9,964 pegRNAs) targeting 200 exonic sites with "
+            "diverse edit types (substitutions, insertions, deletions, PAM edits); "
+            "excludes 36 endogenous-site positive controls. Lentiviral pegRNA–target "
+            "reporter library (MOI < 0.3) with PE2/PE4 plasmid transfection in HEK293T "
+            "and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="optiprime",
+        name="lib-mmr-controls",
+        description=(
+            "Lib-MMR endogenous-site positive controls (36 pegRNAs previously used to "
+            "edit RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, HEXA). Assayed in the same "
+            "lentiviral pegRNA–target reporter screen as Lib-MMR (not arrayed endogenous "
+            "locus editing); PE2/PE4 plasmid transfection in HEK293T and HeLa."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="optiprime",
+        name="lib-cv",
+        description=(
+            "Lib-CV: 10,406 pegRNAs correcting 944 ClinVar pathogenic variants with "
+            "up to 9 silent edit combinations; lentiviral pegRNA–target reporter library "
+            "(MOI < 0.3) with PE2/PE4 plasmid transfection in HEK293T and HeLa "
+            "(PEmax-Cas9, tevoPreQ1 epegRNA)."
+        ),
+        pegRNA_delivery_method="lentiviral",
+        pe_delivery_method="plasmid_transfection",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="non_endogenous",
         standardizable=True,
     ),
     DatasetRecord(

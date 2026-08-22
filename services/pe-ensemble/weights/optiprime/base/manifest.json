@@ -1,0 +1,16 @@
+{
+  "id": "base",
+  "model": "optiprime",
+  "label": "OptiPrime base (5-fold ensemble, Hsu et al. 2026)",
+  "source": "vendor",
+  "format": "optiprime_ensemble",
+  "created_at": "2026-08-19T00:00:00Z",
+  "files": [],
+  "provenance": {
+    "vendor_origin": "https://github.com/alvin-hsu/optiprime-src",
+    "notes": "Weights are loaded from vendor/models/optiprime/weights/ (5-fold cross-validation ensemble)"
+  },
+  "training": null,
+  "metrics": null,
+  "notes": "Vendored pretrained weights; actual files live in vendor/models/optiprime/weights/model_{1..5}/"
+}

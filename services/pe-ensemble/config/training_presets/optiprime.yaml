@@ -1,0 +1,6 @@
+schema_version: 1
+model: optiprime
+defaults:
+  load_pretrained: true
+  weights: base
+datasets: {}
