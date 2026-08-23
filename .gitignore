@@ -6,5 +6,7 @@
 # macOS Finder metadata (any directory)
 .DS_Store
 .idea/
+.cursor/
+.vscode/
 checkpoints/** 
 *.egg-info/
