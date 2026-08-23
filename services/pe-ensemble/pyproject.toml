@@ -29,6 +29,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "matplotlib>=3.5.0",
     "prettytable>=3.5.0",  # PRIDICT2 vendor data_preprocess.py
+    "argcomplete>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +59,7 @@ vendor = [
 
 [project.scripts]
 pe-ensemble = "pe_ensemble.cli:main"
+peen = "pe_ensemble.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

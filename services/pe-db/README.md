@@ -37,41 +37,93 @@ Seed does **not**:
 - Export or standardize measurements
 - Fill the `Datasheet` table (that happens during **export**, when CSV paths are registered)
 
+## Architecture
+
+```text
+pedb (pe-db)  ──┐
+                ├──► pe_db.library  (← app/library.py)
+FastAPI         ──┘
+peen (pe-ensemble) CLI ──► pe_db.library (in-process; no PE-DB HTTP server)
+pe-ensemble web ──HTTP──► FastAPI
+```
+
+Installable packages: `pe_db` (console scripts `pedb` / `pe-db` + `pe_db.library`) and the FastAPI app under `app/`. Both the CLI and HTTP handlers call the same headless library — no localhost hop for CLI use.
+
 ## Manual usage
 
 ### CLI (no HTTP server)
 
 ```bash
-cd services/pe-db
-pip install -e ../../packages/pe-common --no-deps
-pip install -e .
-
-pe-db init                              # seed + export + standardize
-pe-db init --force-export               # re-export raw study files
-pe-db export --study deepprime
-pe-db standardize --force
-pe-db filter --format deepprime --dataset library2 \
-  --cell-line HEK293T --pe-system PE2max --split-strategy holdout_3 \
-  --out /tmp/deepprime_train.parquet
-pe-db studies
-pe-db datasets --study deepprime
-pe-db datasheets
-pe-db scaffolds
-pe-db statistics
-pe-db formats
-pe-db plugins reload
+# Activate conda/venv first (not system Python)
+pip install -e packages/pe-common
+pip install -e services/pe-db
 ```
 
-### Python
+Or from the repo root (same requirement): `./scripts/install-clis.sh` (installs **pedb** / **peen** and bash/zsh tab completion, then prints usage). Reload completion with `conda deactivate && conda activate pedb`, then `pedb <TAB>`. Skip completion with `SKIP_CLI_COMPLETION=1 ./scripts/install-clis.sh`.
+
+Short alias: **`pedb`** (also installed as `pe-db`).
+
+| Command | Purpose |
+|---------|---------|
+| `pedb init` | Seed catalog, export raw data, standardize |
+| `pedb seed` | Seed Study / Dataset / Scaffold tables only |
+| `pedb export` | Export raw study files (+ optional standardize) |
+| `pedb standardize` | Exported CSV → parquet |
+| `pedb convert` | Standardize one datasheet (`--study` `--dataset` `--cell-line` `--pe-system`) |
+| `pedb filter` | Same contract as `GET /api/filter` (catalog and/or model-format export) |
+| `pedb studies` | List catalog studies |
+| `pedb datasets` | List datasets (optional `--study`) |
+| `pedb datasheets` | List datasheets (optional `--study` / `--dataset`) |
+| `pedb scaffolds` | List pegRNA scaffolds |
+| `pedb statistics` | Descriptive stats over edit rows |
+| `pedb formats` | List supported filter output formats |
+| `pedb plugins reload` | Reload active plugin converters |
+
+Examples:
+
+```bash
+pedb init                              # seed + export + standardize
+pedb init --force-export               # re-export raw study files
+pedb seed
+pedb export --study deepprime
+pedb standardize --force
+pedb convert --study deepprime --dataset deepprime-clinvar \
+  --cell-line hek293t --pe-system pe2
+pedb filter --format deepprime --dataset library2 \
+  --cell-line HEK293T --pe-system PE2max --split-strategy holdout_3 \
+  --out /tmp/deepprime_train.parquet
+pedb studies
+pedb datasets --study deepprime
+pedb datasheets --study deepprime --dataset library2
+pedb scaffolds
+pedb statistics --edit-type sub
+pedb formats
+pedb plugins reload
+```
+
+`pedb filter --out` accepts `.json` (full payload), `.csv`, or `.parquet` (merged rows).
+
+### Python library
+
+Prefer the installable package (works from any cwd; also used by the `peen` CLI):
 
 ```python
-from app.catalog.initialize import initialize_database
-from app.converter import DataConverter
-from pe_db.library import filter_from_params, run_init
+from pe_db.library import filter_from_params, list_studies, run_init
 
 run_init()  # seed + export + standardize
-# or
-initialize_database()  # same pipeline via app.catalog
+print(list_studies())
+payload = filter_from_params(
+    {
+        "format": "deepprime",
+        "dataset": ["library2"],
+        "cell_line": ["HEK293T"],
+        "pe_system": ["PE2max"],
+        "split_strategy": "holdout_3",
+        "train_pct": 0.7,
+        "val_pct": 0.15,
+        "test_pct": 0.15,
+    }
+)
 ```
 
 ```bash
@@ -105,21 +157,20 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
   filters (`cell_line=HEK293T&cell_line=A549`), efficiency bounds, scaffold name,
   and `merge=true` to combine datasheets before split assignment.
 
-PE Ensemble and PE Hub call this endpoint (Ensemble proxies it at `GET /data/filter`).
+PE Ensemble’s **web service** and PE Hub call this endpoint over HTTP (Ensemble proxies it at `GET /data/filter`). The **`peen` CLI** uses the same filter logic in-process via `pe_db.library` (no PE-DB server required).
 
 ## Run locally
 
 ### pip (default)
 
 ```bash
+pip install -e packages/pe-common
+pip install -e services/pe-db   # installs ``pedb`` / ``pe-db`` CLI and ``pe_db`` library package
 cd services/pe-db
-pip install -r requirements.txt
-pip install -e ../../packages/pe-common --no-deps
-pip install -e .   # installs ``pe-db`` CLI and ``pe_db`` library package
 uvicorn app.main:app --reload --port 8000
 ```
 
-Or from the repo root: `./scripts/start-pe-db-backend.sh --install`
+Or from the repo root: `./scripts/start-pe-db-backend.sh --install`, or `./start-all.sh --install` (also installs pe-ensemble).
 
 ### conda (recommended when using DeepSpCas9 scoring)
 
@@ -132,9 +183,9 @@ conda create -n pe-db python=3.11 -y
 conda activate pe-db
 conda install -c conda-forge tensorflow -y   # optional; for MinSePIE spcas9 backfill
 
+pip install -e packages/pe-common
+pip install -e services/pe-db
 cd services/pe-db
-pip install -r requirements.txt
-pip install -e ../../packages/pe-common --no-deps
 uvicorn app.main:app --reload --port 8000
 ```
 

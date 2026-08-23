@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# PYTHON_ARGCOMPLETE_OK
 """Command-line interface for PE Database (init, export, filter) without HTTP."""
 from __future__ import annotations
 
@@ -83,7 +82,7 @@ def _build_filter_parser(sub: argparse._SubParsersAction) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog=Path(sys.argv[0]).name if sys.argv else "pedb",
+        prog="pe-db",
         description="PE Database headless tools (catalog init, export, model-format filter).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -309,12 +308,6 @@ def cmd_plugins_reload(args: argparse.Namespace) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
-    try:
-        import argcomplete
-
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))

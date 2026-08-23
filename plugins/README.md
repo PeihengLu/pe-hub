@@ -200,17 +200,16 @@ Ensure PE-DB and PE Ensemble share the same `PLUGINS_ROOT` (default repo `plugin
 
 ### 3.2 Training CLI
 
-The CLI loads **active** plugins from `PLUGINS_ROOT` at startup (same registry as the HTTP service).
-
-**Library mode** (no PE-DB HTTP server; PE-DB runs in-process):
+The CLI loads **active** plugins from `PLUGINS_ROOT` at startup (same registry as the HTTP service)
+and always uses in-process PE-DB (`pe_db.library`, same path as the `pedb` CLI). No PE-DB HTTP
+server is required for CLI training.
 
 ```bash
 pip install -e packages/pe-common
 pip install -e services/pe-db
 pip install -e "services/pe-ensemble[pe-db]"
 
-cd services/pe-ensemble
-PE_DB_MODE=library python -m app.train_models \
+peen train \
   --model my_model \
   --dataset-name my_run \
   --dataset library2 \
@@ -219,26 +218,13 @@ PE_DB_MODE=library python -m app.train_models \
   --device cuda:0
 ```
 
-**HTTP mode** (PE-DB API must be running with the same active plugin):
-
-```bash
-cd services/pe-ensemble
-python -m app.train_models \
-  --model my_model \
-  --dataset-name my_run \
-  --dataset library2 \
-  --pe-db-url http://localhost:8000 \
-  --hyperparameters-json '{"epochs": 5}' \
-  --device cuda:0
-```
+The FastAPI web service (and portal) still talk to PE-DB over HTTP via `PE_DB_URL`.
 
 Plugin-specific flags:
 
 | Flag / env | Purpose |
 |------------|---------|
 | `PLUGINS_ROOT` / `--plugins-root` | Directory containing `plugins/<name>/` (default: repo `plugins/`) |
-| `PE_DB_MODE=library` / `--pe-db-mode library` | In-process PE-DB; auto-loads plugin converters on filter |
-| `PE_DB_URL` / `--pe-db-url` | Remote PE-DB when using HTTP mode |
 | `WEIGHTS_ROOT` / `--weights-root` | Where trained checkpoints are registered |
 | `--hyperparameters-json` | JSON object; keys should match manifest `hyperparameters` names |
 | `--pretrained-weights <id>` | Fine-tune from a shipped or previously trained weight set |
@@ -246,13 +232,12 @@ Plugin-specific flags:
 Fine-tune from shipped weights:
 
 ```bash
-python -m app.train_models \
+peen train \
   --model my_model \
   --dataset-name finetune_run \
   --dataset library2 \
   --pretrained-weights base \
-  --hyperparameters-json '{"epochs": 3, "load_pretrained": true}' \
-  --pe-db-mode library
+  --hyperparameters-json '{"epochs": 3, "load_pretrained": true}'
 ```
 
 Verify the model is registered:
@@ -269,8 +254,7 @@ python -c "from app.plugin_loader import load_active_plugins; from app.training.
 |----------|---------|---------|
 | `PLUGINS_ROOT` | `<repo>/plugins` | PE-DB, PE Ensemble, CLI |
 | `WEIGHTS_ROOT` | `services/pe-ensemble/weights` | PE Ensemble, CLI |
-| `PE_DB_URL` | `http://localhost:8000` | PE Ensemble (HTTP mode), CLI |
-| `PE_DB_MODE` | `http` | `http` or `library` for training data fetch |
+| `PE_DB_URL` | `http://localhost:8000` | PE Ensemble **web service** only (HTTP to PE-DB) |
 | `TRAINING_JOBS_ROOT` | `services/pe-ensemble/jobs` | CLI job state and logs |
 
 Use the **same** `PLUGINS_ROOT` on every process that should see your model (Hub services, CLI, SLURM workers).
@@ -283,7 +267,7 @@ Use the **same** `PLUGINS_ROOT` on every process that should see your model (Hub
 |---------|----------------|
 | Model missing from Train / `--model` choices | Plugin not `active`, or wrong `PLUGINS_ROOT` |
 | `Unknown model` in CLI | Plugin not active; restart CLI after activation |
-| PE-DB `format=my_model` fails | PE-DB has not reloaded plugins; call `/api/plugins/reload` or use library mode |
+| PE-DB `format=my_model` fails | PE-DB has not reloaded plugins; call `/api/plugins/reload`, or use the `peen` CLI (in-process `pe_db.library` reloads plugins at startup) |
 | Validation fails on convert | Row count/index changed, or missing `output_columns` |
 | Validation fails on train/eval | Wrapper missing method or `save_to_registry`; smoke test timeout |
 | Import error in validation | Dependency not installed in the service environment |

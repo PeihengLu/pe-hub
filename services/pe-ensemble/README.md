@@ -92,14 +92,17 @@ with `python -m app.models.migrate_weights`.
 ## Install (cluster / headless)
 
 ```bash
+# Activate conda/venv first (not system Python)
 pip install -e packages/pe-common
 pip install -e services/pe-db
 pip install -e "services/pe-ensemble[library]"
 ```
 
-This installs the `pe-db` and `pe-ensemble` console scripts. The CLI defaults to
-`PE_DB_MODE=library` so training, tuning, evaluation, and ensembling do not
-require a local PE-DB HTTP server. The web portal still talks to FastAPI over HTTP.
+Or: `./scripts/install-clis.sh` (editable install of both CLIs + tab completion + usage summary; refuses Apple CLT Python). Reload completion with `conda deactivate && conda activate <env>`.
+This installs the short CLI aliases **`pedb`** / **`peen`** (also `pe-db` / `pe-ensemble`).
+The peen CLI always uses in-process `pe_db.library` (same code path as `pedb`), so training,
+tuning, evaluation, and ensembling do not require a local PE-DB HTTP server.
+The FastAPI web service always fetches PE-DB data over HTTP via `PE_DB_URL`.
 
 ## Training CLI and SLURM
 
@@ -107,31 +110,31 @@ Run training without the PE Ensemble HTTP server or PE Hub (logs and job state l
 
 Active model plugins under `PLUGINS_ROOT` (default `<repo>/plugins`) are loaded automatically at CLI startup, same as the HTTP service. See [`../../plugins/README.md`](../../plugins/README.md) for how to prepare and activate a plugin for both the web UI and CLI.
 
-### `pe-ensemble` subcommands
+### `peen` subcommands
 
 | Command | Purpose |
 |---------|---------|
-| `pe-ensemble train` | Train a model (queued via device scheduler by default) |
-| `pe-ensemble tune` | Optuna hyperparameter search (in-process by default; `--queue` for scheduler) |
-| `pe-ensemble evaluate` | Benchmark a registered weight set |
-| `pe-ensemble ensemble` | Fuse member predictions (`--combine mean`, `weighted_mean`, …) |
-| `pe-ensemble models` / `weights` / `methods` / `devices` | Registry and device listings |
-| `pe-ensemble jobs` / `logs` | Inspect queued or completed jobs |
+| `peen train` | Train a model (queued via device scheduler by default) |
+| `peen tune` | Optuna hyperparameter search (in-process by default; `--queue` for scheduler) |
+| `peen evaluate` | Benchmark a registered weight set |
+| `peen ensemble` | Fuse member predictions (`--combine mean`, `weighted_mean`, …) |
+| `peen models` / `weights` / `methods` / `devices` | Registry and device listings |
+| `peen jobs` / `logs` | Inspect queued or completed jobs |
 
 `python -m app.train_models` and `python -m app.tune_models` remain as thin shims.
 
-### Library mode (no PE-DB HTTP server)
+### Cluster / headless (in-process PE-DB)
 
-Install both packages, prepare data once, then train in-process:
+Install both packages, prepare data once, then train without a PE-DB server:
 
 ```bash
 pip install -e packages/pe-common
 pip install -e services/pe-db
 pip install -e "services/pe-ensemble[pe-db]"
 
-pe-db init   # seed, export, standardize (or skip if datasets/ already prepared)
+pedb init   # seed, export, standardize (or skip if datasets/ already prepared)
 
-pe-ensemble train \
+peen train \
   --model deepprime \
   --dataset-name library2 \
   --dataset library2 \
@@ -140,14 +143,12 @@ pe-ensemble train \
   --device cuda:0
 ```
 
-Use `--pe-db-mode library` instead of the environment variable when preferred (library mode is the CLI default).
-
-### HTTP mode (PE-DB API running)
+### Example with architecture overrides
 
 ```bash
-pe-ensemble devices
+peen devices
 
-pe-ensemble train \
+peen train \
   --model deepprime \
   --dataset-name library2 \
   --dataset library2 \
@@ -158,7 +159,6 @@ pe-ensemble train \
   --dp-num-layers 1 \
   --hyperparameters-json '{"epochs":5,"load_pretrained":false}' \
   --model-kwargs-json '{"pe_system":"PE2max","cell_type":"HEK293T"}' \
-  --pe-db-url http://pe-db.internal:8000 \
   --weights-root /scratch/$USER/pe-ensemble/weights \
   --jobs-root /scratch/$USER/pe-ensemble/jobs
 ```

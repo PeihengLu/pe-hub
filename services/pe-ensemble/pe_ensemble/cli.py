@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 """Command-line interface for PE Ensemble (train, tune, evaluate, ensemble)."""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pe_common.devices import format_devices_for_cli
@@ -22,6 +25,7 @@ from app.ensemble.jobs import (  # noqa: E402
     read_logs as read_ensemble_logs,
     wait_for_job as wait_for_ensemble_job,
 )
+from app.ensemble.schemas import EnsembleMember, EnsembleRequest  # noqa: E402
 from app.evaluation.jobs import (  # noqa: E402
     create_job as create_eval_job,
     get_job as get_eval_job,
@@ -29,8 +33,9 @@ from app.evaluation.jobs import (  # noqa: E402
     read_logs as read_eval_logs,
     wait_for_job as wait_for_eval_job,
 )
+from app.evaluation.schemas import EvaluationRequest  # noqa: E402
 from app.models.registry import model_registry  # noqa: E402
-from app.training.config import jobs_root, supported_models  # noqa: E402
+from app.training.config import enable_cli_pe_db_access, jobs_root, supported_models  # noqa: E402
 from app.training.jobs import (  # noqa: E402
     create_job as create_train_job,
     get_job as get_train_job,
@@ -38,8 +43,13 @@ from app.training.jobs import (  # noqa: E402
     read_logs as read_train_logs,
     wait_for_job as wait_for_train_job,
 )
+from app.training.model_architecture import (  # noqa: E402
+    architecture_from_cli_args,
+    merge_training_hyperparameters,
+)
+from app.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins  # noqa: E402
 from app.training.runner import TrainingError  # noqa: E402
-from app.training.schemas import TrainingRequest  # noqa: E402
+from app.training.schemas import SplitQueryParams, TrainingRequest  # noqa: E402
 from app.training.tune_jobs import (  # noqa: E402
     create_job as create_tune_job,
     get_job as get_tune_job,
@@ -48,19 +58,281 @@ from app.training.tune_jobs import (  # noqa: E402
     wait_for_job as wait_for_tune_job,
 )
 from app.training.tune_study import execute_tuning  # noqa: E402
-from pe_ensemble.cli_common import (  # noqa: E402
-    add_architecture_flags,
-    add_env_flags,
-    add_filter_flags,
-    add_split_flags,
-    apply_env_overrides,
-    build_ensemble_request,
-    build_evaluation_request,
-    build_training_request,
-    build_tuning_request,
-    prepare_runtime,
+from app.training.tuning_schemas import TuningRequest  # noqa: E402
+from pe_ensemble.library import (  # noqa: E402
+    combine_method_help,
+    execute_evaluation,
+    execute_ensemble,
 )
-from pe_ensemble.library import execute_evaluation, execute_ensemble, execute_training  # noqa: E402
+
+
+def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--plugins-root")
+    parser.add_argument("--list-devices", action="store_true")
+    return parser.parse_known_args(argv)[0]
+
+
+def _bootstrap_plugins() -> List[str]:
+    from app.plugin_loader import load_active_plugins
+
+    return load_active_plugins()
+
+
+def _sync_pe_db_plugins() -> None:
+    try:
+        reload_pe_db_plugins()
+    except PeDbAccessError:
+        pass
+
+
+def _parse_json_object(raw: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not raw:
+        return None
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError("Expected a JSON object")
+    return value
+
+
+def _optional_list(values: List[Any]) -> Optional[List[Any]]:
+    return values or None
+
+
+def _add_split_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--split-strategy",
+        default="holdout_3",
+        choices=["none", "holdout_2", "holdout_3", "cv"],
+    )
+    parser.add_argument("--train-pct", type=float, default=0.7)
+    parser.add_argument("--val-pct", type=float, default=0.15)
+    parser.add_argument("--test-pct", type=float, default=0.15)
+    parser.add_argument("--cv-folds", type=int, default=None)
+    parser.add_argument("--use-original-fold", action="store_true")
+    parser.add_argument(
+        "--original-fold-test-value",
+        type=float,
+        default=-1.0,
+    )
+    parser.add_argument("--split-random-state", type=int, default=42)
+    parser.add_argument("--merge", action="store_true")
+
+
+def _add_filter_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--dataset", action="append", default=[])
+    parser.add_argument("--study", action="append", default=[])
+    parser.add_argument("--cell-line", action="append", default=[])
+    parser.add_argument("--pe-system", action="append", default=[])
+    parser.add_argument("--edit-type", action="append", default=[])
+    parser.add_argument("--edit-length", action="append", type=int, default=[])
+    parser.add_argument("--edit-scope", action="append", default=[])
+    parser.add_argument("--experimental-method", action="append", default=[])
+    parser.add_argument("--target-context", action="append", default=[])
+    parser.add_argument("--scaffold-name", action="append", default=[])
+    parser.add_argument("--edit-efficiency-min", type=float, default=None)
+    parser.add_argument("--edit-efficiency-max", type=float, default=None)
+
+
+def _add_architecture_flags(parser: argparse.ArgumentParser) -> None:
+    arch = parser.add_argument_group("model architecture")
+    arch.add_argument("--dp-hidden-size", type=int, default=None)
+    arch.add_argument("--dp-num-layers", type=int, default=None)
+    arch.add_argument("--oped-embedding-size", type=int, default=None)
+    arch.add_argument("--oped-ffn-dim", type=int, default=None)
+    arch.add_argument("--oped-encoder-layers", type=int, default=None)
+    arch.add_argument("--oped-nhead", type=int, default=None)
+    arch.add_argument("--oped-dropout", type=float, default=None)
+    arch.add_argument("--pridict2-embed-dim", type=int, default=None)
+    arch.add_argument("--pridict2-z-dim", type=int, default=None)
+    arch.add_argument("--pridict2-num-hidden-layers", type=int, default=None)
+    arch.add_argument("--pridict2-dropout", type=float, default=None)
+
+
+def _add_env_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--weights-root", default=None)
+    parser.add_argument("--plugins-root", default=None)
+    parser.add_argument("--jobs-root", default=None)
+    parser.add_argument("--presets-root", default=None)
+    parser.add_argument("--tuning-jobs-root", default=None)
+    parser.add_argument("--device", default="auto")
+
+
+def _apply_env_overrides(args: argparse.Namespace) -> None:
+    if getattr(args, "plugins_root", None):
+        os.environ["PLUGINS_ROOT"] = args.plugins_root
+    if getattr(args, "weights_root", None):
+        os.environ["WEIGHTS_ROOT"] = args.weights_root
+    if getattr(args, "jobs_root", None):
+        os.environ["TRAINING_JOBS_ROOT"] = args.jobs_root
+    if getattr(args, "presets_root", None):
+        os.environ["TRAINING_PRESETS_ROOT"] = args.presets_root
+    if getattr(args, "tuning_jobs_root", None):
+        os.environ["TUNING_JOBS_ROOT"] = args.tuning_jobs_root
+
+
+def _build_split(args: argparse.Namespace) -> SplitQueryParams:
+    return SplitQueryParams(
+        split_strategy=args.split_strategy,
+        train_pct=args.train_pct,
+        val_pct=args.val_pct,
+        test_pct=args.test_pct,
+        cv_folds=args.cv_folds,
+        use_original_fold=args.use_original_fold,
+        original_fold_test_value=args.original_fold_test_value,
+        split_random_state=args.split_random_state,
+        merge=args.merge,
+    )
+
+
+def build_training_request(args: argparse.Namespace) -> TrainingRequest:
+    base = _parse_json_object(getattr(args, "hyperparameters_json", None)) or {}
+    if getattr(args, "pretrained_weights", None):
+        base["load_pretrained"] = True
+        base["weights"] = args.pretrained_weights
+    hyperparameters = merge_training_hyperparameters(
+        args.model,
+        base,
+        architecture_from_cli_args(args.model, args),
+    )
+    return TrainingRequest(
+        model_name=args.model,
+        dataset_source=getattr(args, "dataset_source", "pe-db"),
+        dataset_name=args.dataset_name,
+        hyperparameters=hyperparameters or None,
+        hyperparameter_mode=getattr(args, "hyperparameter_mode", "merge"),
+        split=_build_split(args),
+        study=_optional_list(args.study),
+        dataset=_optional_list(args.dataset),
+        cell_line=_optional_list(args.cell_line),
+        pe_system=_optional_list(args.pe_system),
+        edit_type=_optional_list(args.edit_type),
+        edit_length=_optional_list(args.edit_length),
+        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
+        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
+        edit_scope=_optional_list(args.edit_scope),
+        experimental_method=_optional_list(args.experimental_method),
+        target_context=_optional_list(args.target_context),
+        scaffold_name=_optional_list(args.scaffold_name),
+        model_kwargs=_parse_json_object(getattr(args, "model_kwargs_json", None)),
+        notes=getattr(args, "notes", None),
+        device=args.device,
+    )
+
+
+def build_tuning_request(args: argparse.Namespace) -> TuningRequest:
+    fixed = _parse_json_object(getattr(args, "fixed_hyperparameters_json", None)) or {}
+    training = TrainingRequest(
+        model_name=args.model,
+        dataset_source=getattr(args, "dataset_source", "pe-db"),
+        dataset_name=args.dataset_name,
+        hyperparameters=fixed or None,
+        hyperparameter_mode="replace",
+        split=_build_split(args),
+        study=_optional_list(args.study),
+        dataset=_optional_list(args.dataset),
+        cell_line=_optional_list(args.cell_line),
+        pe_system=_optional_list(args.pe_system),
+        edit_type=_optional_list(args.edit_type),
+        edit_length=_optional_list(args.edit_length),
+        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
+        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
+        edit_scope=_optional_list(args.edit_scope),
+        experimental_method=_optional_list(args.experimental_method),
+        target_context=_optional_list(args.target_context),
+        scaffold_name=_optional_list(args.scaffold_name),
+        model_kwargs=_parse_json_object(getattr(args, "model_kwargs_json", None)),
+        notes=getattr(args, "notes", None),
+        device=args.device,
+    )
+    return TuningRequest(
+        training=training,
+        n_trials=args.n_trials,
+        study_name=args.study_name,
+        study_storage=args.study_storage,
+        write_preset=args.write_preset,
+        no_write_preset=args.no_write_preset,
+        register_best_weights=args.register_best_weights,
+    )
+
+
+def build_evaluation_request(args: argparse.Namespace) -> EvaluationRequest:
+    return EvaluationRequest(
+        model_name=args.model,
+        benchmark_name=args.benchmark_name,
+        weights=args.weights,
+        split=_build_split(args),
+        study=_optional_list(args.study),
+        dataset=_optional_list(args.dataset),
+        cell_line=_optional_list(args.cell_line),
+        pe_system=_optional_list(args.pe_system),
+        edit_type=_optional_list(args.edit_type),
+        edit_length=_optional_list(args.edit_length),
+        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
+        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
+        edit_scope=_optional_list(args.edit_scope),
+        experimental_method=_optional_list(args.experimental_method),
+        target_context=_optional_list(args.target_context),
+        scaffold_name=_optional_list(args.scaffold_name),
+        device=args.device,
+        auto_training_benchmark=not args.custom_benchmark,
+        allow_data_leak=args.allow_data_leak,
+    )
+
+
+def parse_ensemble_member(raw: str) -> EnsembleMember:
+    parts = raw.split(":")
+    if len(parts) < 2:
+        raise ValueError(
+            f"Invalid --member {raw!r}; expected model:weights or model:weights:member_weight"
+        )
+    model_name, weights = parts[0], parts[1]
+    member_weight = float(parts[2]) if len(parts) > 2 else None
+    return EnsembleMember(
+        model_name=model_name,
+        weights=weights,
+        member_weight=member_weight,
+    )
+
+
+def build_ensemble_request(args: argparse.Namespace) -> EnsembleRequest:
+    combine_options = _parse_json_object(args.combine_options_json) or {}
+    return EnsembleRequest(
+        ensemble_name=args.ensemble_name,
+        combine=args.combine,
+        combine_options=combine_options,
+        members=[parse_ensemble_member(raw) for raw in args.member],
+        split=_build_split(args),
+        study=_optional_list(args.study),
+        dataset=_optional_list(args.dataset),
+        cell_line=_optional_list(args.cell_line),
+        pe_system=_optional_list(args.pe_system),
+        edit_type=_optional_list(args.edit_type),
+        edit_length=_optional_list(args.edit_length),
+        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
+        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
+        edit_scope=_optional_list(args.edit_scope),
+        experimental_method=_optional_list(args.experimental_method),
+        target_context=_optional_list(args.target_context),
+        scaffold_name=_optional_list(args.scaffold_name),
+        device=args.device,
+    )
+
+
+def _prepare_runtime(argv: Optional[List[str]]) -> Optional[int]:
+    """Bootstrap plugins and handle global early-exit flags."""
+    enable_cli_pe_db_access()
+    early = _early_parse(argv)
+    if early.list_devices:
+        print(format_devices_for_cli())
+        return 0
+    if early.plugins_root:
+        os.environ["PLUGINS_ROOT"] = early.plugins_root
+    loaded = _bootstrap_plugins()
+    if loaded:
+        print(f"Loaded plugins: {', '.join(loaded)}", file=sys.stderr)
+    _sync_pe_db_plugins()
+    return None
 
 
 def _add_train_parser(sub: argparse._SubParsersAction) -> None:
@@ -68,8 +340,8 @@ def _add_train_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--model", required=True, choices=list(supported_models()))
     parser.add_argument("--dataset-source", default="pe-db")
     parser.add_argument("--dataset-name", required=True)
-    add_filter_flags(parser)
-    add_split_flags(parser)
+    _add_filter_flags(parser)
+    _add_split_flags(parser)
     parser.add_argument("--hyperparameters-json", default=None)
     parser.add_argument(
         "--hyperparameter-mode",
@@ -78,9 +350,9 @@ def _add_train_parser(sub: argparse._SubParsersAction) -> None:
     )
     parser.add_argument("--pretrained-weights", default=None)
     parser.add_argument("--model-kwargs-json", default=None)
-    add_architecture_flags(parser)
+    _add_architecture_flags(parser)
     parser.add_argument("--notes", default=None)
-    add_env_flags(parser)
+    _add_env_flags(parser)
     parser.add_argument("--job-id", default=None)
     parser.add_argument("--run-existing-job", action="store_true")
     parser.add_argument("--queue-only", action="store_true")
@@ -92,12 +364,12 @@ def _add_tune_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--model", required=True, choices=list(supported_models()))
     parser.add_argument("--dataset-source", default="pe-db")
     parser.add_argument("--dataset-name", required=True)
-    add_filter_flags(parser)
-    add_split_flags(parser)
+    _add_filter_flags(parser)
+    _add_split_flags(parser)
     parser.add_argument("--fixed-hyperparameters-json", default=None)
     parser.add_argument("--model-kwargs-json", default=None)
     parser.add_argument("--notes", default=None)
-    add_env_flags(parser)
+    _add_env_flags(parser)
     parser.add_argument("--n-trials", type=int, default=20)
     parser.add_argument("--study-name", default=None)
     parser.add_argument("--study-storage", default=None)
@@ -118,8 +390,8 @@ def _add_evaluate_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--model", required=True, choices=list(supported_models()))
     parser.add_argument("--weights", required=True)
     parser.add_argument("--benchmark-name", default=None)
-    add_filter_flags(parser)
-    add_split_flags(parser)
+    _add_filter_flags(parser)
+    _add_split_flags(parser)
     parser.set_defaults(
         split_strategy="holdout_2",
         train_pct=0.8,
@@ -133,7 +405,7 @@ def _add_evaluate_parser(sub: argparse._SubParsersAction) -> None:
         help="Use CLI filters instead of the weight set training metadata",
     )
     parser.add_argument("--allow-data-leak", action="store_true")
-    add_env_flags(parser)
+    _add_env_flags(parser)
     parser.add_argument("--sync", action="store_true", help="Run in-process without job queue")
     parser.add_argument("--job-id", default=None)
     parser.add_argument("--queue-only", action="store_true")
@@ -151,8 +423,8 @@ def _add_ensemble_parser(sub: argparse._SubParsersAction) -> None:
         default=[],
         help="Member as model:weights or model:weights:member_weight (repeatable)",
     )
-    add_filter_flags(parser)
-    add_split_flags(parser)
+    _add_filter_flags(parser)
+    _add_split_flags(parser)
     parser.set_defaults(
         split_strategy="holdout_2",
         train_pct=0.8,
@@ -160,7 +432,7 @@ def _add_ensemble_parser(sub: argparse._SubParsersAction) -> None:
         test_pct=0.2,
         use_original_fold=True,
     )
-    add_env_flags(parser)
+    _add_env_flags(parser)
     parser.add_argument("--sync", action="store_true")
     parser.add_argument("--job-id", default=None)
     parser.add_argument("--queue-only", action="store_true")
@@ -198,7 +470,7 @@ def _add_logs_parser(sub: argparse._SubParsersAction) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="pe-ensemble",
+        prog=Path(sys.argv[0]).name if sys.argv else "peen",
         description="PE Ensemble headless tools (train, tune, evaluate, ensemble).",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -233,7 +505,7 @@ def _run_queued_job(
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    apply_env_overrides(args)
+    _apply_env_overrides(args)
     if args.run_existing_job:
         if not args.job_id:
             raise TrainingError("--run-existing-job requires --job-id")
@@ -275,7 +547,7 @@ def cmd_train(args: argparse.Namespace) -> int:
 
 
 def cmd_tune(args: argparse.Namespace) -> int:
-    apply_env_overrides(args)
+    _apply_env_overrides(args)
     request = build_tuning_request(args)
 
     if args.queue:
@@ -301,7 +573,7 @@ def cmd_tune(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
-    apply_env_overrides(args)
+    _apply_env_overrides(args)
     request = build_evaluation_request(args)
 
     if args.sync:
@@ -328,7 +600,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
 
 def cmd_ensemble(args: argparse.Namespace) -> int:
-    apply_env_overrides(args)
+    _apply_env_overrides(args)
     if len(args.member) < 2:
         raise TrainingError("ensemble requires at least two --member entries")
     request = build_ensemble_request(args)
@@ -358,8 +630,6 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
 
 def cmd_methods(args: argparse.Namespace) -> int:
     del args
-    from pe_ensemble.library import combine_method_help
-
     for entry in combine_method_help():
         print(f"{entry['method']}: {entry['description']}")
     return 0
@@ -420,11 +690,20 @@ def cmd_logs(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    early_exit = prepare_runtime(argv)
+    # Build the parser and handle shell completion before plugin/DB bootstrap
+    # so tab-complete stays fast and does not touch PE-DB.
+    parser = build_parser()
+    try:
+        import argcomplete
+
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
+
+    early_exit = _prepare_runtime(argv)
     if early_exit is not None:
         return early_exit
 
-    parser = build_parser()
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))

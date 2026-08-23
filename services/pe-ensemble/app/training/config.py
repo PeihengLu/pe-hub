@@ -32,9 +32,31 @@ def pe_db_url() -> str:
     return os.getenv("PE_DB_URL", "http://localhost:8000")
 
 
+# Process flag: CLI enables in-process pe-db library; FastAPI server leaves this False (HTTP).
+_use_pe_db_library: bool = False
+
+
+def enable_cli_pe_db_access() -> None:
+    """Use in-process ``pe_db.library`` (same code path as the ``pe-db`` CLI).
+
+    Called once from the ``pe-ensemble`` CLI entrypoint. The FastAPI service never
+    calls this, so it always talks to PE-DB over HTTP via ``PE_DB_URL``.
+    """
+    global _use_pe_db_library
+    _use_pe_db_library = True
+
+
+def use_pe_db_library() -> bool:
+    """True when pe-ensemble is running as a CLI (in-process PE-DB)."""
+    return _use_pe_db_library
+
+
 def pe_db_mode() -> str:
-    """``http`` (default) or ``library`` for in-process PE-DB access."""
-    return os.getenv("PE_DB_MODE", "http").strip().lower()
+    """Return ``library`` for the pe-ensemble CLI or ``http`` for the web service.
+
+    Prefer :func:`use_pe_db_library`. This string form exists only as a thin alias.
+    """
+    return "library" if _use_pe_db_library else "http"
 
 
 def pe_db_filter_timeout() -> tuple[float, float]:

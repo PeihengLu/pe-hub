@@ -7,7 +7,7 @@ import pytest
 
 from app.ensemble.combine import COMBINE_METHODS
 from app.training.config import supported_models
-from pe_ensemble.cli_common import (
+from pe_ensemble.cli import (
     build_ensemble_request,
     build_evaluation_request,
     build_training_request,

@@ -12,18 +12,52 @@ A platform for prime editing efficiency data management, model evaluation, and t
 
 Shared Python utilities live in `packages/pe-common`.
 
-## Quick start
+## Installation
 
-From the repository root:
+Use a **writable** Python environment (conda or venv). Do **not** use Apple Command Line Tools / system Python — editable installs need write access to that env’s `site-packages`.
 
 ```bash
-./scripts/start-all.sh --install   # first time: install Python + npm deps
+# Example with conda (name is yours; pedb is a common choice)
+conda create -n pedb python=3.11 -y
+conda activate pedb
+```
+
+Or with the repo venv: `make setup && source venv/bin/activate`.
+
+### Option A — Web portal (PE Hub + APIs)
+
+From the repository root, with the env activated:
+
+```bash
+./scripts/start-all.sh --install   # first time: Python + npm deps
 ./scripts/start-all.sh
 ```
 
 - PE Hub: http://localhost:5173
 - PE Database API docs: http://localhost:8000/docs
 - PE Ensemble API docs: http://localhost:8001/docs
+
+### Option B — CLIs only (`pedb` / `peen`)
+
+For catalog prep, filtering, training, and HPO without starting HTTP servers:
+
+```bash
+conda activate pedb                 # or your venv
+./scripts/install-clis.sh           # editable pe-common + pe-db + pe-ensemble + tab completion
+conda deactivate && conda activate pedb       # reload completion hooks
+```
+
+This installs console scripts **`pedb`** / **`pe-db`** and **`peen`** / **`pe-ensemble`**, and bash/zsh tab completion (conda `activate.d`, else shell rc). Prefer the editable install (or set `DATA_ROOT` to this repo’s `datasets/`) so the CLI uses `datasets/catalog/pe_database.db`.
+
+```bash
+pedb <TAB>
+pedb init
+pedb studies
+peen models
+peen train --help
+```
+
+Details: [`services/pe-db/README.md`](services/pe-db/README.md), [`services/pe-ensemble/README.md`](services/pe-ensemble/README.md).
 
 ### Manual setup
 

@@ -64,7 +64,6 @@ app/training/tuning_schemas.py
 pe_ensemble/__init__.py
 pe_ensemble/_bootstrap.py
 pe_ensemble/cli.py
-pe_ensemble/cli_common.py
 pe_ensemble/library.py
 pe_ensemble.egg-info/PKG-INFO
 pe_ensemble.egg-info/SOURCES.txt
@@ -98,5 +97,6 @@ tests/test_train_models_plugins.py
 tests/test_training_jobs.py
 tests/test_tune_jobs.py
 tests/test_tune_study.py
+tests/test_vendor_models_evaluation.py
 tests/test_weights_loading.py
 tests/test_weights_registry.py

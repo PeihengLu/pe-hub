@@ -423,32 +423,27 @@ def list_available_weights() -> List[str]:
                 <code className="text-xs bg-slate-100 px-1 rounded">PLUGINS_ROOT</code> (default repo{' '}
                 <code className="text-xs bg-slate-100 px-1 rounded">plugins/</code>).
               </p>
-              <p className="text-xs text-slate-500">Library mode (no PE-DB HTTP server):</p>
+              <p className="text-xs text-slate-500">
+                CLI always uses in-process PE-DB (no PE-DB HTTP server required):
+              </p>
               <pre className={preClass}>
-{`cd services/pe-ensemble
-PE_DB_MODE=library python -m app.train_models \\
+{`peen train \\
   --model my_model \\
   --dataset-name my_run \\
   --dataset library2 \\
   --hyperparameters-json '{"epochs": 5}' \\
   --device cuda:0`}
               </pre>
-              <p className="text-xs text-slate-500">HTTP mode (PE-DB API running with the same plugin):</p>
-              <pre className={preClass}>
-{`python -m app.train_models \\
-  --model my_model \\
-  --dataset-name my_run \\
-  --dataset library2 \\
-  --pe-db-url http://localhost:8000 \\
-  --hyperparameters-json '{"epochs": 5}'`}
-              </pre>
+              <p className="text-xs text-slate-500">
+                The FastAPI web service talks to PE-DB over HTTP via{' '}
+                <code className="text-xs bg-slate-100 px-1 rounded">PE_DB_URL</code>.
+              </p>
             </div>
           </div>
           <p className="text-xs text-slate-500 mt-2">
             Env vars: <code className="bg-slate-100 px-1 rounded">PLUGINS_ROOT</code>,{' '}
             <code className="bg-slate-100 px-1 rounded">WEIGHTS_ROOT</code>,{' '}
-            <code className="bg-slate-100 px-1 rounded">PE_DB_MODE</code> (http | library),{' '}
-            <code className="bg-slate-100 px-1 rounded">PE_DB_URL</code>
+            <code className="bg-slate-100 px-1 rounded">PE_DB_URL</code> (web service only)
           </p>
         </GuideSection>
       </div>

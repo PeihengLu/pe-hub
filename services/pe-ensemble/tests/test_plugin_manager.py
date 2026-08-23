@@ -216,7 +216,7 @@ def test_notify_pe_db_plugin_reload_handles_error(monkeypatch: pytest.MonkeyPatc
         def json(self):
             return {}
 
-    monkeypatch.setattr(pe_db_access, "pe_db_mode", lambda: "http")
+    monkeypatch.setattr(pe_db_access, "use_pe_db_library", lambda: False)
     monkeypatch.setattr(
         pe_db_access.requests,
         "post",

@@ -2,9 +2,20 @@
 
 ## Quick start
 
+Activate a conda/venv first (not system/Apple CLT Python).
+
 ```bash
-./scripts/start-all.sh --install   # first time
+conda activate pedb                # or: source venv/bin/activate
+./scripts/start-all.sh --install   # first time (portal)
 ./scripts/start-all.sh
+```
+
+CLIs only (`pedb` / `peen`, includes tab completion):
+
+```bash
+conda activate pedb
+./scripts/install-clis.sh
+conda deactivate && conda activate pedb   # reload completion
 ```
 
 Or set up Python manually:
@@ -74,8 +85,7 @@ curl http://localhost:8001/devices
 
 | Variable | Service | Purpose |
 |----------|---------|---------|
-| `PE_DB_URL` | Ensemble | PE Database base URL when `PE_DB_MODE=http` (default `http://localhost:8000`) |
-| `PE_DB_MODE` | Ensemble | `http` (default) or `library` for in-process PE-DB access |
+| `PE_DB_URL` | Ensemble web service | PE Database base URL for HTTP access (default `http://localhost:8000`) |
 | `WEIGHTS_ROOT` | Ensemble | Override weights directory |
 | `TRAINING_JOBS_ROOT` | Ensemble | Override `jobs/` location |
 | `DATABASE_URL` | Database | Override SQLite catalog path |
