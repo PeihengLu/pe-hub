@@ -56,6 +56,9 @@ vendor = [
     "xgboost>=1.7.0",  # For OPED shallow learning models
 ]
 
+[project.scripts]
+pe-ensemble = "pe_ensemble.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pe_ensemble*"]
+include = ["app*", "pe_ensemble*"]

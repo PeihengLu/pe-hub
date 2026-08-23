@@ -53,6 +53,11 @@ pe-db standardize --force
 pe-db filter --format deepprime --dataset library2 \
   --cell-line HEK293T --pe-system PE2max --split-strategy holdout_3 \
   --out /tmp/deepprime_train.parquet
+pe-db studies
+pe-db datasets --study deepprime
+pe-db datasheets
+pe-db scaffolds
+pe-db statistics
 pe-db formats
 pe-db plugins reload
 ```

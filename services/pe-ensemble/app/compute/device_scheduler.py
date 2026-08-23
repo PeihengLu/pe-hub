@@ -38,10 +38,17 @@ from ..training.jobs import mark_stopping as mark_train_stopping
 from ..training.jobs import update_job as update_train_job
 from ..training.runner import execute_training
 from ..training.schemas import TrainingRequest
+from ..training.tune_jobs import get_job as get_tune_job
+from ..training.tune_jobs import mark_cancelled as mark_tune_cancelled
+from ..training.tune_jobs import mark_failed as mark_tune_failed
+from ..training.tune_jobs import mark_stopping as mark_tune_stopping
+from ..training.tune_jobs import update_job as update_tune_job
+from ..training.tune_study import execute_tuning
+from ..training.tuning_schemas import TuningRequest
 
 logger = logging.getLogger(__name__)
 
-JobKind = Literal["train", "evaluate", "ensemble"]
+JobKind = Literal["train", "evaluate", "ensemble", "tune"]
 QueuedJob = Tuple[JobKind, str]
 
 
@@ -50,6 +57,8 @@ def _get_job_manifest(kind: JobKind, job_id: str) -> Dict[str, object]:
         return get_train_job(job_id)
     if kind == "ensemble":
         return get_ensemble_job(job_id)
+    if kind == "tune":
+        return get_tune_job(job_id)
     return get_eval_job(job_id)
 
 
@@ -58,6 +67,8 @@ def _update_job(kind: JobKind, job_id: str, **fields: object) -> None:
         update_train_job(job_id, **fields)
     elif kind == "ensemble":
         update_ensemble_job(job_id, **fields)
+    elif kind == "tune":
+        update_tune_job(job_id, **fields)
     else:
         update_eval_job(job_id, **fields)
 
@@ -67,6 +78,8 @@ def _mark_cancelled(kind: JobKind, job_id: str) -> None:
         mark_train_cancelled(job_id)
     elif kind == "ensemble":
         mark_ensemble_cancelled(job_id)
+    elif kind == "tune":
+        mark_tune_cancelled(job_id)
     else:
         mark_eval_cancelled(job_id)
 
@@ -76,6 +89,8 @@ def _mark_failed(kind: JobKind, job_id: str, error: str) -> None:
         mark_train_failed(job_id, error)
     elif kind == "ensemble":
         mark_ensemble_failed(job_id, error)
+    elif kind == "tune":
+        mark_tune_failed(job_id, error)
     else:
         mark_eval_failed(job_id, error)
 
@@ -85,6 +100,8 @@ def _mark_stopping(kind: JobKind, job_id: str) -> None:
         mark_train_stopping(job_id)
     elif kind == "ensemble":
         mark_ensemble_stopping(job_id)
+    elif kind == "tune":
+        mark_tune_stopping(job_id)
     else:
         mark_eval_stopping(job_id)
 
@@ -116,6 +133,9 @@ class ComputeDeviceScheduler:
 
     def submit_ensemble(self, job_id: str, request: EnsembleRequest) -> None:
         self._submit(job_id, "ensemble", request.device or AUTO_DEVICE)
+
+    def submit_tuning(self, job_id: str, request: TuningRequest) -> None:
+        self._submit(job_id, "tune", request.training.device or AUTO_DEVICE)
 
     def _submit(self, job_id: str, kind: JobKind, requested: str) -> None:
         queued: QueuedJob = (kind, job_id)
@@ -236,6 +256,8 @@ class ComputeDeviceScheduler:
                 execute_training(request, job_id=job_id, device_id=device_id)
             elif kind == "ensemble":
                 execute_ensemble(request, job_id=job_id, device_id=device_id)
+            elif kind == "tune":
+                execute_tuning(request, job_id=job_id, device_id=device_id)
             else:
                 execute_evaluation(request, job_id=job_id, device_id=device_id)
         except JobCancelledError:
@@ -310,7 +332,7 @@ class ComputeDeviceScheduler:
 def _load_request(
     kind: JobKind,
     job_id: str,
-) -> TrainingRequest | EvaluationRequest | EnsembleRequest:
+) -> TrainingRequest | EvaluationRequest | EnsembleRequest | TuningRequest:
     if kind == "train":
         from ..training.config import jobs_root
 
@@ -319,6 +341,10 @@ def _load_request(
         from ..ensemble.config import ensemble_jobs_root
 
         request_path = ensemble_jobs_root() / job_id / "request.json"
+    elif kind == "tune":
+        from ..training.config import tune_jobs_root
+
+        request_path = tune_jobs_root() / job_id / "request.json"
     else:
         from ..evaluation.config import eval_jobs_root
 
@@ -329,6 +355,8 @@ def _load_request(
         return TrainingRequest.model_validate(payload)
     if kind == "ensemble":
         return EnsembleRequest.model_validate(payload)
+    if kind == "tune":
+        return TuningRequest.model_validate(payload)
     return EvaluationRequest.model_validate(payload)
 
 

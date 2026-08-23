@@ -56,6 +56,19 @@ from .ensemble.schemas import (
     EnsembleRequest,
 )
 from .training.jobs import create_job, delete_job as delete_train_job, get_job, job_summary, list_jobs, read_logs
+from .training.tune_jobs import (
+    create_job as create_tune_job,
+    delete_job as delete_tune_job,
+    get_job as get_tune_job,
+    job_summary as tune_job_summary,
+    list_jobs as list_tune_jobs,
+    read_logs as read_tune_logs,
+)
+from .training.tuning_schemas import (
+    TuningJobCreatedResponse,
+    TuningLogResponse,
+    TuningRequest,
+)
 from pe_common.devices import list_devices as list_compute_devices
 from pe_common.devices import default_device_id, resolve_device
 from .training.schemas import (
@@ -457,6 +470,99 @@ async def get_training_logs(
         next_offset=next_offset,
         log=log_chunk,
     )
+
+
+@app.post("/tune")
+async def tune_model(request: TuningRequest):
+    """Queue an asynchronous hyperparameter tuning job."""
+    model_name = request.training.model_name.strip().lower()
+    if not is_supported_model(model_name):
+        raise HTTPException(status_code=400, detail="Invalid model name")
+
+    job_id = create_tune_job(request)
+    get_scheduler().submit_tuning(job_id, request)
+    manifest = get_tune_job(job_id)
+    message = "Tuning job started"
+    if manifest.get("queue_position"):
+        message = f"Tuning job queued (position {manifest['queue_position']})"
+    return TuningJobCreatedResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        message=message,
+    )
+
+
+@app.get("/tune/jobs")
+async def list_tuning_jobs(limit: int = Query(50, ge=1, le=200)):
+    manifests = list_tune_jobs(limit=limit)
+    return {
+        "jobs": [tune_job_summary(manifest).model_dump() for manifest in manifests],
+        "count": len(manifests),
+    }
+
+
+@app.get("/tune/status/{job_id}")
+async def get_tuning_status(job_id: str):
+    try:
+        manifest = get_tune_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    summary = tune_job_summary(manifest).model_dump()
+    if manifest.get("result") is not None:
+        summary["result"] = manifest["result"]
+    return summary
+
+
+@app.delete("/tune/jobs/{job_id}", status_code=202)
+async def delete_tuning_job(job_id: str):
+    try:
+        get_tune_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    manifest = begin_job_kill("tune", job_id, get_job=get_tune_job)
+    asyncio.create_task(
+        asyncio.to_thread(
+            finalize_job_kill,
+            "tune",
+            job_id,
+            get_job=get_tune_job,
+            delete_job=delete_tune_job,
+        )
+    )
+    return {
+        "job_id": job_id,
+        "accepted": True,
+        "status": manifest.get("status") if manifest else "deleted",
+    }
+
+
+@app.get("/tune/logs/{job_id}")
+async def get_tuning_logs(
+    job_id: str,
+    offset: int = Query(0, ge=0, description="Byte offset into the log file"),
+):
+    try:
+        manifest = get_tune_job(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    log_chunk, next_offset = read_tune_logs(job_id, offset=offset)
+    return TuningLogResponse(
+        job_id=job_id,
+        status=manifest["status"],
+        offset=offset,
+        next_offset=next_offset,
+        log=log_chunk,
+    )
+
+
+@app.get("/tune/devices")
+async def tuning_device_status():
+    return {
+        "default": default_device_id(),
+        "devices": get_scheduler().device_snapshot(),
+    }
 
 
 @app.post("/evaluate")

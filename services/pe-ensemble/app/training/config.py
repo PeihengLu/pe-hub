@@ -63,3 +63,10 @@ def tuning_studies_root() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return (Path(__file__).resolve().parents[2] / "tuning_studies").resolve()
+
+
+def tune_jobs_root() -> Path:
+    env = os.getenv("TUNING_JOBS_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path(__file__).resolve().parents[2] / "tune_jobs").resolve()

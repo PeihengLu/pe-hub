@@ -12,8 +12,13 @@ import pandas as pd
 
 from pe_db.library import (
     PeDbLibraryError,
+    catalog_statistics,
     filter_data,
+    list_datasheets,
+    list_datasets,
     list_output_formats,
+    list_scaffolds,
+    list_studies,
     reload_plugins,
     run_convert_sheet,
     run_export,
@@ -109,6 +114,32 @@ def build_parser() -> argparse.ArgumentParser:
     convert_p.set_defaults(func=cmd_convert)
 
     _build_filter_parser(sub)
+
+    studies_p = sub.add_parser("studies", help="List catalog studies")
+    studies_p.set_defaults(func=cmd_studies)
+
+    datasets_p = sub.add_parser("datasets", help="List catalog datasets")
+    datasets_p.add_argument("--study", default=None)
+    datasets_p.set_defaults(func=cmd_datasets)
+
+    datasheets_p = sub.add_parser("datasheets", help="List catalog datasheets")
+    datasheets_p.add_argument("--study", default=None)
+    datasheets_p.add_argument("--dataset", default=None)
+    datasheets_p.set_defaults(func=cmd_datasheets)
+
+    scaffolds_p = sub.add_parser("scaffolds", help="List pegRNA scaffolds")
+    scaffolds_p.set_defaults(func=cmd_scaffolds)
+
+    stats_p = sub.add_parser("statistics", help="Descriptive statistics over edit rows")
+    stats_p.add_argument("--edit-type", default=None)
+    stats_p.add_argument("--edit-length", type=int, default=None)
+    stats_p.add_argument("--edit-efficiency-min", type=float, default=None)
+    stats_p.add_argument("--edit-efficiency-max", type=float, default=None)
+    stats_p.add_argument("--edit-scope", default=None)
+    stats_p.add_argument("--experimental-method", default=None)
+    stats_p.add_argument("--target-context", default=None)
+    stats_p.add_argument("--scaffold-name", default=None)
+    stats_p.set_defaults(func=cmd_statistics)
 
     formats_p = sub.add_parser("formats", help="List supported filter output formats")
     formats_p.set_defaults(func=cmd_formats)
@@ -216,6 +247,49 @@ def _write_filter_output(result: dict[str, Any], path: Path) -> None:
         print(f"Wrote {len(df)} rows to {path}")
         return
     raise PeDbLibraryError(f"Unsupported --out extension: {path.suffix} (use .json, .csv, or .parquet)")
+
+
+def cmd_studies(args: argparse.Namespace) -> int:
+    del args
+    print(json.dumps(list_studies(), indent=2, default=str))
+    return 0
+
+
+def cmd_datasets(args: argparse.Namespace) -> int:
+    print(json.dumps(list_datasets(study=args.study), indent=2, default=str))
+    return 0
+
+
+def cmd_datasheets(args: argparse.Namespace) -> int:
+    print(
+        json.dumps(
+            list_datasheets(study=args.study, dataset=args.dataset),
+            indent=2,
+            default=str,
+        )
+    )
+    return 0
+
+
+def cmd_scaffolds(args: argparse.Namespace) -> int:
+    del args
+    print(json.dumps(list_scaffolds(), indent=2, default=str))
+    return 0
+
+
+def cmd_statistics(args: argparse.Namespace) -> int:
+    result = catalog_statistics(
+        edit_type=args.edit_type,
+        edit_length=args.edit_length,
+        edit_efficiency_min=args.edit_efficiency_min,
+        edit_efficiency_max=args.edit_efficiency_max,
+        edit_scope=args.edit_scope,
+        experimental_method=args.experimental_method,
+        target_context=args.target_context,
+        scaffold_name=args.scaffold_name,
+    )
+    print(json.dumps(result, indent=2, default=str))
+    return 0
 
 
 def cmd_formats(args: argparse.Namespace) -> int:

@@ -24,6 +24,10 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 - `GET /train/status/{job_id}` - Training job status
 - `GET /train/logs/{job_id}` - Incremental training logs
 - `GET /train/jobs` - List recent training jobs
+- `POST /tune` - Queue an asynchronous Optuna hyperparameter tuning job
+- `GET /tune/status/{job_id}` - Tuning job status
+- `GET /tune/logs/{job_id}` - Tuning job logs
+- `GET /tune/jobs` - List recent tuning jobs
 - `GET /devices` - List compute devices (GPU, MPS, XPU, CPU, …)
 - `GET /train/devices` - Per-device training occupancy and queue depth
 - `GET /data/filter` - Proxy PE-DB filter/export (same contract as PE Hub export)
@@ -85,11 +89,36 @@ layout but are **gitignored**; they are indexed in `local_registry.json` while
 On older checkouts where weights still sit under `vendor/models`, bootstrap once
 with `python -m app.models.migrate_weights`.
 
+## Install (cluster / headless)
+
+```bash
+pip install -e packages/pe-common
+pip install -e services/pe-db
+pip install -e "services/pe-ensemble[library]"
+```
+
+This installs the `pe-db` and `pe-ensemble` console scripts. The CLI defaults to
+`PE_DB_MODE=library` so training, tuning, evaluation, and ensembling do not
+require a local PE-DB HTTP server. The web portal still talks to FastAPI over HTTP.
+
 ## Training CLI and SLURM
 
 Run training without the PE Ensemble HTTP server or PE Hub (logs and job state land under `jobs/`).
 
 Active model plugins under `PLUGINS_ROOT` (default `<repo>/plugins`) are loaded automatically at CLI startup, same as the HTTP service. See [`../../plugins/README.md`](../../plugins/README.md) for how to prepare and activate a plugin for both the web UI and CLI.
+
+### `pe-ensemble` subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `pe-ensemble train` | Train a model (queued via device scheduler by default) |
+| `pe-ensemble tune` | Optuna hyperparameter search (in-process by default; `--queue` for scheduler) |
+| `pe-ensemble evaluate` | Benchmark a registered weight set |
+| `pe-ensemble ensemble` | Fuse member predictions (`--combine mean`, `weighted_mean`, …) |
+| `pe-ensemble models` / `weights` / `methods` / `devices` | Registry and device listings |
+| `pe-ensemble jobs` / `logs` | Inspect queued or completed jobs |
+
+`python -m app.train_models` and `python -m app.tune_models` remain as thin shims.
 
 ### Library mode (no PE-DB HTTP server)
 
@@ -102,8 +131,7 @@ pip install -e "services/pe-ensemble[pe-db]"
 
 pe-db init   # seed, export, standardize (or skip if datasets/ already prepared)
 
-cd services/pe-ensemble
-PE_DB_MODE=library python -m app.train_models \
+pe-ensemble train \
   --model deepprime \
   --dataset-name library2 \
   --dataset library2 \
@@ -112,15 +140,14 @@ PE_DB_MODE=library python -m app.train_models \
   --device cuda:0
 ```
 
-Use `--pe-db-mode library` instead of the environment variable when preferred.
+Use `--pe-db-mode library` instead of the environment variable when preferred (library mode is the CLI default).
 
 ### HTTP mode (PE-DB API running)
 
 ```bash
-cd services/pe-ensemble
-python -m app.train_models --list-devices
+pe-ensemble devices
 
-python -m app.train_models \
+pe-ensemble train \
   --model deepprime \
   --dataset-name library2 \
   --dataset library2 \

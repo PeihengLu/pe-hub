@@ -7,10 +7,15 @@ from __future__ import annotations
 
 from pe_db.library import (
     PeDbLibraryError,
+    catalog_statistics,
     ensure_plugins_loaded,
     filter_data,
     filter_from_params,
+    list_datasheets,
+    list_datasets,
     list_output_formats,
+    list_scaffolds,
+    list_studies,
     reload_plugins,
     run_convert_sheet,
     run_export,
@@ -21,10 +26,15 @@ from pe_db.library import (
 
 __all__ = [
     "PeDbLibraryError",
+    "catalog_statistics",
     "ensure_plugins_loaded",
     "filter_data",
     "filter_from_params",
+    "list_datasheets",
+    "list_datasets",
     "list_output_formats",
+    "list_scaffolds",
+    "list_studies",
     "reload_plugins",
     "run_convert_sheet",
     "run_export",

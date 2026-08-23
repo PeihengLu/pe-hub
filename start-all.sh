@@ -342,12 +342,12 @@ if [[ "${INSTALL_DEPS}" == true ]]; then
     fi
 
     echo "Installing PE Database dependencies ..."
-    "${PYTHON}" -m pip install -r "${PE_DB_DIR}/requirements.txt"
+    "${PYTHON}" -m pip install -e "${PE_DB_DIR}"
     "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common" --no-deps
 
     echo "Installing PE Ensemble dependencies ..."
     "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common"
-    "${PYTHON}" -m pip install -e "${PE_ENSEMBLE_DIR}"
+    "${PYTHON}" -m pip install -e "${PE_ENSEMBLE_DIR}[library]"
 
     echo "Installing frontend dependencies ..."
     (cd "${FRONTEND_DIR}" && npm install)

@@ -261,3 +261,66 @@ def filter_from_params(
 def list_output_formats() -> tuple[str, ...]:
     """Return supported ``format`` values for filter/export."""
     return tuple(sorted(known_output_formats()))
+
+
+def list_studies() -> list[dict[str, Any]]:
+    """List catalog studies (same contract as ``GET /api/studies``)."""
+    with get_session() as session:
+        return [row.model_dump() for row in CatalogRepository(session).list_studies()]
+
+
+def list_datasets(*, study: Optional[str] = None) -> list[dict[str, Any]]:
+    """List catalog datasets (same contract as ``GET /api/datasets``)."""
+    with get_session() as session:
+        return [
+            row.model_dump()
+            for row in CatalogRepository(session).list_datasets(study_name=study)
+        ]
+
+
+def list_datasheets(
+    *,
+    study: Optional[str] = None,
+    dataset: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """List catalog datasheets (same contract as ``GET /api/datasheets``)."""
+    with get_session() as session:
+        return [
+            row.model_dump()
+            for row in CatalogRepository(session).list_datasheets(
+                study_name=study,
+                dataset_name=dataset,
+            )
+        ]
+
+
+def list_scaffolds() -> list[dict[str, Any]]:
+    """List pegRNA scaffolds (same contract as ``GET /api/scaffolds``)."""
+    with get_session() as session:
+        return [row.model_dump() for row in CatalogRepository(session).list_scaffolds()]
+
+
+def catalog_statistics(
+    *,
+    edit_type: Optional[str] = None,
+    edit_length: Optional[int] = None,
+    edit_efficiency_min: Optional[float] = None,
+    edit_efficiency_max: Optional[float] = None,
+    edit_scope: Optional[str] = None,
+    experimental_method: Optional[str] = None,
+    target_context: Optional[str] = None,
+    scaffold_name: Optional[str] = None,
+) -> dict[str, Any]:
+    """Descriptive statistics over edit rows (same contract as ``GET /api/statistics``)."""
+    with get_session() as session:
+        stats = CatalogRepository(session).compute_statistics(
+            edit_type=edit_type,
+            edit_length=edit_length,
+            edit_efficiency_min=edit_efficiency_min,
+            edit_efficiency_max=edit_efficiency_max,
+            edit_scope=edit_scope,
+            experimental_method=experimental_method,
+            target_context=target_context,
+            scaffold_name=scaffold_name,
+        )
+    return stats.model_dump()
