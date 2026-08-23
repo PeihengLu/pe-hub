@@ -3,16 +3,16 @@
 # Start PE Database, PE Ensemble API, and PE Hub (unified frontend) together.
 #
 # Usage:
-#   ./start-all.sh              # dev servers with reload (default)
-#   ./start-all.sh --install    # install deps for all three, then start
-#   ./start-all.sh --no-reload  # backends without uvicorn auto-reload
-#   ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
-#   ./start-all.sh --force-reexport  # re-export raw data before starting PE-DB
+#   ./scripts/start-all.sh              # dev servers with reload (default)
+#   ./scripts/start-all.sh --install    # install deps for all three, then start
+#   ./scripts/start-all.sh --no-reload  # backends without uvicorn auto-reload
+#   ./scripts/start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+#   ./scripts/start-all.sh --force-reexport  # re-export raw data before starting PE-DB
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PE_DB_DIR="${REPO_ROOT}/services/pe-db"
 PE_ENSEMBLE_DIR="${REPO_ROOT}/services/pe-ensemble"
 FRONTEND_DIR="${REPO_ROOT}/pe-hub"
@@ -53,10 +53,10 @@ Environment:
 Press Ctrl+C to stop all services.
 
 Examples:
-  ./start-all.sh
-  ./start-all.sh --install
-  ./start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
-  ./start-all.sh --force-reexport
+  ./scripts/start-all.sh
+  ./scripts/start-all.sh --install
+  ./scripts/start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
+  ./scripts/start-all.sh --force-reexport
 EOF
 }
 

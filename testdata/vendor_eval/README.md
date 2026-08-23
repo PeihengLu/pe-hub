@@ -1,7 +1,7 @@
 # Vendor evaluation fixtures
 
-Small CSV fixtures (two pegRNA rows each) used by the root system test
-`test_vendor_models_evaluation.py`.
+Small CSV fixtures (two pegRNA rows each) used by
+`services/pe-ensemble/tests/test_vendor_models_evaluation.py`.
 
 - `standardized_small.csv` — shared labels (`editing_efficiency`) for OPED
 - `deepprime_small.csv` — DeepPrime native features + `Efficiency`

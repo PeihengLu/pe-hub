@@ -664,8 +664,8 @@ Long-running filter requests support a \nolinkurl{progress\_token} query paramet
 From the repository root:
 
 \begin{verbatim}
-./start-all.sh --install   # first run: install Python and npm dependencies
-./start-all.sh             # start all three services
+./scripts/start-all.sh --install   # first run: install Python and npm dependencies
+./scripts/start-all.sh             # start all three services
 \end{verbatim}
 
 API documentation is served at \nolinkurl{http://localhost:8000/docs} (PE Database) and \nolinkurl{http://localhost:8001/docs} (PE Ensemble). Individual backends can also be started with \nolinkurl{uvicorn} after \nolinkurl{make install}; see the repository README.

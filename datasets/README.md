@@ -77,4 +77,4 @@ Column names match each vendor model's training scripts.
 
 `datasets/dataprep/` contains older standalone scripts (`restore_pridict.py`,
 `standarzied_data.py`). The supported path is PE Database startup export +
-standardize. `bash setup.sh` still runs these for backward compatibility.
+standardize. `bash scripts/setup.sh` still runs these for backward compatibility.

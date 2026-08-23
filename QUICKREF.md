@@ -3,8 +3,8 @@
 ## Quick start
 
 ```bash
-./start-all.sh --install   # first time
-./start-all.sh
+./scripts/start-all.sh --install   # first time
+./scripts/start-all.sh
 ```
 
 Or set up Python manually:
@@ -26,10 +26,10 @@ make install
 
 ```bash
 # All three (recommended)
-./start-all.sh
+./scripts/start-all.sh
 
 # PE Database only
-./start-pe-db-backend.sh --install
+./scripts/start-pe-db-backend.sh --install
 
 # PE Database headless (no HTTP)
 cd services/pe-db && pe-db init
@@ -48,7 +48,7 @@ make test           # Run pytest
 make format         # black
 make lint           # flake8
 make clean          # Remove caches and build artifacts
-make data-prep      # Legacy dataset prep (setup.sh)
+make data-prep      # Legacy dataset prep (scripts/setup.sh)
 ```
 
 ## API examples
@@ -99,7 +99,7 @@ cd services/pe-db && pip install -r requirements.txt
 Start PE Database once so export/standardize runs, or force re-export:
 
 ```bash
-./start-all.sh --force-reexport
+./scripts/start-all.sh --force-reexport
 ```
 
 ### Port already in use

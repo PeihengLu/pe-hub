@@ -60,7 +60,7 @@ export default function ServiceUnavailable({
               <p className="text-xs text-amber-700 mt-2 break-words">
                 From the repository root. Use{' '}
                 <code className="bg-amber-100/80 px-1 rounded break-all">
-                  ./start-all.sh --install
+                  ./scripts/start-all.sh --install
                 </code>{' '}
                 on first run to install dependencies.
               </p>

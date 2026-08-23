@@ -119,7 +119,7 @@ pip install -e .   # installs ``pe-db`` CLI and ``pe_db`` library package
 uvicorn app.main:app --reload --port 8000
 ```
 
-Or from the repo root: `./start-pe-db-backend.sh --install`
+Or from the repo root: `./scripts/start-pe-db-backend.sh --install`
 
 ### conda (recommended when using DeepSpCas9 scoring)
 
@@ -145,6 +145,6 @@ installed, MinSePIE standardization fills scores via `fill_missing_spcas9_scores
 Re-standardize after enabling scoring:
 
 ```bash
-PE_DB_FORCE_STANDARDIZE=1 ./start-pe-db-backend.sh
+PE_DB_FORCE_STANDARDIZE=1 ./scripts/start-pe-db-backend.sh
 # or: curl -X POST 'http://localhost:8000/api/export?study=minsepie&force_standardize=true'
 ```

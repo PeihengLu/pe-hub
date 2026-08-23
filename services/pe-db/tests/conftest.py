@@ -4,7 +4,7 @@ Ensures ``app`` resolves to ``services/pe-db/app``. Paths are applied only while
 pe-db tests are being collected (not at conftest import time), so pe-db and
 pe-ensemble suites can coexist in one pytest invocation.
 
-For isolated runs, ``run-smoke-tests.sh`` is still the recommended entry point.
+For isolated runs, ``scripts/run-smoke-tests.sh`` is still the recommended entry point.
 """
 from __future__ import annotations
 

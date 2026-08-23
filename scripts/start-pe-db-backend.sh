@@ -3,15 +3,15 @@
 # Start the PE Database FastAPI service.
 #
 # Usage:
-#   ./start-pe-db.sh              # dev server with reload (default)
-#   ./start-pe-db.sh --install    # install deps, then start
-#   ./start-pe-db.sh --no-reload  # production-style (no auto-reload)
-#   ./start-pe-db.sh --force-reexport  # re-export raw data before starting
+#   ./scripts/start-pe-db-backend.sh              # dev server with reload (default)
+#   ./scripts/start-pe-db-backend.sh --install    # install deps, then start
+#   ./scripts/start-pe-db-backend.sh --no-reload  # production-style (no auto-reload)
+#   ./scripts/start-pe-db-backend.sh --force-reexport  # re-export raw data before starting
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SERVICE_DIR="${REPO_ROOT}/services/pe-db"
 
 INSTALL_DEPS=false
@@ -40,10 +40,10 @@ Environment:
   Startup flags set PE_DB_FORCE_EXPORT / PE_DB_FORCE_STANDARDIZE when used.
 
 Examples:
-  ./start-pe-db.sh
-  ./start-pe-db.sh --install
-  ./start-pe-db.sh --force-reexport
-  DATA_ROOT=/path/to/datasets ./start-pe-db.sh --port 8080
+  ./scripts/start-pe-db-backend.sh
+  ./scripts/start-pe-db-backend.sh --install
+  ./scripts/start-pe-db-backend.sh --force-reexport
+  DATA_ROOT=/path/to/datasets ./scripts/start-pe-db-backend.sh --port 8080
 EOF
 }
 

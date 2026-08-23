@@ -37,8 +37,8 @@ Open http://localhost:5173
 From the repository root:
 
 ```bash
-./start-all.sh --install   # first time
-./start-all.sh
+./scripts/start-all.sh --install   # first time
+./scripts/start-all.sh
 ```
 
 ## Environment

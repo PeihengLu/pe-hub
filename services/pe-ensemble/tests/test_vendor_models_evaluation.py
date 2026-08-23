@@ -5,19 +5,13 @@ in each model's native schema). Each test loads bundled pre-trained weights and
 runs the wrapper's ``evaluate`` method end-to-end on CPU.
 
 Skips gracefully when vendor weights or optional runtime deps are missing
-(same expectation as ``services/pe-ensemble/tests/test_weights_loading.py``).
+(same expectation as ``test_weights_loading.py``).
 
-Run standalone:
-
-    PYTHONPATH=services/pe-ensemble:packages/pe-common \\
-        pytest test_vendor_models_evaluation.py -v
-
-Or via ``./run-smoke-tests.sh`` (includes this suite).
+Run via pe-ensemble tests or ``./scripts/run-smoke-tests.sh``.
 """
 from __future__ import annotations
 
 import math
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -25,16 +19,10 @@ import pandas as pd
 import pytest
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 TESTDATA = REPO_ROOT / "testdata" / "vendor_eval"
 VENDOR_MODELS = REPO_ROOT / "vendor" / "models"
 
-PE_ENSEMBLE = REPO_ROOT / "services" / "pe-ensemble"
-PE_COMMON = REPO_ROOT / "packages" / "pe-common"
-for path in (PE_ENSEMBLE, PE_COMMON):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
 
 def _model_factory():
     """Import ModelFactory after optional runtime deps are present."""

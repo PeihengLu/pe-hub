@@ -380,7 +380,7 @@ export default function BenchmarkPage() {
 
   if (modelsError) {
     return (
-      <ErrorAlert message="Could not load models from the Ensemble API. Confirm pe-ensemble is running on port 8001 (or use ./start-all.sh)." />
+      <ErrorAlert message="Could not load models from the Ensemble API. Confirm pe-ensemble is running on port 8001 (or use ./scripts/start-all.sh)." />
     )
   }
 

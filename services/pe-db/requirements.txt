@@ -9,6 +9,7 @@ pandas>=1.3.0
 numpy>=1.21.0
 pyarrow>=14.0.0
 openpyxl>=3.0.0  # For reading Excel files
+biopython>=1.79  # Bio.Seq / melting temp in convert_data.py
 
 # Shared package (will be installed from local path)
 # pe-common

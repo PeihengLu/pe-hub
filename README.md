@@ -17,8 +17,8 @@ Shared Python utilities live in `packages/pe-common`.
 From the repository root:
 
 ```bash
-./start-all.sh --install   # first time: install Python + npm deps
-./start-all.sh
+./scripts/start-all.sh --install   # first time: install Python + npm deps
+./scripts/start-all.sh
 ```
 
 - PE Hub: http://localhost:5173
@@ -30,7 +30,7 @@ From the repository root:
 ```bash
 make setup && source venv/bin/activate
 make install          # editable installs for root, pe-common, pe-ensemble
-bash setup.sh         # optional legacy dataset prep scripts
+bash scripts/setup.sh         # optional legacy dataset prep scripts
 ```
 
 Run backends individually:
@@ -80,7 +80,7 @@ pe-db/
 │   ├── standardized/         # Parquet in shared schema (generated)
 │   └── catalog/              # SQLite catalog DB (generated)
 ├── vendor/models/            # Third-party model code (submodules)
-├── start-all.sh              # Start all three services
+├── scripts/                  # start-all, start-pe-db-backend, smoke tests, setup
 └── Makefile                  # install, test, lint, format
 ```
 
@@ -196,7 +196,7 @@ make lint           # flake8
 Re-export or re-standardize data:
 
 ```bash
-PE_DB_FORCE_EXPORT=1 ./start-pe-db-backend.sh
+PE_DB_FORCE_EXPORT=1 ./scripts/start-pe-db-backend.sh
 # or
 curl -X POST 'http://localhost:8000/api/export?force_standardize=true'
 ```

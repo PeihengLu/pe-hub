@@ -32,7 +32,7 @@ export default function HomePage() {
         <p className="text-slate-600 mt-3 text-sm">
           Quick start from the repo root:{' '}
           <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">
-            ./start-all.sh --install
+            ./scripts/start-all.sh --install
           </code>
         </p>
       </Card>

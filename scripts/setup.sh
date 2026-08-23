@@ -2,8 +2,14 @@
 
 # Setup script for PE-DB project
 # This script prepares the datasets and environment
+#
+# Usage: ./scripts/setup.sh
 
 set -e  # Exit on error
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "${REPO_ROOT}"
 
 echo "======================================"
 echo "PE-DB Project Setup"

@@ -47,4 +47,4 @@ jupyter:
 	jupyter lab --ip=0.0.0.0 --port=8888
 
 data-prep:
-	bash setup.sh
+	bash scripts/setup.sh
