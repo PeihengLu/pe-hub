@@ -105,11 +105,17 @@ def _add_split_flags(parser: argparse.ArgumentParser) -> None:
         default="holdout_3",
         choices=["none", "holdout_2", "holdout_3", "cv"],
     )
-    parser.add_argument("--train-pct", type=float, default=0.7)
-    parser.add_argument("--val-pct", type=float, default=0.15)
-    parser.add_argument("--test-pct", type=float, default=0.15)
+    # Defaults applied in _build_split by strategy (CV must not inherit holdout pcts).
+    parser.add_argument("--train-pct", type=float, default=None)
+    parser.add_argument("--val-pct", type=float, default=None)
+    parser.add_argument("--test-pct", type=float, default=None)
     parser.add_argument("--cv-folds", type=int, default=None)
-    parser.add_argument("--use-original-fold", action="store_true")
+    parser.add_argument(
+        "--use-original-fold",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use author original_fold where available (--no-use-original-fold to force random)",
+    )
     parser.add_argument(
         "--original-fold-test-value",
         type=float,
@@ -172,11 +178,33 @@ def _apply_env_overrides(args: argparse.Namespace) -> None:
 
 
 def _build_split(args: argparse.Namespace) -> SplitQueryParams:
+    strategy = args.split_strategy
+    train_pct = args.train_pct
+    val_pct = args.val_pct
+    test_pct = args.test_pct
+
+    if strategy == "holdout_3":
+        train_pct = 0.7 if train_pct is None else train_pct
+        val_pct = 0.15 if val_pct is None else val_pct
+        test_pct = 0.15 if test_pct is None else test_pct
+    elif strategy == "holdout_2":
+        train_pct = 0.8 if train_pct is None else train_pct
+        val_pct = None
+        test_pct = 0.2 if test_pct is None else test_pct
+    elif strategy == "cv":
+        # Pure k-fold unless the caller passes --test-pct for an outer holdout.
+        train_pct = None
+        val_pct = None
+    elif strategy == "none":
+        train_pct = None
+        val_pct = None
+        test_pct = None
+
     return SplitQueryParams(
-        split_strategy=args.split_strategy,
-        train_pct=args.train_pct,
-        val_pct=args.val_pct,
-        test_pct=args.test_pct,
+        split_strategy=strategy,
+        train_pct=train_pct,
+        val_pct=val_pct,
+        test_pct=test_pct,
         cv_folds=args.cv_folds,
         use_original_fold=args.use_original_fold,
         original_fold_test_value=args.original_fold_test_value,

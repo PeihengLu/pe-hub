@@ -157,7 +157,38 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
   filters (`cell_line=HEK293T&cell_line=A549`), efficiency bounds, scaffold name,
   and `merge=true` to combine datasheets before split assignment.
 
+CLI mirrors the same flags (`pedb filter --merge --use-original-fold …`).
+
+#### Splits, author folds, and merge
+
+| Flag | Effect |
+|------|--------|
+| `--split-strategy` | `none` / `holdout_2` / `holdout_3` / `cv` |
+| `--use-original-fold` | Prefer author `original_fold` where present (`-1` = permanent test by default via `--original-fold-test-value`) |
+| `--merge` | Concatenate matching datasheets, then reassign groups by shared protospacer before splitting |
+
+**Merged DeepPrime ClinVar + PRIDICT library1:** with `--merge --use-original-fold`, PE-DB runs `propagate_original_fold_by_target_uid` after concatenation so library1 rows that share a protospacer/`target_uid` with ClinVar inherit DeepPrime’s `original_fold`. Non-overlapping library1 loci keep random CV / holdout groups. This is what the PRIDICT 2.0 reproduction base uses (see below).
+
+Example (merged export for training clients):
+
+```bash
+pedb filter --format pridict2 \
+  --study pridict1 --dataset library1 \
+  --study deepprime --dataset deepprime-clinvar \
+  --cell-line hek293t --pe-system pe2 \
+  --merge --use-original-fold --original-fold-test-value -1 \
+  --split-strategy cv --cv-folds 5 --test-pct 0.15 \
+  --out /tmp/l1_plus_clinvar.parquet
+```
+
 PE Ensemble’s **web service** and PE Hub call this endpoint over HTTP (Ensemble proxies it at `GET /data/filter`). The **`peen` CLI** uses the same filter logic in-process via `pe_db.library` (no PE-DB server required).
+
+### Experiment scripts that use PE-DB
+
+Dataset HPO recipes and the PRIDICT 2.0 transfer + ensemble reproduction call `peen`, which loads data through `pe_db.library` (same path as `pedb filter`):
+
+- [`scripts/experiments/`](../../scripts/experiments/README.md) — per-dataset HPO recipes
+- [`scripts/experiments/pridict2-reproduction/`](../../scripts/experiments/pridict2-reproduction/README.md) — full base → fine-tune → mean-ensemble pipeline (library1, L1+ClinVar merge, library-diverse)
 
 ## Run locally
 

@@ -15,6 +15,7 @@ from ..loaders import PEDataLoader
 from ..utils.json_utils import dataframe_to_json_records
 from pe_common.data_utils import (
     TARGET_UID_COLUMN,
+    propagate_original_fold_by_target_uid,
     reassign_group_ids_by_target_location,
     target_uid_series,
 )
@@ -370,6 +371,9 @@ class CatalogRepository:
         if merge_groups and pending:
             merged_frames = [filtered.copy() for _, _, filtered in pending]
             merged_std = pd.concat(merged_frames, ignore_index=True)
+            # Inherit author folds across datasheets that share a target locus
+            # (e.g. DeepPrime ClinVar folds → overlapping PRIDICT library1 rows).
+            merged_std = propagate_original_fold_by_target_uid(merged_std)
             merged_std = reassign_group_ids_by_target_location(merged_std)
             merged_descriptor = {
                 "study": "merged",

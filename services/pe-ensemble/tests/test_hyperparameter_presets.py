@@ -148,6 +148,19 @@ def test_extract_validation_metric_oped():
     assert metric == pytest.approx(0.42)
 
 
+def test_extract_validation_metric_oped_prefers_cv_mean():
+    metric = extract_validation_metric(
+        "oped",
+        {
+            "result": {
+                "val_spearman": 0.99,
+                "cross_validation": {"mean_val_spearman": 0.4},
+            }
+        },
+    )
+    assert metric == pytest.approx(0.4)
+
+
 def test_extract_validation_metric_deepprime_neg_loss():
     metric = extract_validation_metric(
         "deepprime",
@@ -156,12 +169,47 @@ def test_extract_validation_metric_deepprime_neg_loss():
     assert metric == pytest.approx(-0.2)
 
 
+def test_extract_validation_metric_deepprime_prefers_cv_mean():
+    metric = extract_validation_metric(
+        "deepprime",
+        {
+            "result": {
+                "model_summaries": [{"best_val_loss": 0.01}],
+                "cross_validation": {
+                    "mean_best_val_loss": 0.5,
+                    "folds": [
+                        {"best_val_loss": 0.4},
+                        {"best_val_loss": 0.6},
+                    ],
+                },
+            }
+        },
+    )
+    assert metric == pytest.approx(-0.5)
+
+
 def test_extract_validation_metric_pridict2():
     metric = extract_validation_metric(
         "pridict2",
         {"result": {"validation_metrics": {"averageedited_spearman": 0.55}}},
     )
     assert metric == pytest.approx(0.55)
+
+
+def test_extract_validation_metric_pridict2_prefers_cv_mean():
+    metric = extract_validation_metric(
+        "pridict2",
+        {
+            "result": {
+                "validation_metrics": {"averageedited_spearman": 0.99},
+                "cross_validation": [
+                    {"metrics": {"averageedited_spearman": 0.2}},
+                    {"metrics": {"averageedited_spearman": 0.4}},
+                ],
+            }
+        },
+    )
+    assert metric == pytest.approx(0.3)
 
 
 def test_training_request_hyperparameter_mode_default():

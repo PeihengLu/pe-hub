@@ -315,3 +315,38 @@ def test_merged_group_ids_reassigned_by_protospacer():
     assert out.loc[out["group_id"] == 0, "split"].nunique() == 1
     assert out.loc[out["group_id"] == 1, "split"].nunique() == 1
     assert out["split"].nunique() == 2
+
+
+def test_propagate_original_fold_by_target_uid():
+    from pe_common.data_utils import propagate_original_fold_by_target_uid
+
+    shared = "A" * 20
+    only_library1 = "T" * 20
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [
+                f"{'N' * 4}{shared}{'N' * 10}",  # DeepPrime
+                f"{'N' * 4}{shared}{'N' * 10}",  # library1 overlap
+                f"{'N' * 4}{only_library1}{'N' * 10}",  # library1 only
+            ],
+            "protospacer_location_l": [4, 4, 4],
+            "protospacer_location_r": [24, 24, 24],
+            "original_fold": [-1.0, float("nan"), float("nan")],
+        }
+    )
+    out = propagate_original_fold_by_target_uid(df)
+    assert float(out.loc[0, "original_fold"]) == -1.0
+    assert float(out.loc[1, "original_fold"]) == -1.0
+    assert pd.isna(out.loc[2, "original_fold"])
+
+    config = SplitConfig(
+        strategy="cv",
+        cv_folds=5,
+        test_pct=0.2,
+        use_original_fold=True,
+        original_fold_test_value=-1.0,
+        random_state=0,
+    )
+    split_df, _ = assign_splits(out, config)
+    assert set(split_df.loc[[0, 1], "split"]) == {"test"}
+    assert split_df.loc[2, "split"] in {"test", "fold_0", "fold_1", "fold_2", "fold_3", "fold_4"}

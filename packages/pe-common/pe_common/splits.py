@@ -364,7 +364,11 @@ def assign_splits(
     and stored ``group_id`` values are ignored. Rows without author folds fall back to
     target-location grouping (protospacer). After merging datasheets, callers should
     reassign ``group_id`` via ``reassign_group_ids_by_target_location`` before calling
-    this function with ``use_original_fold=False``.
+    this function with ``use_original_fold=False``. When merging DeepPrime with a
+    sheet that lacks folds, call ``propagate_original_fold_by_target_uid`` first
+    (PE-DB ``--merge`` does this automatically) so overlapping loci inherit
+    DeepPrime ``original_fold``; leftover NaN rows still fall back to target-location
+    grouping.
 
     Args:
         df: Input dataframe with ``group_col`` and optionally ``original_fold_col``.

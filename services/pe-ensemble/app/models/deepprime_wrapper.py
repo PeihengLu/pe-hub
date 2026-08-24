@@ -1,6 +1,7 @@
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 import sys
 import os
+import math
 from typing import List, Dict, Any, Optional, Tuple, cast
 import pandas as pd
 import torch
@@ -27,7 +28,11 @@ from pe_common.training import (
     LightningTrainerConfig,
     regression_metrics,
 )
-from pe_common.splits import resolve_train_val_from_splits
+from pe_common.splits import (
+    has_assigned_cv_folds,
+    iter_assigned_cv_folds,
+    resolve_train_val_from_splits,
+)
 
 from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
 
@@ -151,6 +156,114 @@ class DeepPrimeModelWrapper(BasePEModel):
         raise ValueError(
             f"{split_name} data must include 'editing_efficiency' or 'Efficiency' column."
         )
+
+    def _init_trainable_models(self, hyperparameters: Dict[str, Any]) -> None:
+        load_pretrained = bool(hyperparameters.get("load_pretrained", True))
+        pretrained_weights = hyperparameters.get("weights")
+        if load_pretrained:
+            if pretrained_weights:
+                self.load_weights_by_name(str(pretrained_weights))
+            else:
+                self.load_model()
+            return
+        from deepprime.src.dprime import GeneInteractionModel
+
+        hidden_size = int(hyperparameters.get("hidden_size", 128))
+        num_layers = int(hyperparameters.get("num_layers", 1))
+        self.models = [
+            GeneInteractionModel(hidden_size=hidden_size, num_layers=num_layers).to(self.device)
+        ]
+        self.model = self.models
+        self.is_trained = True
+
+    def _fit_models_on_split(
+        self,
+        *,
+        train_source: pd.DataFrame,
+        val_source: pd.DataFrame,
+        hyperparameters: Dict[str, Any],
+        progress_log: Any,
+        cancel_check: Any,
+        run_label: str,
+    ) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
+        epochs = int(hyperparameters.get("epochs", 5))
+        batch_size = int(hyperparameters.get("batch_size", 128))
+        lr = float(hyperparameters.get("lr", 1e-4))
+        weight_decay = float(hyperparameters.get("weight_decay", 0.0))
+        freezing = bool(hyperparameters.get("freezing", False))
+        grad_clip = float(hyperparameters.get("grad_clip", 1.0))
+        scheduler_name = hyperparameters.get("scheduler", "none")
+        scheduler_kwargs = hyperparameters.get("scheduler_kwargs", None)
+        early_stopping_patience = int(hyperparameters.get("early_stopping_patience", 10))
+        early_stopping_min_delta = float(hyperparameters.get("early_stopping_min_delta", 0.0))
+        reshuffle_each_epoch = bool(hyperparameters.get("reshuffle_each_epoch", True))
+
+        train_feature_df = self._to_deepprime_feature_df(train_source)
+        val_feature_df = self._to_deepprime_feature_df(val_source)
+        y_train = self._extract_targets(train_source, train_feature_df, "Training")
+        y_val = self._extract_targets(val_source, val_feature_df, "Validation")
+        train_inputs = self.prepare_data(train_feature_df)
+        val_inputs = self.prepare_data(val_feature_df)
+        train_loader = DataLoader(
+            _DeepPrimeTensorDataset(train_inputs["g"], train_inputs["x"], y_train),
+            batch_size=batch_size,
+            shuffle=reshuffle_each_epoch,
+            drop_last=False,
+        )
+        val_loader = DataLoader(
+            _DeepPrimeTensorDataset(val_inputs["g"], val_inputs["x"], y_val),
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+
+        history: List[Dict[str, float]] = []
+        model_summaries: List[Dict[str, float]] = []
+        for model_idx, model in enumerate(self.models):
+            if freezing:
+                apply_fine_tune_freezing(model, model.head)
+            lightning_hparams = dict(hyperparameters)
+            lightning_hparams["lr"] = lr
+            lightning_hparams["weight_decay"] = weight_decay
+            lightning_hparams["scheduler"] = scheduler_name
+            lightning_hparams["scheduler_kwargs"] = scheduler_kwargs
+            lightning_module = _DeepPrimeLightningRegressor(model, lightning_hparams)
+            metrics = fit_lightning_module(
+                lightning_module,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                device=self.device,
+                config=LightningTrainerConfig(
+                    max_epochs=epochs,
+                    grad_clip=grad_clip,
+                    patience=early_stopping_patience,
+                    min_delta=early_stopping_min_delta,
+                    enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
+                    log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
+                ),
+                on_epoch_end=make_epoch_logger(
+                    progress_log,
+                    prefix=f"{run_label}model {model_idx} |",
+                    cancel_check=cancel_check,
+                ),
+            )
+            log_training_best(
+                progress_log,
+                best_epoch=int(metrics["best_epoch"]),
+                best_val_loss=float(metrics["best_val_loss"]),
+                prefix=f"{run_label}model {model_idx} |",
+            )
+            for row in cast(List[Dict[str, float]], metrics["history"]):
+                history.append({"model_index": float(model_idx), **row})
+            model_summaries.append(
+                {
+                    "model_index": float(model_idx),
+                    "best_epoch": float(metrics["best_epoch"]),
+                    "best_val_loss": float(metrics["best_val_loss"]),
+                    "n_epochs_ran": float(metrics["n_epochs_ran"]),
+                }
+            )
+        return history, model_summaries
 
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
@@ -331,114 +444,58 @@ class DeepPrimeModelWrapper(BasePEModel):
         epochs = int(hyperparameters.get("epochs", 5))
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
-        weight_decay = float(hyperparameters.get("weight_decay", 0.0))
         load_pretrained = bool(hyperparameters.get("load_pretrained", True))
-        pretrained_weights = hyperparameters.get("weights")
         freezing = bool(hyperparameters.get("freezing", False))
-        grad_clip = float(hyperparameters.get("grad_clip", 1.0))
-        scheduler_name = hyperparameters.get("scheduler", "none")
-        scheduler_kwargs = hyperparameters.get("scheduler_kwargs", None)
-        early_stopping_patience = int(hyperparameters.get("early_stopping_patience", 10))
-        early_stopping_min_delta = float(hyperparameters.get("early_stopping_min_delta", 0.0))
-        reshuffle_each_epoch = bool(hyperparameters.get("reshuffle_each_epoch", True))
 
         source_df = train_data.reset_index(drop=True)
-        train_source, val_source = resolve_train_val_from_splits(source_df, val_data)
-        train_feature_df = self._to_deepprime_feature_df(train_source)
-        val_feature_df = self._to_deepprime_feature_df(val_source)
-        y_train = self._extract_targets(train_source, train_feature_df, "Training")
-        y_val = self._extract_targets(val_source, val_feature_df, "Validation")
-
-        if not self.is_trained:
-            if load_pretrained:
-                if pretrained_weights:
-                    self.load_weights_by_name(str(pretrained_weights))
-                else:
-                    self.load_model()
-            else:
-                from deepprime.src.dprime import GeneInteractionModel
-
-                hidden_size = int(hyperparameters.get("hidden_size", 128))
-                num_layers = int(hyperparameters.get("num_layers", 1))
-                self.models = [
-                    GeneInteractionModel(hidden_size=hidden_size, num_layers=num_layers).to(self.device)
-                ]
-                self.model = self.models
-                self.is_trained = True
-
-        train_inputs = self.prepare_data(train_feature_df)
-        val_inputs = self.prepare_data(val_feature_df)
-        train_dataset = _DeepPrimeTensorDataset(train_inputs["g"], train_inputs["x"], y_train)
-        val_dataset = _DeepPrimeTensorDataset(val_inputs["g"], val_inputs["x"], y_val)
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=reshuffle_each_epoch,
-            drop_last=False,
-        )
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            drop_last=False,
-        )
-
-        models_to_train = self.models
-        history: List[Dict[str, float]] = []
-        model_summaries: List[Dict[str, float]] = []
-
-        for model_idx, model in enumerate(models_to_train):
-            if freezing:
-                apply_fine_tune_freezing(model, model.head)
-            lightning_hparams = dict(hyperparameters)
-            lightning_hparams["lr"] = lr
-            lightning_hparams["weight_decay"] = weight_decay
-            lightning_hparams["scheduler"] = scheduler_name
-            lightning_hparams["scheduler_kwargs"] = scheduler_kwargs
-            lightning_module = _DeepPrimeLightningRegressor(model, lightning_hparams)
-            metrics = fit_lightning_module(
-                lightning_module,
-                train_loader=train_loader,
-                val_loader=val_loader,
-                device=self.device,
-                config=LightningTrainerConfig(
-                    max_epochs=epochs,
-                    grad_clip=grad_clip,
-                    patience=early_stopping_patience,
-                    min_delta=early_stopping_min_delta,
-                    enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
-                    log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
-                ),
-                on_epoch_end=make_epoch_logger(
-                    progress_log,
-                    prefix=f"model {model_idx} |",
+        cv_reports: List[Dict[str, Any]] = []
+        if val_data is None and has_assigned_cv_folds(source_df):
+            for fold_idx, (fold_label, fold_train, fold_val) in enumerate(
+                iter_assigned_cv_folds(source_df)
+            ):
+                if cancel_check is not None:
+                    cancel_check()
+                self._init_trainable_models(hyperparameters)
+                _, fold_summaries = self._fit_models_on_split(
+                    train_source=fold_train,
+                    val_source=fold_val,
+                    hyperparameters=hyperparameters,
+                    progress_log=progress_log,
                     cancel_check=cancel_check,
-                ),
-            )
-            log_training_best(
-                progress_log,
-                best_epoch=int(metrics["best_epoch"]),
-                best_val_loss=float(metrics["best_val_loss"]),
-                prefix=f"model {model_idx} |",
-            )
-            for row in cast(List[Dict[str, float]], metrics["history"]):
-                history.append({"model_index": float(model_idx), **row})
-            model_summaries.append(
-                {
-                    "model_index": float(model_idx),
-                    "best_epoch": float(metrics["best_epoch"]),
-                    "best_val_loss": float(metrics["best_val_loss"]),
-                    "n_epochs_ran": float(metrics["n_epochs_ran"]),
-                }
-            )
+                    run_label=f"{fold_label} |",
+                )
+                fold_losses = [float(row["best_val_loss"]) for row in fold_summaries]
+                cv_reports.append(
+                    {
+                        "fold": fold_idx,
+                        "fold_label": fold_label,
+                        "n_train": int(len(fold_train)),
+                        "n_val": int(len(fold_val)),
+                        "best_val_loss": float(sum(fold_losses) / len(fold_losses))
+                        if fold_losses
+                        else float("nan"),
+                        "model_summaries": fold_summaries,
+                    }
+                )
+
+        train_source, val_source = resolve_train_val_from_splits(source_df, val_data)
+        self._init_trainable_models(hyperparameters)
+        history, model_summaries = self._fit_models_on_split(
+            train_source=train_source,
+            val_source=val_source,
+            hyperparameters=hyperparameters,
+            progress_log=progress_log,
+            cancel_check=cancel_check,
+            run_label="final |",
+        )
 
         self._last_training_history = history
         self.model = self.models
         self.is_trained = True
         final = history[-1] if history else {}
-        return {
+        result: Dict[str, Any] = {
             "status": "success",
-            "n_models_trained": len(models_to_train),
+            "n_models_trained": len(self.models),
             "epochs": epochs,
             "batch_size": batch_size,
             "lr": lr,
@@ -450,6 +507,18 @@ class DeepPrimeModelWrapper(BasePEModel):
             "final_val_loss": final.get("val_loss"),
             "model_summaries": model_summaries,
         }
+        if cv_reports:
+            losses = [
+                float(row["best_val_loss"])
+                for row in cv_reports
+                if row.get("best_val_loss") is not None
+                and not math.isnan(float(row["best_val_loss"]))
+            ]
+            result["cross_validation"] = {
+                "folds": cv_reports,
+                "mean_best_val_loss": float(sum(losses) / len(losses)) if losses else float("nan"),
+            }
+        return result
     
     def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
         """

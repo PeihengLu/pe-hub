@@ -196,3 +196,56 @@ def reassign_group_ids_by_target_location(
         protospacer_r_col=protospacer_r_col,
     )
     return output
+
+
+def propagate_original_fold_by_target_uid(
+    df: pd.DataFrame,
+    *,
+    fold_col: str = "original_fold",
+    wt_col: str = "wt_sequence",
+    protospacer_l_col: str = "protospacer_location_l",
+    protospacer_r_col: str = "protospacer_location_r",
+) -> pd.DataFrame:
+    """Fill missing ``original_fold`` from rows that share the same ``target_uid``.
+
+    Used when merging DeepPrime (author folds) with datasheets that lack folds
+    (e.g. PRIDICT library1). Overlapping loci inherit DeepPrime's fold so the
+    merged table can use ``use_original_fold=True`` consistently. Rows whose
+    target never appears with a known fold stay NaN and fall back to
+    target-location random splits in ``assign_splits``.
+    """
+    if fold_col not in df.columns or df.empty:
+        return df.copy()
+
+    output = df.copy()
+    folds = pd.to_numeric(output[fold_col], errors="coerce")
+    uids = target_uid_series(
+        output,
+        wt_col=wt_col,
+        protospacer_l_col=protospacer_l_col,
+        protospacer_r_col=protospacer_r_col,
+    )
+    known = folds.notna() & uids.astype(str).str.len().gt(0)
+    if not known.any():
+        output[fold_col] = folds
+        return output
+
+    # One fold per target_uid: mode among known values (stable via sorted unique).
+    fold_by_uid: dict[str, float] = {}
+    known_df = pd.DataFrame({"uid": uids[known].astype(str), "fold": folds[known]})
+    for uid, group in known_df.groupby("uid", sort=True):
+        values = sorted({float(v) for v in group["fold"].tolist()})
+        if len(values) == 1:
+            fold_by_uid[str(uid)] = values[0]
+        else:
+            # Conflicting author folds for one locus — prefer DeepPrime test (-1)
+            # when present, else the lowest fold id for determinism.
+            fold_by_uid[str(uid)] = -1.0 if -1.0 in values else values[0]
+
+    missing = folds.isna() & uids.astype(str).str.len().gt(0)
+    if missing.any():
+        inherited = uids[missing].astype(str).map(fold_by_uid)
+        folds.loc[missing] = inherited.to_numpy()
+
+    output[fold_col] = folds
+    return output

@@ -76,7 +76,7 @@ _POST_PROCESSORS: Dict[str, Callable[[Any, Dict[str, Any]], Dict[str, Any]]] = {
 
 SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
     "deepprime": SearchSpaceSpec(
-        metric="validation.neg_val_loss",
+        metric="cv.neg_mean_best_val_loss",
         direction="maximize",
         fixed={"load_pretrained": False},
         params={
@@ -89,7 +89,7 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
         },
     ),
     "oped": SearchSpaceSpec(
-        metric="validation.spearman",
+        metric="cv.mean_val_spearman",
         direction="maximize",
         fixed={"load_pretrained": False},
         params={
@@ -105,7 +105,7 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
         },
     ),
     "pridict2": SearchSpaceSpec(
-        metric="validation.averageedited_spearman",
+        metric="cv.mean_averageedited_spearman",
         direction="maximize",
         fixed={"load_pretrained": False, "loss_func": "KLDloss"},
         params={

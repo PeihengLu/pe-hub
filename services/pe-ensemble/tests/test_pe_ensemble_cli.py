@@ -20,6 +20,48 @@ def test_supported_models_importable():
     assert "deepprime" in supported_models()
 
 
+def test_build_split_cv_clears_holdout_pcts():
+    args = argparse.Namespace(
+        split_strategy="cv",
+        train_pct=None,
+        val_pct=None,
+        test_pct=None,
+        cv_folds=3,
+        use_original_fold=False,
+        original_fold_test_value=-1.0,
+        split_random_state=42,
+        merge=False,
+    )
+    from pe_ensemble.cli import _build_split
+
+    split = _build_split(args)
+    assert split.split_strategy == "cv"
+    assert split.cv_folds == 3
+    assert split.train_pct is None
+    assert split.val_pct is None
+    assert split.test_pct is None
+
+
+def test_build_split_holdout3_applies_defaults():
+    args = argparse.Namespace(
+        split_strategy="holdout_3",
+        train_pct=None,
+        val_pct=None,
+        test_pct=None,
+        cv_folds=None,
+        use_original_fold=False,
+        original_fold_test_value=-1.0,
+        split_random_state=42,
+        merge=False,
+    )
+    from pe_ensemble.cli import _build_split
+
+    split = _build_split(args)
+    assert split.train_pct == 0.7
+    assert split.val_pct == 0.15
+    assert split.test_pct == 0.15
+
+
 def test_combine_methods_exported():
     assert "mean" in COMBINE_METHODS
     assert "weighted_mean" in COMBINE_METHODS

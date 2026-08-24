@@ -143,6 +143,8 @@ peen train \
   --device cuda:0
 ```
 
+HPO helpers: [`scripts/hyperparameter/`](../../scripts/hyperparameter/README.md). Dataset recipes: [`scripts/experiments/`](../../scripts/experiments/README.md). PRIDICT 2.0 transfer + ensemble reproduction: [`scripts/experiments/pridict2-reproduction/`](../../scripts/experiments/pridict2-reproduction/README.md).
+
 ### Example with architecture overrides
 
 ```bash
