@@ -12,6 +12,12 @@
 # Other PRIDICT2 sheets use random CV + outer test for HPO (not author
 # `testset_fold`), except the merged L1+ClinVar base which aligns to DeepPrime folds.
 #
+# **Loss:** only `pridict1/library1` has the full outcome trio
+# (`averageedited`/`averageunedited`/`averageindel`). peen refuses KL/CE when
+# any trio column is missing or NaN. Merge (L1+ClinVar) and library-diverse FT
+# stages force `loss_func=MSEloss` (intended-edit only). Library1 base HPO/train
+# keeps the default `KLDloss`.
+#
 ## Quick start
 #
 # ```bash
@@ -56,6 +62,11 @@
 # - `ensemble_{hek,k562}`
 #
 # Override with `STATE_DIR=/path/to/dir`.
+#
+## Oxford ARC (cluster)
+#
+# GPU jobs go on **htc**. Submit wrappers + setup notes:
+# [`../../cluster/oxford-arc/`](../../cluster/oxford-arc/README.md).
 #
 ## Shared HPO helpers
 #

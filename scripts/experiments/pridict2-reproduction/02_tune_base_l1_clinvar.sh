@@ -21,9 +21,14 @@ DATASET_KEY="${DATASET_KEY:-pridict1/library1+deepprime/deepprime_clinvar}"
 print_repro_banner "02 Tune base: library1 + DeepPrime ClinVar"
 maybe_skip_if_tuned "${MODEL}" "${DATASET_KEY}"
 
+FIXED_HP_JSON="${FIXED_HP_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${FIXED_HP_JSON}" ]]; then
     FIXED_HP_JSON='{"num_epochs":3,"batch_size":64}'
+elif [[ -z "${FIXED_HP_JSON}" ]]; then
+    FIXED_HP_JSON='{}'
 fi
+# ClinVar is edit-efficiency only → must override Optuna search-space KLDloss.
+FIXED_HP_JSON="$(force_mse_loss_json "${FIXED_HP_JSON}")"
 
 TUNE_ARGS=(
     tune
@@ -44,12 +49,9 @@ TUNE_ARGS=(
     --study-name "${STUDY_NAME}"
     --device "${DEVICE}"
     --register-best-weights
-    --notes "pridict2-reproduction: L1+ClinVar base; DeepPrime folds by target_uid"
+    --fixed-hyperparameters-json "${FIXED_HP_JSON}"
+    --notes "pridict2-reproduction: L1+ClinVar base; DeepPrime folds by target_uid; MSEloss"
 )
-
-if [[ -n "${FIXED_HP_JSON}" ]]; then
-    TUNE_ARGS+=(--fixed-hyperparameters-json "${FIXED_HP_JSON}")
-fi
 
 echo "+ peen ${TUNE_ARGS[*]}"
 echo ""

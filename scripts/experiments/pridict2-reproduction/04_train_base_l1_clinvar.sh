@@ -19,7 +19,11 @@ maybe_skip_if_state "${STATE_KEY}"
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${HP_JSON}" ]]; then
     HP_JSON='{"num_epochs":3,"batch_size":64}'
+elif [[ -z "${HP_JSON}" ]]; then
+    HP_JSON='{}'
 fi
+# ClinVar lacks the outcome trio → MSEloss (intended-edit only).
+HP_JSON="$(force_mse_loss_json "${HP_JSON}")"
 
 TRAIN_ARGS=(
     train
@@ -36,11 +40,8 @@ TRAIN_ARGS=(
     --test-pct "${TEST_PCT}"
     --split-random-state "${SPLIT_RANDOM_STATE}"
     --device "${DEVICE}"
-    --notes "pridict2-reproduction: base train on L1+ClinVar"
+    --hyperparameters-json "${HP_JSON}"
+    --notes "pridict2-reproduction: base train on L1+ClinVar; MSEloss"
 )
-
-if [[ -n "${HP_JSON}" ]]; then
-    TRAIN_ARGS+=(--hyperparameters-json "${HP_JSON}")
-fi
 
 run_peen_capture_weights "${STATE_KEY}" "${TRAIN_ARGS[@]}"

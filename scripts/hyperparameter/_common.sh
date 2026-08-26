@@ -46,24 +46,31 @@ print_experiment_banner() {
     echo ""
 }
 
-# Paths where peen tune persists results.
+# Paths where peen tune persists results (local overlay, gitignored).
 preset_file_for_model() {
     local model_lc
     model_lc="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
-    echo "${TRAINING_PRESETS_ROOT:-${REPO_ROOT}/services/pe-ensemble/config/training_presets}/${model_lc}.yaml"
+    echo "${TRAINING_PRESETS_ROOT:-${REPO_ROOT}/services/pe-ensemble/config/training_presets_local}/${model_lc}.yaml"
+}
+
+shipped_preset_file_for_model() {
+    local model_lc
+    model_lc="$(echo "$1" | tr '[:upper:]' '[:lower:]')"
+    echo "${TRAINING_SHIPPED_PRESETS_ROOT:-${REPO_ROOT}/services/pe-ensemble/config/training_presets}/${model_lc}.yaml"
 }
 
 # Return 0 if YAML has a datasets.<key> entry (exact or study/dataset parent).
+# Checks local overlay first, then shipped.
 preset_has_dataset_key() {
     local model="$1"
     local key="$2"
     local preset
-    preset="$(preset_file_for_model "${model}")"
-    [[ -f "${preset}" ]] || return 1
-    local py
-    py="$(command -v python 2>/dev/null || command -v python3 || true)"
-    [[ -n "${py}" ]] || return 1
-    MODEL="${model}" KEY="${key}" PRESET="${preset}" "${py}" - <<'PY'
+    for preset in "$(preset_file_for_model "${model}")" "$(shipped_preset_file_for_model "${model}")"; do
+        [[ -f "${preset}" ]] || continue
+        local py
+        py="$(command -v python 2>/dev/null || command -v python3 || true)"
+        [[ -n "${py}" ]] || continue
+        if MODEL="${model}" KEY="${key}" PRESET="${preset}" "${py}" - <<'PY'
 import os, sys
 from pathlib import Path
 try:
@@ -79,6 +86,11 @@ if len(parts) >= 2:
     candidates.append("/".join(parts[:2]))
 sys.exit(0 if any(c in datasets for c in candidates) else 1)
 PY
+        then
+            return 0
+        fi
+    done
+    return 1
 }
 
 # If SKIP_IF_TUNED=1 and a preset exists for MODEL + DATASET_KEY, exit 0.

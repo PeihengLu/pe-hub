@@ -24,7 +24,11 @@ echo ""
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${HP_JSON}" ]]; then
     HP_JSON='{"num_epochs":3,"batch_size":64}'
+elif [[ -z "${HP_JSON}" ]]; then
+    HP_JSON='{}'
 fi
+# library-diverse is edit-efficiency only.
+HP_JSON="$(force_mse_loss_json "${HP_JSON}")"
 
 # shellcheck disable=SC2206
 lines=(${FT_CELL_LINES})
@@ -51,11 +55,9 @@ finetune_one() {
         --split-random-state "${SPLIT_RANDOM_STATE}"
         --device "${DEVICE}"
         --pretrained-weights "${pretrained}"
-        --notes "pridict2-reproduction: FT ${base_key} → library-diverse ${cell}"
+        --hyperparameters-json "${HP_JSON}"
+        --notes "pridict2-reproduction: FT ${base_key} → library-diverse ${cell}; MSEloss"
     )
-    if [[ -n "${HP_JSON}" ]]; then
-        args+=(--hyperparameters-json "${HP_JSON}")
-    fi
     run_peen_capture_weights "${state_key}" "${args[@]}"
 }
 

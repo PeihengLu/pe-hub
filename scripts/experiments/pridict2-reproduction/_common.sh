@@ -27,6 +27,27 @@ NAME_BASE_L1="${NAME_BASE_L1:-pridict2-repro-base-library1}"
 NAME_BASE_L1C="${NAME_BASE_L1C:-pridict2-repro-base-l1-clinvar}"
 NAME_FT_PREFIX="${NAME_FT_PREFIX:-pridict2-repro-ft}"
 
+# Only pridict1/library1 has the full outcome trio. KL/CE is refused by peen when
+# any of those columns is missing or NaN — inject MSEloss for merge / diverse FT.
+force_mse_loss_json() {
+    local raw="${1-}"
+    if [[ -z "${raw}" ]]; then
+        raw="{}"
+    fi
+    local py
+    py="$(command -v python 2>/dev/null || command -v python3)"
+    PE_HUB_HP_JSON_IN="${raw}" "${py}" - <<'PY'
+import json
+import os
+
+raw = (os.environ.get("PE_HUB_HP_JSON_IN") or "{}").strip() or "{}"
+data = json.loads(raw)
+data["loss_func"] = "MSEloss"
+data["y_ref"] = ["averageedited"]
+print(json.dumps(data, separators=(",", ":")))
+PY
+}
+
 state_path() {
     echo "${STATE_DIR}/$1"
 }

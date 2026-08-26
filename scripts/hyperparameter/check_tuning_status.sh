@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Check whether Optuna HPO has already written a dataset preset for a model.
 #
+# Checks local overlay first (training_presets_local), then shipped defaults.
+#
 # Usage:
 #   ./scripts/hyperparameter/check_tuning_status.sh pridict2
 #   ./scripts/hyperparameter/check_tuning_status.sh pridict2 minsepie/library_insert_set12
 #   ./scripts/hyperparameter/check_tuning_status.sh deepprime deepprime/deepprime_clinvar/hek293t/pe2
 #
 # Exit codes:
-#   0  preset file exists (and key exists if provided)
+#   0  preset exists (and key exists if provided)
 #   1  missing / not tuned yet
 #   2  usage error
 
@@ -27,32 +29,32 @@ if [[ -z "${MODEL}" ]]; then
 fi
 
 MODEL_LC="$(echo "${MODEL}" | tr '[:upper:]' '[:lower:]')"
-PRESET_ROOT="${TRAINING_PRESETS_ROOT:-${REPO_ROOT}/services/pe-ensemble/config/training_presets}"
-PRESET_FILE="${PRESET_ROOT}/${MODEL_LC}.yaml"
+LOCAL_FILE="$(preset_file_for_model "${MODEL_LC}")"
+SHIPPED_FILE="$(shipped_preset_file_for_model "${MODEL_LC}")"
 STUDIES_ROOT="${TUNING_STUDIES_ROOT:-${REPO_ROOT}/services/pe-ensemble/tuning_studies}"
 
-echo "Model:        ${MODEL_LC}"
-echo "Preset file:  ${PRESET_FILE}"
-echo "Studies dir:  ${STUDIES_ROOT}"
+echo "Model:         ${MODEL_LC}"
+echo "Local preset:  ${LOCAL_FILE}"
+echo "Shipped:       ${SHIPPED_FILE}"
+echo "Studies dir:   ${STUDIES_ROOT}"
 echo ""
 
-if [[ ! -f "${PRESET_FILE}" ]]; then
-    echo "Status: NOT TUNED (no preset YAML yet)"
-    exit 1
-fi
-
-if [[ -z "${DATASET_KEY}" ]]; then
-    echo "Status: preset file exists. Dataset entries:"
+_list_keys() {
+    local preset_file="$1"
+    local label="$2"
+    [[ -f "${preset_file}" ]] || return 0
+    echo "${label} (${preset_file}):"
     if command -v python >/dev/null 2>&1 || command -v python3 >/dev/null 2>&1; then
         PY="$(command -v python 2>/dev/null || command -v python3)"
-        "${PY}" - <<PY
+        PRESET_FILE="${preset_file}" "${PY}" - <<'PY'
 from pathlib import Path
+import os
 try:
     import yaml
 except ImportError:
-    print("(install PyYAML to list dataset keys; file exists)")
+    print("  (install PyYAML to list dataset keys; file exists)")
     raise SystemExit(0)
-bundle = yaml.safe_load(Path("${PRESET_FILE}").read_text()) or {}
+bundle = yaml.safe_load(Path(os.environ["PRESET_FILE"]).read_text()) or {}
 datasets = bundle.get("datasets") or {}
 if not datasets:
     print("  (none yet — defaults only)")
@@ -66,8 +68,19 @@ else:
         print(f"  - {key}  [{source}]{extra}  {searched}")
 PY
     else
-        grep -E '^\s+[a-z0-9_/]+:' "${PRESET_FILE}" || true
+        grep -E '^\s+[a-z0-9_/]+:' "${preset_file}" || true
     fi
+}
+
+if [[ ! -f "${LOCAL_FILE}" && ! -f "${SHIPPED_FILE}" ]]; then
+    echo "Status: NOT TUNED (no local or shipped preset YAML)"
+    exit 1
+fi
+
+if [[ -z "${DATASET_KEY}" ]]; then
+    echo "Status: preset file(s) exist. Dataset entries:"
+    _list_keys "${LOCAL_FILE}" "Local"
+    _list_keys "${SHIPPED_FILE}" "Shipped"
     if [[ -d "${STUDIES_ROOT}" ]]; then
         echo ""
         echo "Optuna study DBs:"
@@ -78,50 +91,39 @@ fi
 
 KEY_NORM="$(echo "${DATASET_KEY}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
 
-PY="$(command -v python 2>/dev/null || command -v python3)"
-if [[ -z "${PY}" ]]; then
-    if grep -qF "${KEY_NORM}" "${PRESET_FILE}"; then
-        echo "Status: LIKELY TUNED (key string found in ${PRESET_FILE})"
-        exit 0
-    fi
-    echo "Status: NOT TUNED for key ${KEY_NORM}"
-    exit 1
-fi
-
-"${PY}" - <<PY
+if preset_has_dataset_key "${MODEL_LC}" "${KEY_NORM}"; then
+    PY="$(command -v python 2>/dev/null || command -v python3)"
+    for PRESET_FILE in "${LOCAL_FILE}" "${SHIPPED_FILE}"; do
+        [[ -f "${PRESET_FILE}" ]] || continue
+        if KEY_NORM="${KEY_NORM}" PRESET_FILE="${PRESET_FILE}" "${PY}" - <<'PY'
 from pathlib import Path
-import sys
+import os, sys
 try:
     import yaml
 except ImportError:
-    print("Error: PyYAML required to check dataset keys", file=sys.stderr)
     sys.exit(2)
-
-path = Path("${PRESET_FILE}")
+path = Path(os.environ["PRESET_FILE"])
 bundle = yaml.safe_load(path.read_text()) or {}
 datasets = bundle.get("datasets") or {}
-key = "${KEY_NORM}"
+key = os.environ["KEY_NORM"]
 candidates = [key]
 parts = key.split("/")
 if len(parts) >= 2:
     candidates.append("/".join(parts[:2]))
-
 hit = next((c for c in candidates if c in datasets), None)
 if hit is None:
-    print(f"Status: NOT TUNED for {key}")
-    print("Known keys:", ", ".join(datasets) or "(none)")
     sys.exit(1)
-
 entry = datasets[hit] or {}
 prov = entry.get("provenance") or {}
-print(f"Status: TUNED")
+layer = "local" if "training_presets_local" in str(path) else "shipped"
+print(f"Status: TUNED ({layer})")
 print(f"Matched key: {hit}")
+print(f"Preset file: {path}")
 print(f"Source:      {prov.get('source', '?')}")
 print(f"Metric:      {prov.get('metric')} = {prov.get('metric_value')}")
 print(f"Best trial:  {prov.get('best_trial')}")
 print(f"Searched at: {prov.get('searched_at')}")
 print(f"Study:       {prov.get('study_name')}")
-print(f"Storage:     {prov.get('study_storage')}")
 hps = entry.get("hyperparameters") or {}
 if hps:
     print("Hyperparameters:")
@@ -129,3 +131,11 @@ if hps:
         print(f"  {k}: {v}")
 sys.exit(0)
 PY
+        then
+            exit 0
+        fi
+    done
+fi
+
+echo "Status: NOT TUNED for key ${KEY_NORM}"
+exit 1

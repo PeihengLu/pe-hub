@@ -14,6 +14,16 @@ require_peen
 
 print_repro_banner "05 Tune fine-tune: library-diverse"
 
+# library-diverse is edit-efficiency only → override Optuna KLDloss.
+FIXED_HP_JSON="${FIXED_HP_JSON:-}"
+if [[ "${SMOKE}" == "1" && -z "${FIXED_HP_JSON}" ]]; then
+    FIXED_HP_JSON='{"num_epochs":3,"batch_size":64}'
+elif [[ -z "${FIXED_HP_JSON}" ]]; then
+    FIXED_HP_JSON='{}'
+fi
+FIXED_HP_JSON="$(force_mse_loss_json "${FIXED_HP_JSON}")"
+export FIXED_HP_JSON
+
 if [[ -n "${CELL_LINE:-}" ]]; then
     lines=("${CELL_LINE}")
 else

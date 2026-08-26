@@ -35,7 +35,6 @@ export interface HyperparameterFormState {
   opedNhead: string
   opedDropout: string
   pridict2EmbedDim: string
-  pridict2ZDim: string
   pridict2NumHiddenLayers: string
   pridict2Dropout: string
 }
@@ -63,7 +62,6 @@ export const DEFAULT_HYPERPARAMETERS: HyperparameterFormState = {
   opedNhead: '8',
   opedDropout: '0.1',
   pridict2EmbedDim: '64',
-  pridict2ZDim: '64',
   pridict2NumHiddenLayers: '1',
   pridict2Dropout: '0.1',
 }
@@ -118,7 +116,6 @@ function buildArchitecturePayload(
   if (modelName === 'pridict2') {
     return {
       embed_dim: Number(values.pridict2EmbedDim),
-      z_dim: Number(values.pridict2ZDim),
       num_hidden_layers: Number(values.pridict2NumHiddenLayers),
       p_dropout: Number(values.pridict2Dropout),
     }
@@ -557,16 +554,6 @@ export default function TrainingHyperparametersPanel({
                 min={1}
                 value={values.pridict2EmbedDim}
                 onChange={(e) => patch({ pridict2EmbedDim: e.target.value })}
-                disabled={architectureDisabled}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Latent dim (z)">
-              <input
-                type="number"
-                min={1}
-                value={values.pridict2ZDim}
-                onChange={(e) => patch({ pridict2ZDim: e.target.value })}
                 disabled={architectureDisabled}
                 className={inputClass}
               />
