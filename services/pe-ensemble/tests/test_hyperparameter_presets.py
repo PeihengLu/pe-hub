@@ -68,6 +68,52 @@ datasets:
     assert resolved.hyperparameters["batch_size"] == 256
 
 
+def test_resolve_hyperparameters_local_overlays_shipped(tmp_path: Path):
+    shipped = tmp_path / "shipped"
+    local = tmp_path / "local"
+    shipped.mkdir()
+    local.mkdir()
+    (shipped / "pridict2.yaml").write_text(
+        """
+model: pridict2
+defaults:
+  batch_size: 128
+  lr: 0.0001
+datasets:
+  pridict2/library2:
+    hyperparameters:
+      num_epochs: 20
+      lr: 0.0002
+""".strip(),
+        encoding="utf-8",
+    )
+    (local / "pridict2.yaml").write_text(
+        """
+model: pridict2
+defaults:
+  batch_size: 64
+datasets:
+  pridict2/library2:
+    hyperparameters:
+      num_epochs: 30
+""".strip(),
+        encoding="utf-8",
+    )
+
+    resolved = resolve_hyperparameters(
+        "pridict2",
+        study="pridict2",
+        dataset="library2",
+        shipped_root=shipped,
+        local_root=local,
+    )
+    assert resolved.preset_key == "pridict2/library2"
+    assert resolved.preset_source == "local_preset:pridict2/library2"
+    assert resolved.hyperparameters["batch_size"] == 64  # local defaults
+    assert resolved.hyperparameters["num_epochs"] == 30  # local dataset
+    assert resolved.hyperparameters["lr"] == 0.0002  # shipped dataset (local omitted)
+
+
 def test_resolve_hyperparameters_replace_skips_preset(tmp_path: Path):
     preset_file = tmp_path / "oped.yaml"
     preset_file.write_text(
@@ -138,6 +184,73 @@ def test_suggest_trial_hyperparameters_no_scheduler():
     assert "scheduler_kwargs" not in suggested
     assert suggested["load_pretrained"] is False
     assert suggested["hidden_size"] == [1024, 1024, 1024]
+
+
+def test_pridict2_search_space_omits_derived_architecture_knobs():
+    space = get_search_space("pridict2")
+    assert "assemb_opt" not in space.fixed
+    assert "assemb_opt" not in space.params
+    assert "annot_embed" not in space.fixed
+    assert "annot_embed" not in space.params
+    assert "z_dim" not in space.params
+    assert space.fixed["load_pretrained"] is False
+
+    class _Trial:
+        def suggest_float(self, name, low, high, log=False):
+            return 0.001
+
+        def suggest_int(self, name, low, high):
+            return 20
+
+        def suggest_categorical(self, name, choices):
+            return 128 if name == "embed_dim" else choices[0]
+
+    suggested = suggest_trial_hyperparameters("pridict2", _Trial())
+    assert suggested["embed_dim"] == 128
+    assert "assemb_opt" not in suggested
+    assert "annot_embed" not in suggested
+    assert "z_dim" not in suggested
+
+
+def test_materialize_hyperparameters_applies_fixed_and_oped_aliases():
+    from app.training.search_spaces import materialize_hyperparameters
+
+    oped = materialize_hyperparameters(
+        "oped",
+        {
+            "ffn_dim": 1024,
+            "encoder_layers": 4,
+            "embedding_size": 64,
+            "nhead": 8,
+            "dropout": 0.2,
+            "lr": 1e-4,
+        },
+    )
+    assert oped["load_pretrained"] is False
+    assert oped["hidden_size"] == [1024, 1024, 1024]
+    assert oped["num_encoder_layers"] == [4, 4, 4]
+    assert oped["drop_out"] == 0.2
+    assert "ffn_dim" not in oped
+    assert "encoder_layers" not in oped
+
+    deepprime = materialize_hyperparameters(
+        "deepprime",
+        {"hidden_size": 256, "num_layers": 2, "epochs": 10},
+    )
+    assert deepprime["load_pretrained"] is False
+    assert deepprime["hidden_size"] == 256
+
+
+def test_pridict2_seqlevel_featdim_uses_datatensor_colnames():
+    from types import SimpleNamespace
+
+    from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+
+    dtensor = SimpleNamespace(
+        seqlevel_feat_colnames=["a"] * 18,
+        seqlevel_feat=None,
+    )
+    assert PRIDICT2ModelWrapper._seqlevel_featdim_from_datatensor(dtensor) == 18
 
 
 def test_extract_validation_metric_oped():

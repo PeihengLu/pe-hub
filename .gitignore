@@ -10,3 +10,9 @@
 .vscode/
 checkpoints/** 
 *.egg-info/
+
+# Local Oxford ARC paths / email (copy from env.sh.example)
+scripts/cluster/oxford-arc/env.sh
+
+# Training scratch (PRIDICT2 fold checkpoints, etc.)
+/artifacts/

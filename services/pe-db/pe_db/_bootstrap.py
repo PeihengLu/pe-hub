@@ -42,12 +42,22 @@ def _load_service_app_package() -> ModuleType:
     return module
 
 
+def ensure_service_app_importable() -> ModuleType:
+    """Load ``app`` as ``pe_db_service_app`` in this process.
+
+    The alias is created at runtime and is not an installed package. Spawned
+    worker processes start a fresh interpreter, so they must call this before
+    unpickling functions defined under ``services/pe-db/app``.
+    """
+    ensure_service_root_on_path()
+    return _load_service_app_package()
+
+
 def import_service_app(module: str = "library") -> ModuleType:
     """Import a submodule of pe-db's ``app`` package under a private alias.
 
     Prefer this over ``from app.library import ...`` whenever pe-ensemble (or any
     other package named ``app``) may already be loaded in ``sys.modules``.
     """
-    ensure_service_root_on_path()
-    _load_service_app_package()
+    ensure_service_app_importable()
     return importlib.import_module(f"{_SERVICE_APP_ALIAS}.{module}")

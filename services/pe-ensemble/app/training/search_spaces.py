@@ -55,6 +55,7 @@ class SearchSpaceSpec:
 
 
 def _oped_architecture_suggestions(trial: Any, suggested: Dict[str, Any]) -> Dict[str, Any]:
+    del trial  # Optuna trial unused; kept for a uniform post-processor signature.
     ffn_dim = suggested.get("ffn_dim")
     encoder_layers = suggested.get("encoder_layers")
     if ffn_dim is not None:
@@ -66,6 +67,16 @@ def _oped_architecture_suggestions(trial: Any, suggested: Dict[str, Any]) -> Dic
         suggested.pop("encoder_layers", None)
     if "dropout" in suggested:
         suggested["drop_out"] = float(suggested.pop("dropout"))
+    embedding_size = suggested.get("embedding_size")
+    nhead = suggested.get("nhead")
+    if embedding_size is not None and nhead is not None:
+        embed = int(embedding_size)
+        heads = int(nhead)
+        if heads <= 0 or embed % heads != 0:
+            raise ValueError(
+                f"OPED requires embedding_size % nhead == 0 "
+                f"(got embedding_size={embed}, nhead={heads})"
+            )
     return suggested
 
 
@@ -107,14 +118,18 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
     "pridict2": SearchSpaceSpec(
         metric="cv.mean_averageedited_spearman",
         direction="maximize",
-        fixed={"load_pretrained": False, "loss_func": "KLDloss"},
+        # assemb_opt/annot_embed/z_dim are hardcoded or derived in the wrapper.
+        fixed={
+            "load_pretrained": False,
+            "loss_func": "KLDloss",
+            "y_ref": ["averageedited", "averageunedited", "averageindel"],
+        },
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),
             "batch_size": CategoricalParam((64, 128, 256)),
             "num_epochs": IntParam(15, 40),
             "embed_dim": CategoricalParam((32, 64, 128)),
-            "z_dim": CategoricalParam((32, 64, 128)),
             "num_hidden_layers": CategoricalParam((1, 2, 3)),
             "p_dropout": FloatParam(0.05, 0.45),
         },
@@ -128,6 +143,25 @@ def get_search_space(model_name: str) -> SearchSpaceSpec:
         supported = ", ".join(sorted(SEARCH_SPACES))
         raise ValueError(f"No search space for model '{model_name}'. Supported: {supported}")
     return SEARCH_SPACES[key]
+
+
+def materialize_hyperparameters(
+    model_name: str,
+    raw_params: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Merge search-space fixed keys and apply model post-processors.
+
+    Optuna ``best.params`` only contains suggested keys. Call this before writing
+    presets or launching a final train so aliases (e.g. OPED ``ffn_dim``) and
+    fixed flags (e.g. ``load_pretrained=False``) are applied.
+    """
+    space = get_search_space(model_name)
+    suggested: Dict[str, Any] = dict(space.fixed)
+    suggested.update(dict(raw_params))
+    processor = _POST_PROCESSORS.get(model_name.strip().lower())
+    if processor is not None:
+        suggested = processor(None, suggested)
+    return {key: value for key, value in suggested.items() if key not in SCHEDULER_KEYS}
 
 
 def suggest_trial_hyperparameters(model_name: str, trial: Any) -> Dict[str, Any]:

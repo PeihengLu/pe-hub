@@ -137,6 +137,10 @@ def _predict_member(
             stderr=True,
             cancel_check=cancel_check,
         ):
+            from ..models.pridict2_wrapper import PERNNDistributionModel
+
+            if isinstance(model.model, PERNNDistributionModel):
+                return model.predict(test_df)
             dloader = model.prepare_data(test_df, y_ref=["averageedited"])
             return model.predict(dloader)
     feature_df = test_df.copy()

@@ -7,11 +7,15 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
-from .config import presets_root, tuning_studies_root
+from .config import local_presets_root, tuning_studies_root
 from .dataset_key import dataset_preset_key
 from .hyperparameter_presets import preset_path_for_model, write_dataset_preset
 from .runner import TrainingError, execute_training
-from .search_spaces import get_search_space, suggest_trial_hyperparameters
+from .search_spaces import (
+    get_search_space,
+    materialize_hyperparameters,
+    suggest_trial_hyperparameters,
+)
 from .tune_jobs import (
     append_log,
     job_log_context,
@@ -107,7 +111,12 @@ def execute_tuning(
         study.optimize(objective, n_trials=int(request.n_trials))
 
         best = study.best_trial
-        best_params = dict(best.params)
+        # Optuna best.params omits SearchSpaceSpec.fixed and pre-remap aliases
+        # (e.g. OPED ffn_dim). Materialize so presets/final train match trials.
+        best_params = materialize_hyperparameters(
+            training.model_name,
+            dict(best.params),
+        )
         best_params.update(dict(training.hyperparameters or {}))
 
         dataset_key = dataset_preset_key(
@@ -138,7 +147,9 @@ def execute_tuning(
         if not request.no_write_preset:
             preset_path = Path(
                 request.write_preset
-                or preset_path_for_model(training.model_name, root=presets_root())
+                or preset_path_for_model(
+                    training.model_name, root=local_presets_root()
+                )
             )
             write_dataset_preset(
                 preset_path,
@@ -147,7 +158,7 @@ def execute_tuning(
                 hyperparameters=best_params,
                 provenance=provenance,
             )
-            _log(f"Wrote dataset preset to {preset_path}", job_id=job_id)
+            _log(f"Wrote local dataset preset to {preset_path}", job_id=job_id)
 
         final_payload: Optional[Dict[str, Any]] = None
         if request.register_best_weights:

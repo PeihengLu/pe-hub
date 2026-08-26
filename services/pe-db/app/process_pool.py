@@ -20,9 +20,14 @@ def get_mfe_process_pool() -> ProcessPoolExecutor:
     """Return a long-lived spawn-based pool for PRIDICT2 MFE conversion."""
     global _pool
     if _pool is None:
+        # Initializer lives in the installable ``pe_db`` package so spawn
+        # workers can unpickle it (they cannot import ``pe_db_service_app``).
+        from pe_db.mfe_worker import init_mfe_worker
+
         _pool = ProcessPoolExecutor(
             max_workers=mfe_worker_count(),
             mp_context=multiprocessing.get_context("spawn"),
+            initializer=init_mfe_worker,
         )
     return _pool
 

@@ -109,6 +109,164 @@ def test_load_formatted_cache_rejects_row_count_mismatch(datasets_dir: Path):
     )
 
 
+def test_load_or_convert_formatted_restores_source_index(
+    datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    converter = DataConverter(datasets_dir)
+    source = _sample_standardized()
+    source.index = pd.Index([10, 20], name="row")
+    converter.load_or_convert_formatted(
+        source,
+        study="deepprime",
+        dataset="clinvar",
+        cell_line="hek293t",
+        pe_system="pe2",
+        target_format="oped",
+    )
+    cached = converter.load_or_convert_formatted(
+        source,
+        study="deepprime",
+        dataset="clinvar",
+        cell_line="hek293t",
+        pe_system="pe2",
+        target_format="oped",
+    )
+    assert list(cached.index) == [10, 20]
+    # Subsetting like the filter/merge path must keep alignment.
+    subset = cached.loc[[20]]
+    assert len(subset) == 1
+    assert int(subset.index[0]) == 20
+
+
+def test_convert_pending_sheets_via_formatted_cache_aligns_with_merge(
+    datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from app.db.repository import _convert_pending_sheets_via_formatted_cache
+
+    converter = DataConverter(datasets_dir)
+    sheet_a = _sample_standardized()
+    sheet_b = _sample_standardized()
+    sheet_b["editing_efficiency"] = [0.1, 0.2]
+    # Simulate an edit filter that drops the first row of sheet B.
+    filtered_b = sheet_b.iloc[[1]]
+
+    calls: list[tuple[str, str]] = []
+    original = converter.load_or_convert_formatted
+
+    def tracking_load(source, **kwargs):
+        calls.append((kwargs["study"], kwargs["dataset"]))
+        return original(source, **kwargs)
+
+    monkeypatch.setattr(converter, "load_or_convert_formatted", tracking_load)
+
+    pending = [
+        (
+            {
+                "study": "deepprime",
+                "dataset": "clinvar",
+                "cell_line": "hek293t",
+                "pe_system": "pe2",
+            },
+            sheet_a,
+            sheet_a,
+        ),
+        (
+            {
+                "study": "pridict1",
+                "dataset": "library1",
+                "cell_line": "hek293t",
+                "pe_system": "pe2",
+            },
+            sheet_b,
+            filtered_b,
+        ),
+    ]
+    merged_std = pd.concat([sheet_a, filtered_b], ignore_index=True)
+    converted = _convert_pending_sheets_via_formatted_cache(
+        converter,
+        pending,
+        target_format="oped",
+    )
+    assert calls == [
+        ("deepprime", "clinvar"),
+        ("pridict1", "library1"),
+    ]
+    assert len(converted) == len(merged_std) == 3
+
+    # Second call should hit cache (no convert_from_standardized).
+    convert_calls = {"count": 0}
+    real_convert = converter.convert_from_standardized
+
+    def counting_convert(*args, **kwargs):
+        convert_calls["count"] += 1
+        return real_convert(*args, **kwargs)
+
+    monkeypatch.setattr(converter, "convert_from_standardized", counting_convert)
+    monkeypatch.setattr(converter, "load_or_convert_formatted", original)
+    again = _convert_pending_sheets_via_formatted_cache(
+        converter,
+        pending,
+        target_format="oped",
+    )
+    assert convert_calls["count"] == 0
+    assert len(again) == 3
+
+
+def test_convert_pending_sheets_remaps_duplicate_seq_ids(
+    datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Per-sheet caches both use seq_0..; merge must uniquify for PRIDICT2."""
+    from app.db.repository import _convert_pending_sheets_via_formatted_cache
+
+    converter = DataConverter(datasets_dir)
+    sheet_a = _sample_standardized()
+    sheet_b = _sample_standardized()
+    pending = [
+        (
+            {
+                "study": "deepprime",
+                "dataset": "clinvar",
+                "cell_line": "hek293t",
+                "pe_system": "pe2",
+            },
+            sheet_a,
+            sheet_a,
+        ),
+        (
+            {
+                "study": "pridict1",
+                "dataset": "library1",
+                "cell_line": "hek293t",
+                "pe_system": "pe2",
+            },
+            sheet_b,
+            sheet_b,
+        ),
+    ]
+    # Force pridict2-shaped frames with colliding seq_ids without full convert.
+    def fake_load(source, **kwargs):
+        n = len(source)
+        return pd.DataFrame(
+            {
+                "seq_id": [f"seq_{i}" for i in range(n)],
+                "deepeditposition_lst": [f"[{i}]" for i in range(n)],
+                "wide_initial_target": ["A" * 99] * n,
+                "wide_mutated_target": ["T" * 99] * n,
+            },
+            index=source.index,
+        )
+
+    monkeypatch.setattr(converter, "load_or_convert_formatted", fake_load)
+    converted = _convert_pending_sheets_via_formatted_cache(
+        converter,
+        pending,
+        target_format="pridict2",
+    )
+    assert len(converted) == 4
+    assert converted["seq_id"].is_unique
+    assert list(converted["seq_id"]) == ["seq_0", "seq_1", "seq_2", "seq_3"]
+
+
 def test_load_or_convert_formatted_uses_cache(datasets_dir: Path, monkeypatch: pytest.MonkeyPatch):
     converter = DataConverter(datasets_dir)
     source = _sample_standardized()

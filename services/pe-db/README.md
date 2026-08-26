@@ -4,11 +4,11 @@ FastAPI service aligned with `diagrams/illustration/database_er.mmd`.
 
 ## What lives in the catalog database
 
-| Table | How it is maintained |
-|-------|----------------------|
-| `study` | **Seeded** — hand-coded in `app/catalog/studies.py` |
-| `dataset` | **Seeded** — hand-coded in `app/catalog/studies.py` |
-| `scaffold` | **Seeded** — hand-coded in `app/catalog/scaffolds.py` |
+| Table         | How it is maintained                                                                 |
+| ------------- | ------------------------------------------------------------------------------------ |
+| `study`     | **Seeded** — hand-coded in `app/catalog/studies.py`                         |
+| `dataset`   | **Seeded** — hand-coded in `app/catalog/studies.py`                         |
+| `scaffold`  | **Seeded** — hand-coded in `app/catalog/scaffolds.py`                       |
 | `datasheet` | **Semi-automatic** — indexed from `datasets/exported/**/*.csv` after export |
 
 Edit-level rows are **not** in SQL. They live in `datasets/exported/` (raw CSV) and `datasets/standardized/` (parquet) and are loaded with Pandas behind the API.
@@ -19,11 +19,11 @@ SQLite path: `datasets/catalog/pe_database.db` (override with `DATABASE_URL`).
 
 `initialize_database()` runs on API startup:
 
-| Step | Function | What it does |
-|------|----------|--------------|
-| 1. **Seed** | `init_catalog()` | Creates SQL tables; inserts/updates Study, Dataset, Scaffold from Python registries |
-| 2. **Export** | `export_original_data()` | Writes `datasets/exported/` from raw Excel/CSV; indexes **Datasheet** rows |
-| 3. **Standardize** | `standardize_exported_data()` | Writes `datasets/standardized/` parquet from exported CSVs |
+| Step                    | Function                        | What it does                                                                        |
+| ----------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| 1.**Seed**        | `init_catalog()`              | Creates SQL tables; inserts/updates Study, Dataset, Scaffold from Python registries |
+| 2.**Export**      | `export_original_data()`      | Writes`datasets/exported/` from raw Excel/CSV; indexes **Datasheet** rows   |
+| 3.**Standardize** | `standardize_exported_data()` | Writes`datasets/standardized/` parquet from exported CSVs                         |
 
 ### What “seed” means
 
@@ -42,7 +42,7 @@ Seed does **not**:
 ```text
 pedb (pe-db)  ──┐
                 ├──► pe_db.library  (← app/library.py)
-FastAPI         ──┘
+FastAPI       ──┘
 peen (pe-ensemble) CLI ──► pe_db.library (in-process; no PE-DB HTTP server)
 pe-ensemble web ──HTTP──► FastAPI
 ```
@@ -63,21 +63,21 @@ Or from the repo root (same requirement): `./scripts/install-clis.sh` (installs 
 
 Short alias: **`pedb`** (also installed as `pe-db`).
 
-| Command | Purpose |
-|---------|---------|
-| `pedb init` | Seed catalog, export raw data, standardize |
-| `pedb seed` | Seed Study / Dataset / Scaffold tables only |
-| `pedb export` | Export raw study files (+ optional standardize) |
-| `pedb standardize` | Exported CSV → parquet |
-| `pedb convert` | Standardize one datasheet (`--study` `--dataset` `--cell-line` `--pe-system`) |
-| `pedb filter` | Same contract as `GET /api/filter` (catalog and/or model-format export) |
-| `pedb studies` | List catalog studies |
-| `pedb datasets` | List datasets (optional `--study`) |
-| `pedb datasheets` | List datasheets (optional `--study` / `--dataset`) |
-| `pedb scaffolds` | List pegRNA scaffolds |
-| `pedb statistics` | Descriptive stats over edit rows |
-| `pedb formats` | List supported filter output formats |
-| `pedb plugins reload` | Reload active plugin converters |
+| Command                 | Purpose                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `pedb init`           | Seed catalog, export raw data, standardize                                            |
+| `pedb seed`           | Seed Study / Dataset / Scaffold tables only                                           |
+| `pedb export`         | Export raw study files (+ optional standardize)                                       |
+| `pedb standardize`    | Exported CSV → parquet                                                               |
+| `pedb convert`        | Standardize one datasheet (`--study` `--dataset` `--cell-line` `--pe-system`) |
+| `pedb filter`         | Same contract as`GET /api/filter` (catalog and/or model-format export)              |
+| `pedb studies`        | List catalog studies                                                                  |
+| `pedb datasets`       | List datasets (optional`--study`)                                                   |
+| `pedb datasheets`     | List datasheets (optional`--study` / `--dataset`)                                 |
+| `pedb scaffolds`      | List pegRNA scaffolds                                                                 |
+| `pedb statistics`     | Descriptive stats over edit rows                                                      |
+| `pedb formats`        | List supported filter output formats                                                  |
+| `pedb plugins reload` | Reload active plugin converters                                                       |
 
 Examples:
 
@@ -133,18 +133,18 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/studies` | List studies |
-| GET | `/api/datasets` | List datasets (optional `?study=` filter) |
-| GET | `/api/datasheets` | List datasheet catalog entries |
-| GET | `/api/scaffolds` | List pegRNA scaffolds |
-| GET | `/api/data` | Load standardized edit records for one datasheet |
-| GET | `/api/filter` | Filter catalog and/or export model-format data with train/val/test splits |
-| GET | `/api/statistics` | Aggregate statistics (edit type, length, delivery method, …) |
-| POST | `/api/export` | Export (+ optional standardize) |
-| POST | `/api/convert` | Standardize one sheet |
-| GET | `/health` | Health check |
+| Method | Path                | Description                                                               |
+| ------ | ------------------- | ------------------------------------------------------------------------- |
+| GET    | `/api/studies`    | List studies                                                              |
+| GET    | `/api/datasets`   | List datasets (optional`?study=` filter)                                |
+| GET    | `/api/datasheets` | List datasheet catalog entries                                            |
+| GET    | `/api/scaffolds`  | List pegRNA scaffolds                                                     |
+| GET    | `/api/data`       | Load standardized edit records for one datasheet                          |
+| GET    | `/api/filter`     | Filter catalog and/or export model-format data with train/val/test splits |
+| GET    | `/api/statistics` | Aggregate statistics (edit type, length, delivery method, …)             |
+| POST   | `/api/export`     | Export (+ optional standardize)                                           |
+| POST   | `/api/convert`    | Standardize one sheet                                                     |
+| GET    | `/health`         | Health check                                                              |
 
 ### Filter and export
 

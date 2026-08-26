@@ -1352,6 +1352,49 @@ def _coerce_original_fold(
     )
 
 
+def _attach_pridict_outcome_distribution(
+    output_df: pd.DataFrame,
+    source_df: pd.DataFrame,
+    *,
+    edited_column: Optional[str] = None,
+) -> pd.DataFrame:
+    """Preserve PRIDICT edited/unedited/indel fractions for KL/CE distribution training.
+
+    Source tables expose either plain ``average*`` columns (library1) or cell-line
+    prefixed names (``HEK293T_averageedited``). When only the edited column is
+    known, derive sibling names by suffix substitution.
+
+    Stores the matched trio under ``averageedited`` / ``averageunedited`` /
+    ``averageindel`` so convert+KL training use a consistent distribution (not a
+    mix of PE2-only efficiency with library-average unedited/indel).
+    """
+    out = output_df.copy()
+
+    def _series(name: str) -> Optional[pd.Series]:
+        if name not in source_df.columns:
+            return None
+        return pd.to_numeric(source_df[name], errors="coerce")
+
+    edited = _series("averageedited")
+    unedited = _series("averageunedited")
+    indel = _series("averageindel")
+
+    if edited_column and edited_column in source_df.columns:
+        edited = _series(edited_column)
+        if edited_column.endswith("averageedited"):
+            prefix = edited_column[: -len("averageedited")]
+            unedited = unedited if unedited is not None else _series(f"{prefix}averageunedited")
+            indel = indel if indel is not None else _series(f"{prefix}averageindel")
+
+    if edited is not None:
+        out["averageedited"] = edited.astype(float).to_numpy()
+    if unedited is not None:
+        out["averageunedited"] = unedited.astype(float).to_numpy()
+    if indel is not None:
+        out["averageindel"] = indel.astype(float).to_numpy()
+    return out
+
+
 def _build_standardized_output_df(
     group_id: pd.Series | np.ndarray, 
     type_sub: pd.Series | np.ndarray, type_ins: pd.Series | np.ndarray, type_del: pd.Series | np.ndarray, edit_len: pd.Series | np.ndarray, 
@@ -1968,6 +2011,12 @@ def _standardize_pridict2_library_diverse(
         pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r,
         spcas9_score, editing_efficiency, original_fold)
 
+    output_df = _attach_pridict_outcome_distribution(
+        output_df,
+        df,
+        edited_column=efficiency_column,
+    )
+
     output_path = DATA_ROOT / 'standardized' / 'pridict2' / dataset / output_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -2099,6 +2148,8 @@ def _standardize_pridict1(
         wt_sequence, mut_sequence, protospacer_l, protospacer_r, 
         pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r, 
         spcas9_score, editing_efficiency)
+
+    output_df = _attach_pridict_outcome_distribution(output_df, df)
 
     if dataset == "library2_invivo" and {"Name", "Gene"}.issubset(df.columns):
         output_df = _attach_endo_coordinate_columns(
@@ -2544,16 +2595,22 @@ def _standardize_pridict1_endo(
     else:
         edit_len = pd.Series(np.nan, index=data.index, dtype=float)
 
+    partial = pd.DataFrame(
+        {
+            "type_sub": type_sub,
+            "type_ins": type_ins,
+            "type_del": type_del,
+            "edit_len": edit_len,
+            "editing_efficiency": editing_efficiency.astype(float),
+        }
+    )
+    partial = _attach_pridict_outcome_distribution(
+        partial,
+        data,
+        edited_column=efficiency_col,
+    )
     _write_partial_standardized_output(
-        pd.DataFrame(
-            {
-                "type_sub": type_sub,
-                "type_ins": type_ins,
-                "type_del": type_del,
-                "edit_len": edit_len,
-                "editing_efficiency": editing_efficiency.astype(float),
-            }
-        ),
+        partial,
         study="pridict1",
         dataset=dataset,
         cell_line=cell_line,

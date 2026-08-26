@@ -221,11 +221,13 @@ def _compute_pridict2_mfe_features_batch(
     last_milestone = [-1]
     total = len(payloads)
     done = 0
+    from pe_db.mfe_worker import pridict2_mfe_chunk_worker
+
     from ..process_pool import get_mfe_process_pool
 
     pool = get_mfe_process_pool()
     futures = {
-        pool.submit(_pridict2_mfe_chunk_worker, chunk): index
+        pool.submit(pridict2_mfe_chunk_worker, chunk): index
         for index, chunk in enumerate(chunks)
     }
     ordered_chunks: list[Optional[list[dict[str, float]]]] = [None] * len(chunks)
@@ -624,9 +626,16 @@ def standardized_to_pridict_dataframe(
         out["averageedited"] = _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0)
     elif "averageedited" in df.columns:
         out["averageedited"] = _safe_float_series(_col_as_series(df, "averageedited", 0.0), default=0.0)
-    for optional_col in ("averageunedited", "averageindel"):
-        if optional_col in df.columns:
-            out[optional_col] = _safe_float_series(_col_as_series(df, optional_col, 0.0), default=0.0)
+    # Prefer the preserved distribution trio when present so KL/CE targets are
+    # mutually consistent (editing_efficiency may come from a PE2-only column).
+    if {"averageedited", "averageunedited", "averageindel"}.issubset(df.columns):
+        out["averageedited"] = _safe_float_series(_col_as_series(df, "averageedited", 0.0), default=0.0)
+        out["averageunedited"] = _safe_float_series(_col_as_series(df, "averageunedited", 0.0), default=0.0)
+        out["averageindel"] = _safe_float_series(_col_as_series(df, "averageindel", 0.0), default=0.0)
+    else:
+        for optional_col in ("averageunedited", "averageindel"):
+            if optional_col in df.columns:
+                out[optional_col] = _safe_float_series(_col_as_series(df, optional_col, 0.0), default=0.0)
     return _enrich_pridict2_features(df, out, progress_callback=progress_callback)
 
 

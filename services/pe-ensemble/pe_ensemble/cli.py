@@ -17,7 +17,7 @@ from pe_ensemble._bootstrap import ensure_service_root_on_path
 ensure_service_root_on_path()
 
 from app.compute.device_scheduler import get_scheduler  # noqa: E402
-from app.ensemble.combine import COMBINE_METHODS  # noqa: E402
+from app.ensemble.combine import COMBINE_METHODS, combine_method_help  # noqa: E402
 from app.ensemble.jobs import (  # noqa: E402
     create_job as create_ensemble_job,
     get_job as get_ensemble_job,
@@ -25,6 +25,7 @@ from app.ensemble.jobs import (  # noqa: E402
     read_logs as read_ensemble_logs,
     wait_for_job as wait_for_ensemble_job,
 )
+from app.ensemble.runner import execute_ensemble  # noqa: E402
 from app.ensemble.schemas import EnsembleMember, EnsembleRequest  # noqa: E402
 from app.evaluation.jobs import (  # noqa: E402
     create_job as create_eval_job,
@@ -33,6 +34,7 @@ from app.evaluation.jobs import (  # noqa: E402
     read_logs as read_eval_logs,
     wait_for_job as wait_for_eval_job,
 )
+from app.evaluation.runner import execute_evaluation  # noqa: E402
 from app.evaluation.schemas import EvaluationRequest  # noqa: E402
 from app.models.registry import model_registry  # noqa: E402
 from app.training.config import enable_cli_pe_db_access, jobs_root, supported_models  # noqa: E402
@@ -59,11 +61,6 @@ from app.training.tune_jobs import (  # noqa: E402
 )
 from app.training.tune_study import execute_tuning  # noqa: E402
 from app.training.tuning_schemas import TuningRequest  # noqa: E402
-from pe_ensemble.library import (  # noqa: E402
-    combine_method_help,
-    execute_evaluation,
-    execute_ensemble,
-)
 
 
 def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
@@ -150,7 +147,6 @@ def _add_architecture_flags(parser: argparse.ArgumentParser) -> None:
     arch.add_argument("--oped-nhead", type=int, default=None)
     arch.add_argument("--oped-dropout", type=float, default=None)
     arch.add_argument("--pridict2-embed-dim", type=int, default=None)
-    arch.add_argument("--pridict2-z-dim", type=int, default=None)
     arch.add_argument("--pridict2-num-hidden-layers", type=int, default=None)
     arch.add_argument("--pridict2-dropout", type=float, default=None)
 
@@ -159,7 +155,11 @@ def _add_env_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--weights-root", default=None)
     parser.add_argument("--plugins-root", default=None)
     parser.add_argument("--jobs-root", default=None)
-    parser.add_argument("--presets-root", default=None)
+    parser.add_argument(
+        "--presets-root",
+        default=None,
+        help="Writable local HPO overlay (sets TRAINING_PRESETS_ROOT; default training_presets_local/)",
+    )
     parser.add_argument("--tuning-jobs-root", default=None)
     parser.add_argument("--device", default="auto")
 
@@ -401,8 +401,16 @@ def _add_tune_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--n-trials", type=int, default=20)
     parser.add_argument("--study-name", default=None)
     parser.add_argument("--study-storage", default=None)
-    parser.add_argument("--write-preset", default=None)
-    parser.add_argument("--no-write-preset", action="store_true")
+    parser.add_argument(
+        "--write-preset",
+        default=None,
+        help="Explicit preset YAML path (default: <local-presets-root>/<model>.yaml)",
+    )
+    parser.add_argument(
+        "--no-write-preset",
+        action="store_true",
+        help="Do not write Optuna best params to the local presets overlay",
+    )
     parser.add_argument("--register-best-weights", action="store_true")
     parser.add_argument(
         "--queue",

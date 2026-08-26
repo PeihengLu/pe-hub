@@ -179,6 +179,11 @@ def fit_lightning_module(
     if history_callback.best_state_dict is not None:
         module.model.load_state_dict(history_callback.best_state_dict)
 
+    # Lightning moves the module to CPU on fit end. Restore the caller's device so
+    # post-fit predict/eval (which often places inputs on ``device``) does not hit
+    # embedding device mismatches.
+    module.to(device)
+
     return {
         "history": history_callback.history,
         "best_epoch": int(history_callback.best_epoch),

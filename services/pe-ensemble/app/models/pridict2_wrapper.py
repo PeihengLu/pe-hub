@@ -96,13 +96,16 @@ def build_pridict_loss(loss_func: str) -> nn.Module:
     raise ValueError(f"Unsupported PRIDICT2 loss_func: {loss_func}")
 
 
-def _compute_z_dim(embed_dim: int, annot_embed: int, assemb_opt: str) -> int:
-    if assemb_opt == "stack":
-        init_embed_dim = embed_dim + 3 * annot_embed
-        mut_embed_dim = embed_dim + 2 * annot_embed
-    else:
-        init_embed_dim = embed_dim
-        mut_embed_dim = embed_dim
+# Vendor notebooks fix annot_embed=8 and assemb_opt='stack'. Neither is a
+# tunable hyperparameter: 'add' requires matching embed widths; z_dim is
+# derived from embed_dim + annot_embed under stack assembly.
+_ANNOT_EMBED = 8
+_ASSEMB_OPT = "stack"
+
+
+def _compute_z_dim(embed_dim: int, annot_embed: int = _ANNOT_EMBED) -> int:
+    init_embed_dim = embed_dim + 3 * annot_embed
+    mut_embed_dim = embed_dim + 2 * annot_embed
     return int(np.min([init_embed_dim, mut_embed_dim]) // 2)
 
 
@@ -129,13 +132,12 @@ class PERNNDistributionModel(nn.Module):
         num_hidden_layers: int,
         bidirection: bool,
         p_dropout: float,
-        annot_embed: int,
-        assemb_opt: str,
         seqlevel_featdim: int,
         num_outcomes: int,
         rnn_class: type = nn.GRU,
         nonlin_func: Optional[nn.Module] = None,
         fdtype: torch.dtype = torch.float32,
+        annot_embed: int = _ANNOT_EMBED,
     ) -> None:
         super().__init__()
         self.fdtype = fdtype
@@ -145,20 +147,16 @@ class PERNNDistributionModel(nn.Module):
         self.init_annot_embed = AnnotEmbeder_InitSeq(
             embed_dim=embed_dim,
             annot_embed=annot_embed,
-            assemb_opt=assemb_opt,
+            assemb_opt=_ASSEMB_OPT,
         )
         self.mut_annot_embed = AnnotEmbeder_MutSeq(
             embed_dim=embed_dim,
             annot_embed=annot_embed,
-            assemb_opt=assemb_opt,
+            assemb_opt=_ASSEMB_OPT,
         )
-        z_dim = _compute_z_dim(embed_dim, annot_embed, assemb_opt)
-        if assemb_opt == "stack":
-            init_embed_dim = embed_dim + 3 * annot_embed
-            mut_embed_dim = embed_dim + 2 * annot_embed
-        else:
-            init_embed_dim = embed_dim
-            mut_embed_dim = embed_dim
+        z_dim = _compute_z_dim(embed_dim, annot_embed)
+        init_embed_dim = embed_dim + 3 * annot_embed
+        mut_embed_dim = embed_dim + 2 * annot_embed
 
         self.init_encoder = RNN_Net(
             input_dim=init_embed_dim,
@@ -301,6 +299,49 @@ class PERNNDistributionModel(nn.Module):
                 torch.load(path, map_location=device, weights_only=False)
             )
 
+    def load_vendor_statedict_flexible(
+        self,
+        statedict_dir: str,
+        *,
+        device: torch.device,
+    ) -> Dict[str, List[str]]:
+        """Load compatible pretrained components, skipping missing/mismatched ones.
+
+        This is used for transfer learning when the representation backbone should
+        be reused but the output head shape may differ, e.g. a PRIDICT2
+        3-outcome distribution base fine-tuned onto an intended-edit-only target.
+        """
+        loaded: List[str] = []
+        skipped_missing: List[str] = []
+        skipped_mismatched: List[str] = []
+        for name, module in self.iter_components():
+            path = os.path.join(statedict_dir, f"{name}.pkl")
+            if not os.path.isfile(path):
+                skipped_missing.append(name)
+                continue
+            state_dict = torch.load(path, map_location=device, weights_only=False)
+            current_state = module.state_dict()
+            mismatched_keys = [
+                key
+                for key, value in state_dict.items()
+                if key in current_state and tuple(current_state[key].shape) != tuple(value.shape)
+            ]
+            if mismatched_keys:
+                skipped_mismatched.append(name)
+                continue
+            try:
+                module.load_state_dict(state_dict)
+            except RuntimeError:
+                # Unexpected/missing keys (e.g. different RNN depth) — skip component.
+                skipped_mismatched.append(name)
+                continue
+            loaded.append(name)
+        return {
+            "loaded": loaded,
+            "skipped_missing": skipped_missing,
+            "skipped_mismatched": skipped_mismatched,
+        }
+
     def save_vendor_statedict(self, statedict_dir: str) -> None:
         os.makedirs(statedict_dir, exist_ok=True)
         for name, module in self.iter_components():
@@ -314,19 +355,19 @@ class _PRIDICT2LightningModule(pl.LightningModule):
         *,
         train_hparams: Mapping[str, Any],
         loss_func_name: str,
-        device: torch.device,
     ) -> None:
         super().__init__()
         self.model = model
         self.hparams_map = dict(train_hparams)
         self.loss_func_name = str(loss_func_name)
         self.loss_fn = build_pridict_loss(self.loss_func_name)
-        self.device_ref = device
 
     def _step(self, batch: PRIDICT_BATCH, *, train: bool) -> torch.Tensor:
+        # Use Lightning's live device (not a stale constructor capture). After
+        # fit_end Lightning parks the module on CPU; callers must ``.to(device)``.
         logits, target = self.model.forward_batch(
             batch,
-            device=self.device_ref,
+            device=self.device,
             requires_grad=train,
         )
         loss = self.loss_fn(logits, target)
@@ -382,15 +423,13 @@ def build_pernn_distribution_model(
             hyperparameters.get("dropout", 0.1),
         )
     )
-    annot_embed = int(hyperparameters.get("annot_embed", 8))
-    assemb_opt = str(hyperparameters.get("assemb_opt", "add"))
+    annot_embed = _ANNOT_EMBED
     model = PERNNDistributionModel(
         embed_dim=embed_dim,
         num_hidden_layers=num_hidden_layers,
         bidirection=bidirection,
         p_dropout=p_dropout,
         annot_embed=annot_embed,
-        assemb_opt=assemb_opt,
         seqlevel_featdim=seqlevel_featdim,
         num_outcomes=num_outcomes,
         rnn_class=nn.GRU,
@@ -406,7 +445,11 @@ def apply_pridict_freezing(
     *,
     trainable_layernames: Sequence[str],
 ) -> None:
-    freeze_layers(model.iter_components(), list(trainable_layernames))
+    # Vendor freeze_layers expects ``(module, name)`` pairs.
+    freeze_layers(
+        [(module, name) for name, module in model.iter_components()],
+        list(trainable_layernames),
+    )
 
 
 def build_pridict_dataloaders(
@@ -468,7 +511,6 @@ def train_pridict2_with_lightning(
         model,
         train_hparams=hyperparameters,
         loss_func_name=loss_func,
-        device=device,
     )
     metrics = fit_lightning_module(
         lightning_module,
@@ -485,6 +527,9 @@ def train_pridict2_with_lightning(
         ),
         on_epoch_end=make_epoch_logger(progress_log, cancel_check=cancel_check),
     )
+    # Encoder modules keep an explicit ``.device`` attribute used for masks.
+    model.set_device(device)
+    model.to(device)
     log_training_best(
         progress_log,
         best_epoch=int(metrics["best_epoch"]),
@@ -555,10 +600,69 @@ class PRIDICT2ModelWrapper(BasePEModel):
         self.selected_cell_type: Optional[str] = None
 
     def _default_outcomes(self) -> List[str]:
-        # Original PRIDICT1 base models were mostly used for intended edits.
-        if self.model_name_str in {None, "base_90k", "base_390k"}:
+        # Distribution training (KLDloss/CEloss) always needs the three-way
+        # outcome vector. Legacy single-head base runs used intended-edit only.
+        if self.model_name_str in {"base_90k", "base_390k"}:
             return ["averageedited"]
         return ["averageedited", "averageunedited", "averageindel"]
+
+    @staticmethod
+    def _resolve_training_outcomes(
+        df: pd.DataFrame,
+        *,
+        requested: Sequence[str],
+        loss_func: str,
+    ) -> List[str]:
+        """Select outcome columns compatible with ``loss_func``.
+
+        KL/CE distribution losses need the full non-null trio
+        (``averageedited`` / ``averageunedited`` / ``averageindel``). In the
+        standardized catalog only ``pridict1/library1`` currently ships that
+        trio; edit-efficiency-only sheets (ClinVar, library-diverse, merges
+        with those) must use ``MSEloss`` on intended edit.
+        """
+        loss_name = str(loss_func).strip()
+        if loss_name in {"KLDloss", "CEloss"}:
+            needed = ["averageedited", "averageunedited", "averageindel"]
+            missing = [col for col in needed if col not in df.columns]
+            if missing:
+                raise ValueError(
+                    f"PRIDICT2 {loss_name} requires outcome columns {needed}; "
+                    f"missing {missing}. Only pridict1/library1 currently has "
+                    "the full trio. For edit-efficiency-only data (ClinVar, "
+                    "library-diverse, L1+ClinVar merge), use loss_func=MSEloss."
+                )
+            incomplete: List[str] = []
+            for col in needed:
+                series = pd.to_numeric(df[col], errors="coerce")
+                n_nan = int(series.isna().sum())
+                if n_nan:
+                    incomplete.append(f"{col} ({n_nan}/{len(df)} NaN)")
+            if incomplete:
+                raise ValueError(
+                    f"PRIDICT2 {loss_name} requires non-null values in {needed} "
+                    f"on every training row; incomplete: {incomplete}. "
+                    "Only pridict1/library1 currently has a complete trio. "
+                    "For ClinVar / library-diverse / merges with those sheets, "
+                    "use loss_func=MSEloss (intended-edit only)."
+                )
+            return list(needed)
+
+        # MSE / RMSE: intended-edit only (do not train on NaN companion outcomes).
+        _ = requested  # API accepts y_ref; MSE always uses intended-edit only.
+        if "averageedited" not in df.columns:
+            raise ValueError(
+                "PRIDICT2 training requires an 'averageedited' column "
+                "(from editing_efficiency)."
+            )
+        edited = pd.to_numeric(df["averageedited"], errors="coerce")
+        n_nan = int(edited.isna().sum())
+        if n_nan:
+            raise ValueError(
+                f"PRIDICT2 {loss_name or 'MSEloss'} requires non-null "
+                f"'averageedited' on every training row ({n_nan}/{len(df)} NaN)."
+            )
+        return ["averageedited"]
 
     @staticmethod
     def _normalize_cell_type(name: str) -> str:
@@ -663,6 +767,16 @@ class PRIDICT2ModelWrapper(BasePEModel):
         PRIDICT2ModelWrapper._validate_run_dir(str(run_dir))
         available = PRIDICT2ModelWrapper._cell_types_from_run_dir(str(run_dir))
         if not available:
+            # Ensemble-trained PE_RNN_distribution runs save a generic decoder.pkl
+            # (no decoder_<cell> heads). Those are loadable as a single-head bundle.
+            if PRIDICT2ModelWrapper._is_single_head_distribution_run(str(run_dir)):
+                if cell_type is not None:
+                    raise ValueError(
+                        f"PRIDICT2 run '{base_ref}' is a single-head ensemble artifact "
+                        "(decoder.pkl) with no cell-type heads. Use the base weights "
+                        "id without a '__{cell}' suffix."
+                    )
+                return run_dir, None
             raise ValueError(f"PRIDICT2 run has no decoder heads: {run_dir}")
 
         if cell_type is None:
@@ -706,6 +820,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
     def _predict_from_loaded_or_current_model(
         self, dloader: Any, y_ref: List[str]
     ) -> pd.DataFrame:
+        if isinstance(self.model, PERNNDistributionModel):
+            raise ValueError(
+                "PERNNDistributionModel predictions require _predict_pernn_dataframe "
+                "(dataframe input), not a vendor ConcatDataLoader."
+            )
         if self.selected_cell_type and self.loaded_model_dir:
             return self.prieml_model.predict_from_dloader(
                 dloader=dloader,
@@ -818,6 +937,18 @@ class PRIDICT2ModelWrapper(BasePEModel):
             manifest = dict(registry_by_id.get(base_id, {}))
             base_label = manifest.get("label", base_id.replace("__", " / "))
             cell_types = PRIDICT2ModelWrapper._cell_types_from_run_dir(str(run_dir))
+            if not cell_types:
+                if PRIDICT2ModelWrapper._is_single_head_distribution_run(str(run_dir)):
+                    entries.append(
+                        {
+                            **manifest,
+                            "id": base_id,
+                            "model": "pridict2",
+                            "label": base_label,
+                            "cell_type": None,
+                        }
+                    )
+                continue
             if len(cell_types) == 1:
                 entries.append(
                     {
@@ -860,17 +991,113 @@ class PRIDICT2ModelWrapper(BasePEModel):
 
     def load_model(self, model_path: str) -> None:
         """
-        Load pre-trained PRIDICT2 model
-        
-        Args:
-            model_path: Path to the trained model directory
+        Load a trained PRIDICT2 run directory.
+
+        Ensemble-trained single-head ``PE_RNN_distribution`` artifacts (generic
+        ``decoder.pkl`` names) are loaded into :class:`PERNNDistributionModel`.
+        Vendor multidata / cell-type-headed runs still go through PRIEML.
         """
         self._validate_run_dir(model_path)
         self.loaded_model_dir = model_path
+        self.selected_cell_type = None
+
+        if self._is_single_head_distribution_run(model_path):
+            self.model = self._load_pernn_from_run_dir(model_path)
+            self.model_components = None
+            self.is_trained = True
+            return
+
         self.model_components = self.prieml_model.build_retrieve_models(model_path)
         self.model = self.model_components
         self.is_trained = True
-    
+
+    @staticmethod
+    def _is_single_head_distribution_run(model_path: str) -> bool:
+        """True when the run uses generic COMPONENT_NAMES (not decoder_<cell>)."""
+        statedict = Path(model_path) / "model_statedict"
+        if (statedict / "decoder.pkl").is_file():
+            return True
+        if any(statedict.glob("decoder_*.pkl")):
+            return False
+        import os
+        import pickle
+
+        options_path = os.path.join(model_path, "config", "exp_options.pkl")
+        if not os.path.isfile(options_path):
+            return False
+        with open(options_path, "rb") as handle:
+            options = pickle.load(handle)
+        return (
+            str(options.get("model_name", "")) == "PE_RNN_distribution"
+            and not (options.get("datasets_name") or [])
+        )
+
+    def _load_pernn_from_run_dir(self, model_path: str) -> PERNNDistributionModel:
+        import os
+
+        mconfig_dir = os.path.join(model_path, "config")
+        mconfig, options = self.prieml_model._load_model_config(mconfig_dir)
+        model_config = mconfig["model_config"]
+        hyperparameters = {
+            "embed_dim": int(model_config.embed_dim),
+            "num_hidden_layers": int(model_config.num_hidden_layers),
+            "bidirection": bool(model_config.bidirection),
+            "p_dropout": float(model_config.p_dropout),
+        }
+        model = build_pernn_distribution_model(
+            hyperparameters,
+            seqlevel_featdim=int(options.get("seqlevel_featdim", 0)),
+            num_outcomes=int(options.get("num_outcomes", 1)),
+            device=self.device,
+        )
+        statedict_dir = os.path.join(model_path, "model_statedict")
+        model.load_vendor_statedict(statedict_dir, device=self.device)
+        model.eval()
+        return model
+
+    def _predict_pernn_dataframe(
+        self,
+        df: pd.DataFrame,
+        y_ref: List[str],
+        *,
+        batch_size: int = 256,
+    ) -> pd.DataFrame:
+        """Score a dataframe with the in-memory :class:`PERNNDistributionModel`."""
+        if not isinstance(self.model, PERNNDistributionModel):
+            raise ValueError("PERNNDistributionModel is not loaded.")
+        native = self._to_pridict_dataframe(df)
+        dtensor, _ = self._build_datatensor(native, y_ref)
+        partition = {"eval": dtensor}
+        loaders, _, _, _ = construct_load_dataloaders(
+            partition,
+            ["eval"],
+            {"batch_size": int(batch_size), "num_workers": 0},
+            wrk_dir=None,
+        )
+        loader = loaders["eval"]
+        pred_chunks: List[np.ndarray] = []
+        true_chunks: List[np.ndarray] = []
+        self.model.eval()
+        with torch.no_grad():
+            for batch in loader:
+                logits, target = self.model.forward_batch(
+                    batch,
+                    device=self.device,
+                    requires_grad=False,
+                )
+                # Distribution decoder emits log-probs under KLDloss/CEloss.
+                probs = torch.exp(logits)
+                pred_chunks.append(probs.detach().cpu().numpy())
+                true_chunks.append(target.detach().cpu().numpy())
+        if not pred_chunks:
+            return pd.DataFrame()
+        pred = np.concatenate(pred_chunks, axis=0)
+        true = np.concatenate(true_chunks, axis=0)
+        out: Dict[str, Any] = {}
+        for idx, outcome in enumerate(y_ref):
+            out[f"true_{outcome}"] = true[:, idx]
+            out[f"pred_{outcome}"] = pred[:, idx]
+        return pd.DataFrame(out)
     def prepare_data(self, df: pd.DataFrame, **kwargs) -> Any:
         """
         Prepare data in PRIDICT2 format
@@ -911,14 +1138,25 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Make predictions using PRIDICT model.
         
         Args:
-            data: DataLoader from prepare_data()
-            batch_size: Batch size (not used, kept for API consistency)
+            data: Native PRIDICT DataFrame (ensemble-trained single-head) or a
+                DataLoader from :meth:`prepare_data` (vendor multi-head).
+            batch_size: Batch size for single-head PERNN inference.
             
         Returns:
             List of intended edit predictions.
         """
         if not self.is_trained:
             raise ValueError("Model not loaded. Call load_model() first.")
+        if isinstance(self.model, PERNNDistributionModel):
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError(
+                    "PERNNDistributionModel predictions require a DataFrame input "
+                    "(not a vendor ConcatDataLoader)."
+                )
+            pred_df = self._predict_pernn_dataframe(
+                data, ["averageedited"], batch_size=batch_size
+            )
+            return pred_df["pred_averageedited"].astype(float).tolist()
         pred_df = self._predict_from_loaded_or_current_model(
             dloader=data,
             y_ref=["averageedited"],
@@ -960,6 +1198,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         return pred_df[f'pred_{outcome}'].tolist()
 
     def _build_datatensor(self, df: pd.DataFrame, y_ref: List[str]) -> tuple[Any, List[str]]:
+        df = self._prepare_pridict_frame(df)
         norm_cols, proc, init, n_init, mut, n_mut = self.prieml_model._process_df(df)
         dtensor = self.prieml_model._construct_datatensor(
             norm_cols, proc, init, n_init, mut, n_mut, y_ref=y_ref
@@ -967,10 +1206,78 @@ class PRIDICT2ModelWrapper(BasePEModel):
         return dtensor, list(norm_cols or [])
 
     @staticmethod
+    def _prepare_pridict_frame(df: pd.DataFrame) -> pd.DataFrame:
+        """Ensure unique ``seq_id`` and string edit-position lists for vendor preprocess.
+
+        Merged PE-DB exports can collide on per-sheet ``seq_*`` IDs; PRIDICT2
+        ``groupby(seq_id)`` then yields multi-row groups and crashes on
+        ``deepeditposition_lst.strip``.
+        """
+        out = df
+        if "seq_id" in out.columns and not out["seq_id"].astype(str).is_unique:
+            out = out.copy()
+            out["seq_id"] = [f"seq_{i}" for i in range(len(out))]
+        if "deepeditposition_lst" in out.columns:
+            col = out["deepeditposition_lst"]
+            if any(not isinstance(v, str) for v in col.to_numpy()):
+                if out is df:
+                    out = out.copy()
+                out["deepeditposition_lst"] = [
+                    v if isinstance(v, str) else str(v) for v in out["deepeditposition_lst"]
+                ]
+        return out
+
+    @staticmethod
+    def _seqlevel_featdim_from_datatensor(dtensor: Any) -> int:
+        """Return MLP input width from the built tensor (not continuous-only norm cols).
+
+        Vendor tensors append correction-type and Tm-NaN indicators to the
+        continuous columns, so ``len(norm_cols)`` under-counts the real feature dim.
+        """
+        colnames = getattr(dtensor, "seqlevel_feat_colnames", None)
+        if colnames is not None:
+            return int(len(colnames))
+        feat = getattr(dtensor, "seqlevel_feat", None)
+        if feat is not None and hasattr(feat, "shape") and len(feat.shape) >= 2:
+            return int(feat.shape[-1])
+        raise ValueError(
+            "PRIDICT2 datatensor is missing seqlevel_feat_colnames / seqlevel_feat"
+        )
+
+    @staticmethod
     def _resolve_pretrained_statedict_dir(weights_name: str) -> str:
-        """Return pretrained statedict root for fine-tuning from a weight selection."""
+        """Return pretrained statedict root for fine-tuning from a weight selection.
+
+        Ensemble-registered runs store ``model_statedict`` directly under the run
+        directory. Vendor PRIEML trees use ``<exp>/train_val/run_N/model_statedict``;
+        for those, return the experiment root so :func:`vendor_state_dict_path` can
+        append the train_val path.
+        """
         run_dir, _ = PRIDICT2ModelWrapper.resolve_weight_selection(weights_name)
+        direct = run_dir / "model_statedict"
+        if direct.is_dir():
+            return str(direct)
         return str(run_dir.parent.parent)
+
+    @staticmethod
+    def _architecture_from_pretrained_weights(weights_name: str) -> Dict[str, Any]:
+        """Read backbone architecture from a registered/vendor PRIDICT2 run."""
+        run_dir, _ = PRIDICT2ModelWrapper.resolve_weight_selection(weights_name)
+        config_dir = run_dir / "config"
+        if not config_dir.is_dir():
+            return {}
+        from pridict2.pridict.pridictv2.predict_outcomedistrib import PRIEML_Model
+
+        # Lightweight config load without constructing a full wrapper.
+        reader = PRIEML_Model(device=torch.device("cpu"), wsize=20)
+        mconfig, _options = reader._load_model_config(str(config_dir))
+        model_config = mconfig["model_config"]
+        return {
+            "embed_dim": int(model_config.embed_dim),
+            "num_hidden_layers": int(model_config.num_hidden_layers),
+            "bidirection": bool(model_config.bidirection),
+            "p_dropout": float(model_config.p_dropout),
+        }
 
     def _resolve_train_statedict_dir(
         self, hyperparameters: Dict[str, Any]
@@ -994,7 +1301,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
         if "trf_tup" in hyperparameters:
             return hyperparameters["trf_tup"]
         embed_dim = int(hyperparameters.get("embed_dim", 64))
-        z_dim = int(hyperparameters.get("z_dim", 64))
+        # Vendor stack assembly derives z_dim from embed widths.
+        z_dim = _compute_z_dim(embed_dim)
         num_hidden_layers = int(hyperparameters.get("num_hidden_layers", 1))
         bidirection = bool(hyperparameters.get("bidirection", True))
         p_dropout = float(
@@ -1021,7 +1329,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         self,
         hyperparameters: Dict[str, Any],
         *,
-        norm_cols_tr: List[str],
+        seqlevel_featdim: int,
         y_ref: List[str],
     ) -> Dict[str, Any]:
         experiment_options = {
@@ -1029,12 +1337,16 @@ class PRIDICT2ModelWrapper(BasePEModel):
                 hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")
             ),
             "model_name": "PE_RNN_distribution",
-            "annot_embed": int(hyperparameters.get("annot_embed", 8)),
-            "assemb_opt": str(hyperparameters.get("assemb_opt", "add")),
-            "seqlevel_featdim": int(
-                hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))
-            ),
-            "num_outcomes": int(hyperparameters.get("num_outcomes", len(y_ref))),
+            "annot_embed": _ANNOT_EMBED,
+            "assemb_opt": _ASSEMB_OPT,
+            # Single-head layout (matches PERNNDistributionModel COMPONENT_NAMES).
+            # Vendor PRIEML multidata load requires datasets_name; we load our
+            # own artifacts via PERNNDistributionModel instead.
+            "datasets_name": [],
+            "separate_attention_layers": False,
+            "separate_seqlevel_embedder": False,
+            "seqlevel_featdim": int(seqlevel_featdim),
+            "num_outcomes": int(len(y_ref)),
         }
         if bool(hyperparameters.get("freezing", False)):
             experiment_options["freezing"] = True
@@ -1048,11 +1360,14 @@ class PRIDICT2ModelWrapper(BasePEModel):
         val_df: pd.DataFrame,
         y_ref: List[str],
     ) -> Dict[str, float]:
-        prepared_val = self.prepare_data(val_df, y_ref=y_ref)
-        pred_df = self._predict_from_loaded_or_current_model(
-            dloader=prepared_val,
-            y_ref=y_ref,
-        )
+        if isinstance(self.model, PERNNDistributionModel):
+            pred_df = self._predict_pernn_dataframe(val_df, y_ref)
+        else:
+            prepared_val = self.prepare_data(val_df, y_ref=y_ref)
+            pred_df = self._predict_from_loaded_or_current_model(
+                dloader=prepared_val,
+                y_ref=y_ref,
+            )
         fold_metrics: Dict[str, float] = {}
         for outcome in y_ref:
             true_col = f"true_{outcome}"
@@ -1078,24 +1393,34 @@ class PRIDICT2ModelWrapper(BasePEModel):
     ) -> Dict[str, Any]:
         from pridict2.pridict.pridictv2.run_workflow import build_config_map
 
-        batch_size = int(hyperparameters.get("batch_size", 128))
-        num_epochs = int(hyperparameters.get("num_epochs", 20))
+        # When fine-tuning, inherit backbone architecture from the pretrained run
+        # so encoders/attentions load cleanly; only the outcome head may differ.
+        # Prefer pretrained dims over baseline defaults (setdefault would keep 1-layer).
+        build_hparams = dict(hyperparameters)
+        weights_name = hyperparameters.get("weights")
+        if bool(hyperparameters.get("load_pretrained", False)) and weights_name:
+            inherited = self._architecture_from_pretrained_weights(str(weights_name))
+            build_hparams.update(inherited)
+
+        batch_size = int(build_hparams.get("batch_size", 128))
+        num_epochs = int(build_hparams.get("num_epochs", 20))
         trf_tup = self._build_trf_tup(
-            hyperparameters,
+            build_hparams,
             batch_size=batch_size,
             num_epochs=num_epochs,
         )
-        dtensor_train, norm_cols_tr = self._build_datatensor(train_df, y_ref)
+        dtensor_train, _ = self._build_datatensor(train_df, y_ref)
         dtensor_val, _ = self._build_datatensor(val_df, y_ref)
+        seqlevel_featdim = self._seqlevel_featdim_from_datatensor(dtensor_train)
         experiment_options = self._build_experiment_options(
-            hyperparameters,
-            norm_cols_tr=list(norm_cols_tr),
+            build_hparams,
+            seqlevel_featdim=seqlevel_featdim,
             y_ref=y_ref,
         )
         config_map = build_config_map(
             trf_tup,
             experiment_options,
-            loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
+            loss_func=str(build_hparams.get("loss_func", "KLDloss")),
         )
         train_loader, val_loader = build_pridict_dataloaders(
             train_dataset=dtensor_train,
@@ -1104,25 +1429,27 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
 
         model = build_pernn_distribution_model(
-            hyperparameters,
-            seqlevel_featdim=int(
-                hyperparameters.get("seqlevel_featdim", len(norm_cols_tr))
-            ),
+            build_hparams,
+            seqlevel_featdim=seqlevel_featdim,
             num_outcomes=len(y_ref),
             device=self.device,
         )
+        preload_summary: Optional[Dict[str, List[str]]] = None
         statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
         pretrained_path = vendor_state_dict_path(statedict_dir)
         if pretrained_path:
-            model.load_vendor_statedict(pretrained_path, device=self.device)
+            preload_summary = model.load_vendor_statedict_flexible(
+                pretrained_path,
+                device=self.device,
+            )
 
         train_metrics = train_pridict2_with_lightning(
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            hyperparameters=hyperparameters,
+            hyperparameters=build_hparams,
             device=self.device,
-            loss_func=str(hyperparameters.get("loss_func", "KLDloss")),
+            loss_func=str(build_hparams.get("loss_func", "KLDloss")),
             progress_log=progress_log,
             cancel_check=cancel_check,
         )
@@ -1136,7 +1463,12 @@ class PRIDICT2ModelWrapper(BasePEModel):
             best_epoch=int(train_metrics["best_epoch"]),
         )
 
-        self.load_model(str(model_dir))
+        # Keep the trained single-head model in memory; vendor PRIEML load expects
+        # multidata datasets_name / decoder_<cell> files and would crash here.
+        self.model = model
+        self.model_components = None
+        self.loaded_model_dir = str(model_dir)
+        self.is_trained = True
         fold_metrics = self._metrics_from_validation_predictions(val_df, y_ref)
         return {
             "output_dir": run_output_dir,
@@ -1145,6 +1477,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "num_val_rows": len(val_df),
             "metrics": fold_metrics,
             "training_metrics": train_metrics,
+            "pretrained_load": preload_summary,
         }
 
     def train(self, train_data: pd.DataFrame, val_data: Optional[pd.DataFrame] = None,
@@ -1165,10 +1498,18 @@ class PRIDICT2ModelWrapper(BasePEModel):
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(
             hyperparameters
         )
-        y_ref = list(hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes())
+        loss_func = str(hyperparameters.get("loss_func", "KLDloss"))
         train_native, val_native = resolve_train_val_from_splits(train_data, val_data)
         train_df = self._to_pridict_dataframe(train_native)
         val_df = self._to_pridict_dataframe(val_native)
+        requested = list(
+            hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes()
+        )
+        y_ref = self._resolve_training_outcomes(
+            train_df,
+            requested=requested,
+            loss_func=loss_func,
+        )
 
         output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
         fold_reports: List[Dict[str, Any]] = []
@@ -1214,6 +1555,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "outcomes": y_ref,
             "validation_metrics": run_report["metrics"],
         }
+        if run_report.get("pretrained_load") is not None:
+            result["pretrained_load"] = run_report["pretrained_load"]
         if fold_reports:
             result["cross_validation"] = fold_reports
         return result
@@ -1241,18 +1584,17 @@ class PRIDICT2ModelWrapper(BasePEModel):
         if not outcomes:
             outcomes = ["averageedited"]
 
-        # Prepare data
-        dloader = self.prepare_data(
-            test_df,
-            y_ref=outcomes
-        )
-        
-        # Make predictions
-        pred_df = self._predict_from_loaded_or_current_model(dloader=dloader, y_ref=outcomes)
-        if self.selected_cell_type and "dataset_name" in pred_df.columns:
-            pred_df = pred_df[
-                pred_df["dataset_name"] == self.selected_cell_type
-            ].reset_index(drop=True)
+        if isinstance(self.model, PERNNDistributionModel):
+            pred_df = self._predict_pernn_dataframe(test_df, outcomes)
+        else:
+            dloader = self.prepare_data(test_df, y_ref=outcomes)
+            pred_df = self._predict_from_loaded_or_current_model(
+                dloader=dloader, y_ref=outcomes
+            )
+            if self.selected_cell_type and "dataset_name" in pred_df.columns:
+                pred_df = pred_df[
+                    pred_df["dataset_name"] == self.selected_cell_type
+                ].reset_index(drop=True)
         
         primary_outcome = "averageedited" if "averageedited" in outcomes else outcomes[0]
         results: Dict[str, float] = {}

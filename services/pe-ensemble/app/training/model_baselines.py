@@ -17,6 +17,7 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
             "early_stopping_patience": 10,
             "early_stopping_min_delta": 0.0,
             "reshuffle_each_epoch": True,
+            "load_pretrained": False,
             "hidden_size": 128,
             "num_layers": 1,
         }
@@ -43,9 +44,9 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
             "weight_decay": 1e-4,
             "num_epochs": 20,
             "embed_dim": 64,
-            "z_dim": 64,
             "num_hidden_layers": 1,
             "p_dropout": 0.1,
             "loss_func": "KLDloss",
+            "y_ref": ["averageedited", "averageunedited", "averageindel"],
         }
     return {}

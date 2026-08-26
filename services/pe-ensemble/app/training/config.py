@@ -35,6 +35,28 @@ def pe_db_url() -> str:
 # Process flag: CLI enables in-process pe-db library; FastAPI server leaves this False (HTTP).
 _use_pe_db_library: bool = False
 
+# Collision-safe alias used by ``pe_ensemble.library`` (see pe_ensemble._bootstrap).
+_SERVICE_APP_CONFIG = "pe_ensemble_service_app.training.config"
+_APP_CONFIG = "app.training.config"
+
+
+def _sync_pe_db_library_flag(enabled: bool) -> None:
+    """Keep both ``app`` and ``pe_ensemble_service_app`` copies of this module in sync.
+
+    The CLI may import ``app.training.*`` while ``pe_ensemble.library`` loads the
+    same files under ``pe_ensemble_service_app.*``. A process-global flag must be
+    mirrored or evaluate/ensemble --sync would still talk HTTP to PE_DB_URL.
+    """
+    import sys
+
+    for name in (_APP_CONFIG, _SERVICE_APP_CONFIG, __name__):
+        mod = sys.modules.get(name)
+        if mod is None:
+            continue
+        if getattr(mod, "__file__", None) != __file__:
+            continue
+        mod._use_pe_db_library = enabled
+
 
 def enable_cli_pe_db_access() -> None:
     """Use in-process ``pe_db.library`` (same code path as the ``pe-db`` CLI).
@@ -42,8 +64,7 @@ def enable_cli_pe_db_access() -> None:
     Called once from the ``pe-ensemble`` CLI entrypoint. The FastAPI service never
     calls this, so it always talks to PE-DB over HTTP via ``PE_DB_URL``.
     """
-    global _use_pe_db_library
-    _use_pe_db_library = True
+    _sync_pe_db_library_flag(True)
 
 
 def use_pe_db_library() -> bool:
@@ -73,11 +94,34 @@ def jobs_root() -> Path:
     return (Path(__file__).resolve().parents[2] / "jobs").resolve()
 
 
-def presets_root() -> Path:
-    env = os.getenv("TRAINING_PRESETS_ROOT")
+def shipped_presets_root() -> Path:
+    """Git-tracked shared defaults (``config/training_presets``).
+
+    Override with ``TRAINING_SHIPPED_PRESETS_ROOT`` (tests / unusual layouts).
+    """
+    env = os.getenv("TRAINING_SHIPPED_PRESETS_ROOT")
     if env:
         return Path(env).expanduser().resolve()
     return (Path(__file__).resolve().parents[2] / "config" / "training_presets").resolve()
+
+
+def local_presets_root() -> Path:
+    """Writable HPO overlay (``config/training_presets_local``, gitignored).
+
+    ``TRAINING_PRESETS_ROOT`` (or ``TRAINING_LOCAL_PRESETS_ROOT``) overrides this.
+    Tune writes dataset entries here; train merges local over shipped.
+    """
+    env = os.getenv("TRAINING_PRESETS_ROOT") or os.getenv("TRAINING_LOCAL_PRESETS_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return (
+        Path(__file__).resolve().parents[2] / "config" / "training_presets_local"
+    ).resolve()
+
+
+def presets_root() -> Path:
+    """Writable presets root (local overlay). Prefer :func:`local_presets_root`."""
+    return local_presets_root()
 
 
 def tuning_studies_root() -> Path:

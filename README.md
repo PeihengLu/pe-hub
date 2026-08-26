@@ -4,11 +4,11 @@ A platform for prime editing efficiency data management, model evaluation, and t
 
 ## Components
 
-| Component | Port | Role |
-|-----------|------|------|
-| **PE Database** (`services/pe-db`) | 8000 | Catalog metadata (SQLite) + standardized edit records (parquet/CSV) |
-| **PE Ensemble** (`services/pe-ensemble`) | 8001 | Model wrappers, training jobs, evaluation, weight registry |
-| **PE Hub** (`pe-hub`) | 5173 | Unified React UI for catalog browsing, export, training, and evaluation |
+| Component                                        | Port | Role                                                                    |
+| ------------------------------------------------ | ---- | ----------------------------------------------------------------------- |
+| **PE Database** (`services/pe-db`)       | 8000 | Catalog metadata (SQLite) + standardized edit records (parquet/CSV)     |
+| **PE Ensemble** (`services/pe-ensemble`) | 8001 | Model wrappers, training jobs, evaluation, weight registry              |
+| **PE Hub** (`pe-hub`)                    | 5173 | Unified React UI for catalog browsing, export, training, and evaluation |
 
 Shared Python utilities live in `packages/pe-common`.
 
@@ -132,29 +132,29 @@ Supported studies include DeepPrime, PRIDICT1, PRIDICT2, MinsePIE, and DeepPE (s
 
 ### Output formats
 
-| Format | Use |
-|--------|-----|
-| `std` | Shared standardized schema (default for `/api/data`) |
-| `deepprime` | DeepPrime native columns |
-| `pridict` / `pridict2` | PRIDICT native columns |
-| `oped` | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
+| Format                     | Use                                                     |
+| -------------------------- | ------------------------------------------------------- |
+| `std`                    | Shared standardized schema (default for`/api/data`)   |
+| `deepprime`              | DeepPrime native columns                                |
+| `pridict` / `pridict2` | PRIDICT native columns                                  |
+| `oped`                   | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
 
 Model-format conversion is owned by **PE Database** (`GET /api/filter?format=…`). PE Ensemble proxies the same contract at `GET /data/filter` and uses it for training and evaluation.
 
 ## PE Database API (overview)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/studies` | List studies |
-| GET | `/api/datasets` | List datasets |
-| GET | `/api/datasheets` | List datasheet catalog entries |
-| GET | `/api/scaffolds` | List pegRNA scaffolds |
-| GET | `/api/data` | Load standardized rows for one datasheet |
-| GET | `/api/filter` | Filter catalog and/or export model-format data with splits |
-| GET | `/api/statistics` | Aggregate edit statistics |
-| POST | `/api/export` | Re-export and/or re-standardize |
-| POST | `/api/convert` | Standardize one sheet |
-| GET | `/health` | Health check |
+| Method | Path                | Description                                                |
+| ------ | ------------------- | ---------------------------------------------------------- |
+| GET    | `/api/studies`    | List studies                                               |
+| GET    | `/api/datasets`   | List datasets                                              |
+| GET    | `/api/datasheets` | List datasheet catalog entries                             |
+| GET    | `/api/scaffolds`  | List pegRNA scaffolds                                      |
+| GET    | `/api/data`       | Load standardized rows for one datasheet                   |
+| GET    | `/api/filter`     | Filter catalog and/or export model-format data with splits |
+| GET    | `/api/statistics` | Aggregate edit statistics                                  |
+| POST   | `/api/export`     | Re-export and/or re-standardize                            |
+| POST   | `/api/convert`    | Standardize one sheet                                      |
+| GET    | `/health`         | Health check                                               |
 
 ### Examples
 
@@ -172,23 +172,23 @@ curl "http://localhost:8000/api/filter?format=deepprime&study=pridict1&dataset=l
 
 ## PE Ensemble API (overview)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/models` | List supported models |
-| GET | `/models/{name}/weights` | List registered weight sets |
-| GET | `/data/filter` | Proxy to PE-DB filter/export |
-| POST | `/evaluate` | Queue an asynchronous benchmark job |
-| GET | `/evaluate/status/{job_id}` | Benchmark job status and metrics |
-| GET | `/evaluate/logs/{job_id}` | Benchmark job logs |
-| GET | `/evaluate/jobs` | List recent benchmark jobs |
-| POST | `/train` | Queue an asynchronous training job |
-| GET | `/train/status/{job_id}` | Job status and result |
-| GET | `/train/logs/{job_id}` | Incremental training logs |
-| GET | `/train/jobs` | Recent jobs |
-| GET | `/devices` | Available compute devices |
-| GET | `/train/devices` | Per-device queue occupancy |
-| POST | `/predict` | Prediction endpoint (stub) |
-| GET | `/health` | Health check |
+| Method | Path                          | Description                         |
+| ------ | ----------------------------- | ----------------------------------- |
+| GET    | `/models`                   | List supported models               |
+| GET    | `/models/{name}/weights`    | List registered weight sets         |
+| GET    | `/data/filter`              | Proxy to PE-DB filter/export        |
+| POST   | `/evaluate`                 | Queue an asynchronous benchmark job |
+| GET    | `/evaluate/status/{job_id}` | Benchmark job status and metrics    |
+| GET    | `/evaluate/logs/{job_id}`   | Benchmark job logs                  |
+| GET    | `/evaluate/jobs`            | List recent benchmark jobs          |
+| POST   | `/train`                    | Queue an asynchronous training job  |
+| GET    | `/train/status/{job_id}`    | Job status and result               |
+| GET    | `/train/logs/{job_id}`      | Incremental training logs           |
+| GET    | `/train/jobs`               | Recent jobs                         |
+| GET    | `/devices`                  | Available compute devices           |
+| GET    | `/train/devices`            | Per-device queue occupancy          |
+| POST   | `/predict`                  | Prediction endpoint (stub)          |
+| GET    | `/health`                   | Health check                        |
 
 Models: **DeepPrime**, **PRIDICT2**, **OPED**. Training supports per-device queuing (CUDA, MPS, CPU, …). See `services/pe-ensemble/README.md` and `services/pe-ensemble/jobs/README.md` for CLI and SLURM usage.
 
@@ -201,10 +201,14 @@ Single-site UI with live backend health indicators:
 
 Environment variables (`.env` in `pe-hub/`):
 
-| Variable | Default |
-|----------|---------|
-| `VITE_PE_DB_URL` | `http://localhost:8000` |
+| Variable                  | Default                   |
+| ------------------------- | ------------------------- |
+| `VITE_PE_DB_URL`        | `http://localhost:8000` |
 | `VITE_ENSEMBLE_API_URL` | `http://localhost:8001` |
+
+## Work with CLI on Remote Cluster
+
+We recognize that a lot of CLI usage would be done on remote clusters. 
 
 ## Shared package: pe-common
 
@@ -266,35 +270,35 @@ Each datasheet is identified by `{cell_line}-{pe_system}` under the dataset (e.g
 
 Contributed edit-level tables should use the shared standardized columns (parquet or CSV). All geometry positions are **0-based, half-open** `[left, right)` within `wt_sequence` / `mut_sequence` (sequences may be padded with `N` so WT and Mut share length).
 
-| Column | Type | Description |
-|---|---|---|
-| `group_id` | int | Identifier for a unique protospacer within the datasheet |
-| `type_sub` / `type_ins` / `type_del` | bool | Intended edit class (mutually exclusive) |
-| `edit_len` | int | Edit length (bp) |
-| `wt_sequence` | str | Wild-type target-strand sequence |
-| `mut_sequence` | str | Edited target-strand sequence |
-| `protospacer_location_l` / `_r` | int | Protospacer interval in the sequences |
-| `pbs_location_l` / `_r` | int | PBS interval |
-| `rtt_location_l` / `_r` | int | Reverse-transcriptase template interval |
-| `lha_location_l` / `_r` | int | Left homology arm interval |
-| `rha_location_l` / `_r` | int | Right homology arm interval |
-| `spcas9_score` | float | Optional SpCas9 / DeepSpCas9 score (`NaN` if unknown) |
-| `editing_efficiency` | float | Measured prime-editing efficiency |
-| `original_fold` | float | Optional source train/val/test fold id (`NaN` if none) |
+| Column                                     | Type  | Description                                              |
+| ------------------------------------------ | ----- | -------------------------------------------------------- |
+| `group_id`                               | int   | Identifier for a unique protospacer within the datasheet |
+| `type_sub` / `type_ins` / `type_del` | bool  | Intended edit class (mutually exclusive)                 |
+| `edit_len`                               | int   | Edit length (bp)                                         |
+| `wt_sequence`                            | str   | Wild-type target-strand sequence                         |
+| `mut_sequence`                           | str   | Edited target-strand sequence                            |
+| `protospacer_location_l` / `_r`        | int   | Protospacer interval in the sequences                    |
+| `pbs_location_l` / `_r`                | int   | PBS interval                                             |
+| `rtt_location_l` / `_r`                | int   | Reverse-transcriptase template interval                  |
+| `lha_location_l` / `_r`                | int   | Left homology arm interval                               |
+| `rha_location_l` / `_r`                | int   | Right homology arm interval                              |
+| `spcas9_score`                           | float | Optional SpCas9 / DeepSpCas9 score (`NaN` if unknown)  |
+| `editing_efficiency`                     | float | Measured prime-editing efficiency                        |
+| `original_fold`                          | float | Optional source train/val/test fold id (`NaN` if none) |
 
 ### Endogenous extension (chromosomal edits)
 
 If `target_context` is `endogenous` (edits measured at native chromosomal locations), also include these columns. Values may be null when a field is unknown; the columns themselves should still be present.
 
-| Column | Type | Description |
-|---|---|---|
-| `endo_genome_build` | str | Assembly, e.g. `hg38`, `mm39` |
-| `endo_chr` | str | Chromosome |
-| `endo_start` / `endo_end` | int | 0-based half-open genomic interval |
-| `endo_strand` | int | `+1` or `-1` (null if unknown) |
-| `endo_coord_ref` | str | What the interval anchors, e.g. `protospacer`, `variant`, `trip_integration` |
-| `endo_coord_source` | str | Provenance string for the coordinates |
-| `endo_locus_id` | str | Optional convenience label (gene, barcode, site name, …) |
+| Column                        | Type | Description                                                                       |
+| ----------------------------- | ---- | --------------------------------------------------------------------------------- |
+| `endo_genome_build`         | str  | Assembly, e.g.`hg38`, `mm39`                                                  |
+| `endo_chr`                  | str  | Chromosome                                                                        |
+| `endo_start` / `endo_end` | int  | 0-based half-open genomic interval                                                |
+| `endo_strand`               | int  | `+1` or `-1` (null if unknown)                                                |
+| `endo_coord_ref`            | str  | What the interval anchors, e.g.`protospacer`, `variant`, `trip_integration` |
+| `endo_coord_source`         | str  | Provenance string for the coordinates                                             |
+| `endo_locus_id`             | str  | Optional convenience label (gene, barcode, site name, …)                         |
 
 Gene / chromatin / expression annotations are **not** stored here; they can be recovered later from coordinates plus cell-line context.
 

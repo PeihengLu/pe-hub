@@ -161,6 +161,10 @@ class DataConverter:
             expected_rows=len(source),
         )
         if cached is not None:
+            # Parquet round-trip drops the index; restore source row labels so
+            # callers can subset with ``.loc[filtered.index]`` after edit filters.
+            cached = cached.copy()
+            cached.index = source.index
             if progress_callback is not None:
                 progress_callback(
                     f"Loaded formatted cache for {target_format} "

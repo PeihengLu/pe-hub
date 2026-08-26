@@ -20,5 +20,6 @@
 # ```
 #
 # Artifacts:
-# - Presets: `services/pe-ensemble/config/training_presets/<model>.yaml`
+# - Local HPO presets: `services/pe-ensemble/config/training_presets_local/<model>.yaml` (gitignored)
+# - Shipped defaults: `services/pe-ensemble/config/training_presets/<model>.yaml`
 # - Optuna DBs: `services/pe-ensemble/tuning_studies/*.db`

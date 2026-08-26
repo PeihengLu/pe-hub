@@ -158,7 +158,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         )
 
     def _init_trainable_models(self, hyperparameters: Dict[str, Any]) -> None:
-        load_pretrained = bool(hyperparameters.get("load_pretrained", True))
+        load_pretrained = bool(hyperparameters.get("load_pretrained", False))
         pretrained_weights = hyperparameters.get("weights")
         if load_pretrained:
             if pretrained_weights:
@@ -444,7 +444,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         epochs = int(hyperparameters.get("epochs", 5))
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
-        load_pretrained = bool(hyperparameters.get("load_pretrained", True))
+        load_pretrained = bool(hyperparameters.get("load_pretrained", False))
         freezing = bool(hyperparameters.get("freezing", False))
 
         source_df = train_data.reset_index(drop=True)

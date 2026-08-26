@@ -487,14 +487,39 @@ class OPEDModelWrapper(BasePEModel):
         ntokens_value = hparams.get("ntokens", hparams.get("ntoken", [4, 16, 64]))
         if isinstance(ntokens_value, int):
             ntokens_value = [ntokens_value, 16, 64]
+
+        if "hidden_size" in hparams:
+            hidden_size = hparams["hidden_size"]
+        elif "ffn_dim" in hparams:
+            ffn_dim = int(hparams["ffn_dim"])
+            hidden_size = [ffn_dim, ffn_dim, ffn_dim]
+        else:
+            hidden_size = [2048, 2048, 2048]
+
+        if "num_encoder_layers" in hparams:
+            num_encoder_layers = hparams["num_encoder_layers"]
+        elif "encoder_layers" in hparams:
+            layers = int(hparams["encoder_layers"])
+            num_encoder_layers = [layers, layers, layers]
+        else:
+            num_encoder_layers = [6, 6, 6]
+
+        embedding_size = int(hparams.get("embedding_size", 64))
+        nhead = int(hparams.get("nhead", 8))
+        if nhead <= 0 or embedding_size % nhead != 0:
+            raise ValueError(
+                f"OPED requires embedding_size % nhead == 0 "
+                f"(got embedding_size={embedding_size}, nhead={nhead})"
+            )
+
         model = TransformerEncoderModelOrder3(
             ntokens=ntokens_value,
-            embedding_size=int(hparams.get("embedding_size", 64)),
-            hidden_size=hparams.get("hidden_size", [2048, 2048, 2048]),
+            embedding_size=embedding_size,
+            hidden_size=hidden_size,
             hidden_size_fully=hparams.get("hidden_size_fully", None),
             output_size=int(hparams.get("output_size", 1)),
-            nhead=int(hparams.get("nhead", 8)),
-            num_encoder_layers=hparams.get("num_encoder_layers", [6, 6, 6]),
+            nhead=nhead,
+            num_encoder_layers=num_encoder_layers,
             dropout=float(hparams.get("drop_out", hparams.get("dropout", 0.1))),
             other_size=int(hparams.get("other_size", 0)),
         )

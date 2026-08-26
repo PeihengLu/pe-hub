@@ -6,11 +6,16 @@ import sys
 from pathlib import Path
 
 import torch
+from torch.utils.data import DataLoader, TensorDataset
+
+import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pe-common"))
 
 from pe_common.training import (
+    LightningTrainerConfig,
     apply_fine_tune_freezing,
+    fit_lightning_module,
     format_epoch_metrics_row,
     run_supervised_training_loop,
 )
@@ -73,3 +78,44 @@ def test_run_supervised_training_loop_calls_on_epoch_end():
     assert len(rows) == 2
     assert rows[0]["epoch"] == 0.0
     assert rows[1]["epoch"] == 1.0
+
+
+class _FitDeviceModule(pl.LightningModule):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model = torch.nn.Linear(4, 1)
+
+    def training_step(self, batch: tuple[torch.Tensor, torch.Tensor], _batch_idx: int) -> torch.Tensor:
+        x, y = batch
+        loss = ((self.model(x) - y) ** 2).mean()
+        self.log("train_loss", loss, on_epoch=True, on_step=False)
+        return loss
+
+    def validation_step(
+        self, batch: tuple[torch.Tensor, torch.Tensor], _batch_idx: int
+    ) -> torch.Tensor:
+        x, y = batch
+        loss = ((self.model(x) - y) ** 2).mean()
+        self.log("val_loss", loss, on_epoch=True, on_step=False)
+        return loss
+
+    def configure_optimizers(self) -> torch.optim.Optimizer:
+        return torch.optim.Adam(self.model.parameters(), lr=1e-2)
+
+
+def test_fit_lightning_module_restores_training_device():
+    if not torch.cuda.is_available():
+        return
+    device = torch.device("cuda:0")
+    x = torch.randn(32, 4)
+    y = torch.randn(32, 1)
+    loader = DataLoader(TensorDataset(x, y), batch_size=8)
+    module = _FitDeviceModule()
+    fit_lightning_module(
+        module,
+        train_loader=loader,
+        val_loader=loader,
+        device=device,
+        config=LightningTrainerConfig(max_epochs=1, patience=None, enable_progress_bar=False),
+    )
+    assert next(module.model.parameters()).device.type == "cuda"

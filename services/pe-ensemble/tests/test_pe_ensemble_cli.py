@@ -107,7 +107,6 @@ def test_build_training_request_merges_architecture_flags():
         oped_nhead=None,
         oped_dropout=None,
         pridict2_embed_dim=None,
-        pridict2_z_dim=None,
         pridict2_num_hidden_layers=None,
         pridict2_dropout=None,
     )

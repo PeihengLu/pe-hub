@@ -34,11 +34,10 @@ def test_build_oped_architecture_expands_branch_dims():
 def test_build_pridict2_architecture_keys():
     out = build_architecture_hyperparameters(
         "pridict2",
-        {"embed_dim": 128, "z_dim": 64, "num_hidden_layers": 2, "dropout": 0.15},
+        {"embed_dim": 128, "num_hidden_layers": 2, "dropout": 0.15},
     )
     assert out == {
         "embed_dim": 128,
-        "z_dim": 64,
         "num_hidden_layers": 2,
         "p_dropout": 0.15,
     }
@@ -90,7 +89,6 @@ def test_architecture_from_cli_args_model_specific():
         oped_nhead=None,
         oped_dropout=None,
         pridict2_embed_dim=None,
-        pridict2_z_dim=None,
         pridict2_num_hidden_layers=None,
         pridict2_dropout=None,
     )

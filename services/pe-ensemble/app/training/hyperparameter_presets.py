@@ -1,11 +1,17 @@
-"""Load and resolve dataset-specific training hyperparameter presets."""
+"""Load and resolve dataset-specific training hyperparameter presets.
+
+Shipped YAML under ``config/training_presets`` holds shared model defaults
+(tracked in git). Optuna writes dataset hits under
+``config/training_presets_local`` (gitignored). Resolution merges local over
+shipped. Pass ``preset_root`` to use a single root (tests / explicit override).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
-from .config import presets_root
+from .config import local_presets_root, shipped_presets_root
 from .dataset_key import candidate_preset_keys, filters_from_request
 from .model_baselines import model_baseline_hyperparameters
 from .model_architecture import apply_fine_tune_defaults
@@ -36,7 +42,7 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 
 def preset_path_for_model(model_name: str, *, root: Optional[Path] = None) -> Path:
-    base = root or presets_root()
+    base = root if root is not None else local_presets_root()
     return base / f"{model_name.strip().lower()}.yaml"
 
 
@@ -96,6 +102,11 @@ def _strip_scheduler_keys(values: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: value for key, value in values.items() if key not in SCHEDULER_KEYS}
 
 
+def _bundle_defaults(bundle: Mapping[str, Any]) -> Dict[str, Any]:
+    defaults = bundle.get("defaults")
+    return dict(defaults) if isinstance(defaults, dict) else {}
+
+
 def merge_hyperparameter_layers(
     *layers: Optional[Mapping[str, Any]],
 ) -> Dict[str, Any]:
@@ -120,8 +131,13 @@ def resolve_hyperparameters(
     user_overrides: Optional[Mapping[str, Any]] = None,
     mode: str = "merge",
     preset_root: Optional[Path] = None,
+    shipped_root: Optional[Path] = None,
+    local_root: Optional[Path] = None,
 ) -> ResolvedHyperparameters:
-    """Merge baseline, YAML preset, and user overrides.
+    """Merge baseline, shipped + local YAML presets, and user overrides.
+
+    When ``preset_root`` is set, only that root is used (single-file / test mode).
+    Otherwise shipped defaults/datasets load first, then local overlays them.
 
     Scheduler keys are never loaded from presets. Users may set them via overrides.
     """
@@ -136,27 +152,67 @@ def resolve_hyperparameters(
             preset_source="replace",
         )
 
-    bundle = load_preset_bundle(name, root=preset_root)
-    model_defaults = bundle.get("defaults") if isinstance(bundle.get("defaults"), dict) else {}
-    preset_key, dataset_preset = lookup_dataset_preset(
-        bundle,
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
+    lookup_kwargs = {
+        "study": study,
+        "dataset": dataset,
+        "cell_line": cell_line,
+        "pe_system": pe_system,
+    }
+
+    if preset_root is not None:
+        bundle = load_preset_bundle(name, root=preset_root)
+        model_defaults = _bundle_defaults(bundle)
+        preset_key, dataset_preset = lookup_dataset_preset(bundle, **lookup_kwargs)
+        layers = [
+            baseline,
+            _strip_scheduler_keys(model_defaults),
+            _strip_scheduler_keys(dataset_preset),
+            user_overrides,
+        ]
+        source = "baseline"
+        if model_defaults:
+            source = "model_defaults"
+        if preset_key:
+            source = f"preset:{preset_key}"
+        if user_overrides:
+            source = f"{source}+user"
+        return ResolvedHyperparameters(
+            hyperparameters=apply_fine_tune_defaults(
+                merge_hyperparameter_layers(*layers)
+            ),
+            preset_key=preset_key,
+            preset_source=source,
+        )
+
+    shipped_bundle = load_preset_bundle(
+        name, root=shipped_root if shipped_root is not None else shipped_presets_root()
     )
-    preset_layers = [
+    local_bundle = load_preset_bundle(
+        name, root=local_root if local_root is not None else local_presets_root()
+    )
+    shipped_defaults = _bundle_defaults(shipped_bundle)
+    local_defaults = _bundle_defaults(local_bundle)
+    shipped_key, shipped_dataset = lookup_dataset_preset(shipped_bundle, **lookup_kwargs)
+    local_key, local_dataset = lookup_dataset_preset(local_bundle, **lookup_kwargs)
+
+    layers = [
         baseline,
-        _strip_scheduler_keys(model_defaults),
-        _strip_scheduler_keys(dataset_preset),
+        _strip_scheduler_keys(shipped_defaults),
+        _strip_scheduler_keys(local_defaults),
+        _strip_scheduler_keys(shipped_dataset),
+        _strip_scheduler_keys(local_dataset),
         user_overrides,
     ]
-    merged = merge_hyperparameter_layers(*preset_layers)
+    merged = merge_hyperparameter_layers(*layers)
+
+    preset_key = local_key or shipped_key
     source = "baseline"
-    if model_defaults:
+    if shipped_defaults or local_defaults:
         source = "model_defaults"
-    if preset_key:
-        source = f"preset:{preset_key}"
+    if shipped_key and not local_key:
+        source = f"preset:{shipped_key}"
+    if local_key:
+        source = f"local_preset:{local_key}"
     if user_overrides:
         source = f"{source}+user"
 

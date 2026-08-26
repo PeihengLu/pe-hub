@@ -171,7 +171,7 @@ Optional model architecture flags (merged into `hyperparameters`; see also `--hy
 |-------|--------|
 | DeepPrime | `--dp-hidden-size`, `--dp-num-layers` |
 | OPED | `--oped-embedding-size`, `--oped-ffn-dim`, `--oped-encoder-layers`, `--oped-nhead`, `--oped-dropout` |
-| PRIDICT2 | `--pridict2-embed-dim`, `--pridict2-z-dim`, `--pridict2-num-hidden-layers`, `--pridict2-dropout` |
+| PRIDICT2 | `--pridict2-embed-dim`, `--pridict2-num-hidden-layers`, `--pridict2-dropout` |
 
 Example OPED training with a smaller architecture:
 

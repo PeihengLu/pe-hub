@@ -55,3 +55,18 @@ def test_enable_cli_pe_db_access_uses_in_process_pe_db(monkeypatch):
     training_config.enable_cli_pe_db_access()
     assert training_config.use_pe_db_library() is True
     assert training_config.pe_db_mode() == "library"
+
+
+def test_enable_cli_pe_db_access_syncs_service_app_alias():
+    """evaluate/ensemble via pe_ensemble.library must see the same CLI flag."""
+    from pe_ensemble._bootstrap import import_service_app
+    from app.training import config as app_config
+
+    svc_config = import_service_app("training.config")
+    assert app_config is not svc_config
+    app_config._use_pe_db_library = False
+    svc_config._use_pe_db_library = False
+
+    app_config.enable_cli_pe_db_access()
+    assert app_config.use_pe_db_library() is True
+    assert svc_config.use_pe_db_library() is True

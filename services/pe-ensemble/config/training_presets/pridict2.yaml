@@ -6,7 +6,6 @@ defaults:
   lr: 0.0001
   weight_decay: 0.0001
   embed_dim: 64
-  z_dim: 64
   num_hidden_layers: 1
   p_dropout: 0.1
   loss_func: KLDloss

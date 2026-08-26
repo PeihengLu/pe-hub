@@ -20,3 +20,9 @@ ensemble_jobs/**
 validation_jobs/**
 !validation_jobs/README.md
 checkpoints/**
+
+# Optuna study DBs (resume locally / on cluster; share presets YAML instead)
+tuning_studies/
+
+# Writable HPO overlay (shipped defaults stay in training_presets/)
+config/training_presets_local/

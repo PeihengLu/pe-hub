@@ -56,8 +56,6 @@ def _build_pridict2_architecture(values: Mapping[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if _present(values, "embed_dim"):
         out["embed_dim"] = int(values["embed_dim"])
-    if _present(values, "z_dim"):
-        out["z_dim"] = int(values["z_dim"])
     if _present(values, "num_hidden_layers"):
         out["num_hidden_layers"] = int(values["num_hidden_layers"])
     if _present(values, "dropout"):
@@ -93,8 +91,6 @@ def _pridict2_architecture_from_cli(args: Any) -> Dict[str, Any]:
     values: Dict[str, Any] = {}
     if getattr(args, "pridict2_embed_dim", None) is not None:
         values["embed_dim"] = args.pridict2_embed_dim
-    if getattr(args, "pridict2_z_dim", None) is not None:
-        values["z_dim"] = args.pridict2_z_dim
     if getattr(args, "pridict2_num_hidden_layers", None) is not None:
         values["num_hidden_layers"] = args.pridict2_num_hidden_layers
     if getattr(args, "pridict2_dropout", None) is not None:

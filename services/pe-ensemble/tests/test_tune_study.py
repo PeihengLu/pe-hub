@@ -38,7 +38,12 @@ def test_execute_tuning_runs_trials(tuning_env, monkeypatch: pytest.MonkeyPatch)
         calls.append(dict(suggested))
         from app.training.tune_runner import TrialResult
 
-        return TrialResult(metric=0.5, hyperparameters=dict(suggested), train_result={})
+        # Distinct metrics so Optuna has a stable best trial (maximize).
+        return TrialResult(
+            metric=float(suggested.get("epochs", 0)),
+            hyperparameters=dict(suggested),
+            train_result={},
+        )
 
     monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(

@@ -50,6 +50,55 @@ def _attach_split_metadata(converted: pd.DataFrame, standardized: pd.DataFrame) 
     return output
 
 
+def _convert_pending_sheets_via_formatted_cache(
+    converter: Any,
+    pending: list[tuple[dict[str, Any], pd.DataFrame, pd.DataFrame]],
+    *,
+    target_format: str,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> pd.DataFrame:
+    """Convert each pending datasheet through the disk cache and concat filtered rows.
+
+    ``pending`` entries are ``(descriptor, full_standardized, filtered_standardized)``
+    in merge order. Returned frame is row-aligned with
+    ``pd.concat([filtered for ...], ignore_index=True)``.
+
+    Per-sheet formatted caches reuse ``seq_0..n`` IDs; after concat those collide and
+    break PRIDICT2 (groupby ``seq_id`` expects one row per id). Remap to unique IDs.
+    """
+    converted_parts: list[pd.DataFrame] = []
+    for descriptor, data, filtered in pending:
+        if progress_callback is not None:
+            progress_callback(
+                f"Loading/converting {len(data)} rows to {target_format} "
+                f"for merge ({descriptor['study']}/{descriptor['dataset']} · "
+                f"{descriptor['cell_line']} · {descriptor['pe_system']})"
+            )
+        converted_full = converter.load_or_convert_formatted(
+            data,
+            study=descriptor["study"],
+            dataset=descriptor["dataset"],
+            cell_line=descriptor["cell_line"],
+            pe_system=descriptor["pe_system"],
+            target_format=target_format,
+            progress_callback=progress_callback,
+        )
+        converted_parts.append(
+            converted_full.loc[filtered.index].reset_index(drop=True)
+        )
+    if not converted_parts:
+        return pd.DataFrame()
+    merged = pd.concat(converted_parts, ignore_index=True)
+    if "seq_id" in merged.columns:
+        merged = merged.copy()
+        merged["seq_id"] = [f"seq_{i}" for i in range(len(merged))]
+    if "deepeditposition_lst" in merged.columns:
+        merged = merged.copy()
+        merged["deepeditposition_lst"] = merged["deepeditposition_lst"].map(
+            lambda x: x if isinstance(x, str) else str(x)
+        )
+    return merged
+
 def _apply_export_split(
     standardized: pd.DataFrame,
     split_config: SplitConfig,
@@ -369,6 +418,19 @@ class CatalogRepository:
             pending.append((descriptor, data, filtered))
 
         if merge_groups and pending:
+            # Convert each datasheet via the per-sheet formatted cache, then concat
+            # in the same order as the standardized merge. Avoids re-running
+            # expensive model-format conversion on every merged export.
+            converted_merged: Optional[pd.DataFrame] = None
+            if not summary_only and target_format != "std":
+                assert converter is not None
+                converted_merged = _convert_pending_sheets_via_formatted_cache(
+                    converter,
+                    pending,
+                    target_format=target_format,
+                    progress_callback=progress_callback,
+                )
+
             merged_frames = [filtered.copy() for _, _, filtered in pending]
             merged_std = pd.concat(merged_frames, ignore_index=True)
             # Inherit author folds across datasheets that share a target locus
@@ -388,23 +450,27 @@ class CatalogRepository:
                 )
                 if summary_only:
                     num_records = int(len(split_std))
-                else:
-                    if progress_callback is not None:
-                        progress_callback(
-                            f"Converting {len(split_std)} standardized rows to {target_format} (merged groups)"
-                        )
-                    converted = converter.convert_from_standardized(
-                        split_std,
-                        study="merged",
-                        dataset="merged",
-                        cell_line="merged",
-                        pe_system="merged",
-                        target_format=target_format,
-                        progress_callback=progress_callback,
-                    )
+                    converted = None
+                elif target_format == "std":
+                    converted = split_std.copy()
                     converted = _attach_split_metadata(converted, split_std)
                     num_records = int(len(converted))
-            except ValueError as exc:
+                else:
+                    assert converted_merged is not None
+                    if len(converted_merged) != len(merged_std):
+                        raise ValueError(
+                            "Merged formatted rows do not align with standardized "
+                            f"merge ({len(converted_merged)} != {len(merged_std)})"
+                        )
+                    # split_std keeps merged row order/index; subset if a future
+                    # split strategy drops rows, otherwise this is identity.
+                    converted = converted_merged.loc[split_std.index].reset_index(
+                        drop=True
+                    )
+                    split_std = split_std.reset_index(drop=True)
+                    converted = _attach_split_metadata(converted, split_std)
+                    num_records = int(len(converted))
+            except (ValueError, KeyError) as exc:
                 skipped.append({**merged_descriptor, "reason": f"split assignment failed: {exc}"})
             else:
                 groups.append(
