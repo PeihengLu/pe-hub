@@ -21,6 +21,7 @@
 
 set -euo pipefail
 
+# ARC_DIR is the directory of the local script on your laptop
 ARC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_ROOT="${LOCAL_ROOT:-$(cd "${ARC_DIR}/../../.." && pwd)}"
 

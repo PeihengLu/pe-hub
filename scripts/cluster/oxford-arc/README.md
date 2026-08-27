@@ -130,10 +130,16 @@ Routine tuning does **not** go to GitHub. Sync local presets + weights:
 
 ```bash
 # on laptop
-ARC_REMOTE=you@gateway.arc.ox.ac.uk:/data/<project>/<user>/pe-hub \
-  ./scripts/cluster/oxford-arc/sync_from_arc.sh
+./scripts/cluster/oxford-arc/sync_from_arc.sh
 peen weights --model pridict2
 ./scripts/hyperparameter/check_tuning_status.sh pridict2
+```
+
+Pull the gitignored cluster `env.sh` (partition, paths, modules) from ARC:
+
+```bash
+./scripts/cluster/oxford-arc/pull_env_from_arc.sh          # prompts for username
+./scripts/cluster/oxford-arc/pull_env_from_arc.sh wolf6973
 ```
 
 Only if you deliberately publish a shared baseline:
