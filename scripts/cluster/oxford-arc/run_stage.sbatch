@@ -13,8 +13,8 @@
 
 #SBATCH --job-name=pe-hub
 #SBATCH --clusters=htc
-#SBATCH --partition=medium
-#SBATCH --time=48:00:00
+#SBATCH --partition=short
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

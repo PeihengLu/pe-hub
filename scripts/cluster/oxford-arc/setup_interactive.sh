@@ -6,7 +6,8 @@
 #   export PE_HUB_ROOT=$DATA/pe-hub   # or your checkout
 #   bash $PE_HUB_ROOT/scripts/cluster/oxford-arc/setup_interactive.sh
 #
-# Does not submit training; only prepares conda + CLIs and smoke-checks peen.
+# Loads Anaconda via ARC modules, creates a $DATA env prefix, installs peen.
+# Does not submit training.
 
 set -euo pipefail
 
@@ -17,11 +18,12 @@ if [[ -f "${ARC_DIR}/env.sh" ]]; then
 fi
 
 : "${PE_HUB_ROOT:?Set PE_HUB_ROOT to the pe-hub checkout under \$DATA}"
-CONDA_ROOT="${CONDA_ROOT:-$DATA/conda}"
-CONDA_ENV="${CONDA_ENV:-pe-hub}"
+ARC_MODULES="${ARC_MODULES:-Anaconda3}"
+CONDA_ENV="${CONDA_ENV:-${DATA:+$DATA/envs/pe-hub}}"
+: "${CONDA_ENV:?Set CONDA_ENV to a prefix under \$DATA (e.g. \$DATA/envs/pe-hub)}"
 
 echo "PE_HUB_ROOT=${PE_HUB_ROOT}"
-echo "CONDA_ROOT=${CONDA_ROOT}"
+echo "ARC_MODULES=${ARC_MODULES}"
 echo "CONDA_ENV=${CONDA_ENV}"
 
 if [[ ! -d "${PE_HUB_ROOT}/.git" && ! -f "${PE_HUB_ROOT}/README.md" ]]; then
@@ -29,22 +31,45 @@ if [[ ! -d "${PE_HUB_ROOT}/.git" && ! -f "${PE_HUB_ROOT}/README.md" ]]; then
     exit 1
 fi
 
-if [[ ! -x "${CONDA_ROOT}/bin/conda" ]]; then
-    echo "Miniconda not found at ${CONDA_ROOT}."
-    echo "Install under \$DATA (HOME is 15 GiB):"
-    echo "  cd \$DATA && curl -L -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-    echo "  bash Miniconda3-latest-Linux-x86_64.sh -b -p ${CONDA_ROOT}"
+if ! command -v module >/dev/null 2>&1; then
+    if [[ -f /etc/profile.d/modules.sh ]]; then
+        # shellcheck disable=SC1091
+        source /etc/profile.d/modules.sh
+    elif [[ -f /usr/share/Modules/init/bash ]]; then
+        # shellcheck disable=SC1091
+        source /usr/share/Modules/init/bash
+    fi
+fi
+if ! command -v module >/dev/null 2>&1; then
+    echo "Error: environment modules not available on this node." >&2
     exit 1
 fi
 
-# shellcheck disable=SC1091
-source "${CONDA_ROOT}/etc/profile.d/conda.sh"
+echo "Loading modules: ${ARC_MODULES}"
+# shellcheck disable=SC2086
+module load ${ARC_MODULES}
 
-if ! conda env list | awk '{print $1}' | grep -qx "${CONDA_ENV}"; then
-    echo "Creating conda env ${CONDA_ENV} (python 3.11)…"
-    conda create -y -n "${CONDA_ENV}" python=3.11 pip
+if ! command -v conda >/dev/null 2>&1; then
+    echo "Error: conda not on PATH after module load." >&2
+    echo "  Try: module spider Anaconda   # or Mamba" >&2
+    echo "  Then set ARC_MODULES in env.sh to the exact module name." >&2
+    exit 1
 fi
-conda activate "${CONDA_ENV}"
+
+# Prefer conda.sh when present; ARC also supports: source activate $PREFIX
+if [[ -f "$(conda info --base)/etc/profile.d/conda.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+fi
+
+if [[ ! -d "${CONDA_ENV}" ]]; then
+    echo "Creating conda env prefix ${CONDA_ENV} (python 3.11)…"
+    mkdir -p "$(dirname "${CONDA_ENV}")"
+    conda create -y --prefix "${CONDA_ENV}" python=3.11 pip
+fi
+
+# Activate prefix (works with named envs too).
+conda activate "${CONDA_ENV}" 2>/dev/null || source activate "${CONDA_ENV}"
 
 echo "Installing ViennaRNA (bioconda) if missing…"
 python -c "import RNA" 2>/dev/null || conda install -y -c bioconda -c conda-forge viennarna

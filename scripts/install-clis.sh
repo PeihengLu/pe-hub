@@ -64,11 +64,53 @@ if [[ -z "${CONDA_PREFIX:-}" && -z "${VIRTUAL_ENV:-}" ]]; then
     echo "" >&2
 fi
 
+# Vendor model code lives in git submodules under vendor/models/.
+sync_vendor_submodules() {
+    if [[ "${SKIP_SUBMODULES:-0}" == "1" ]]; then
+        echo "Skipping vendor submodules (SKIP_SUBMODULES=1)."
+        echo ""
+        return 0
+    fi
+    if [[ ! -f "${REPO_ROOT}/.gitmodules" ]]; then
+        return 0
+    fi
+    if ! git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Warning: no git checkout — cannot init vendor/models submodules." >&2
+        echo "  If you rsynced without vendor sources, clone with submodules or sync again." >&2
+        echo "" >&2
+        return 0
+    fi
+
+    echo "Initializing vendor model submodules (vendor/models/) ..."
+    if ! git -C "${REPO_ROOT}" submodule update --init --recursive; then
+        echo "Error: git submodule update failed." >&2
+        echo "  DeepPrime/OPED/PRIDICT2 URLs use git@github.com — need GitHub SSH access," >&2
+        echo "  or rewrite to HTTPS: git config --global url.https://github.com/.insteadOf git@github.com:" >&2
+        echo "  Skip only if sources are already present: SKIP_SUBMODULES=1 ./scripts/install-clis.sh" >&2
+        exit 1
+    fi
+
+    local missing=0
+    local name
+    for name in deepprime oped pridict2 optiprime; do
+        if [[ ! -d "${REPO_ROOT}/vendor/models/${name}" ]] || \
+           [[ -z "$(find "${REPO_ROOT}/vendor/models/${name}" -mindepth 1 -maxdepth 1 ! -name '.git' 2>/dev/null | head -1)" ]]; then
+            echo "Error: vendor/models/${name} is empty after submodule update." >&2
+            missing=1
+        fi
+    done
+    if [[ "${missing}" -ne 0 ]]; then
+        exit 1
+    fi
+    echo "Vendor submodules ready."
+    echo ""
+}
+sync_vendor_submodules
+
 echo "Installing pe-common, pe-db (pedb), pe-ensemble (peen) ..."
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common"
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/services/pe-db"
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/services/pe-ensemble[library]"
-
 # Scripts land in the env bin; ensure we look there even if PATH is stale.
 ENV_BIN="$("${PYTHON}" -c 'import sys, pathlib; print(pathlib.Path(sys.executable).parent)')"
 export PATH="${ENV_BIN}:${PATH}"

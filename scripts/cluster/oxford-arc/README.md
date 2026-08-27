@@ -11,7 +11,8 @@
 | Cluster                  | `htc` (`htc-login.arc.ox.ac.uk`)                                                                           |
 | Login (on Uni net / VPN) | `ssh you@htc-login.arc.ox.ac.uk`                                                                             |
 | Off-net                  | `ssh you@gateway.arc.ox.ac.uk` then hop to `htc-login`                                                     |
-| Repo + data              | `$DATA/...` (project share, ~5 TiB). Avoid `$HOME` (15 GiB) for conda/datasets                             |
+| Repo + data              | `$DATA/...` (project share, ~5 TiB). Avoid `$HOME` (15 GiB) for envs/datasets                              |
+| Conda                    | `module load Anaconda3` (or Mamba); env **prefix** under `$DATA/envs/…` — see `env.sh` / `setup_interactive.sh` |
 | Partitions               | `short` ≤12h · `medium` ≤48h · `long` ≤30d (default 1d unless `--time` set) · `devel` 10m test |
 | GPU                      | `#SBATCH --gres=gpu:1` (+ optional `--constraint='gpu_sku:A100'`)                                          |
 | Build / pip / conda      | **interactive** node, not login: `srun -p interactive --gres=gpu:1 --pty bash`                         |
@@ -23,13 +24,33 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
 1. Clone or rsync pe-hub under `$DATA` (from your laptop, not the login node for big trees):
 
    ```bash
-   # On ARC: mkdir -p $DATA && pwd   # note full /data/<project>/<user> path
-   # Locally (via gateway if off-net):
-   rsync -avz --exclude .git/objects --exclude __pycache__ \
-     ./pe-hub/ you@gateway.arc.ox.ac.uk:/data/<project>/<user>/pe-hub/
+   # Prefer the helper (skips weights/jobs/eval artifacts + exported/formatted caches):
+   ./scripts/cluster/oxford-arc/sync_to_arc.sh
+   DRY_RUN=1 ./scripts/cluster/oxford-arc/sync_to_arc.sh   # preview
+   ```
+
+   Manual equivalent (VPN → htc-login; use gateway off-net):
+
+   ```bash
+   rsync -avz --progress \
+     --exclude '.git/objects/' --exclude '__pycache__/' \
+     --exclude 'datasets/exported/' --exclude 'datasets/formatted/' --exclude 'datasets/catalog/' \
+     --exclude 'services/pe-ensemble/weights/' \
+     --exclude 'services/pe-ensemble/tuning_studies/' \
+     --exclude 'services/pe-ensemble/config/training_presets_local/' \
+     --exclude 'services/pe-ensemble/jobs/' \
+     --exclude 'services/pe-ensemble/eval_jobs/' \
+     --exclude 'services/pe-ensemble/ensemble_jobs/' \
+     --exclude 'services/pe-ensemble/validation_jobs/' \
+     --exclude 'services/pe-ensemble/checkpoints/' \
+     --exclude 'artifacts/' --exclude 'checkpoints/' \
+     --exclude 'scripts/experiments/pridict2-reproduction/state/' \
+     ./ you@htc-login.arc.ox.ac.uk:/data/<project>/<user>/pe-hub/
    ```
 
    Prefer transferring into **`$DATA`**. Gateway does not expose `$HOME`.
+   `datasets/raw` + `datasets/standardized` are kept by default; add
+   `SKIP_STANDARDIZED=1` on `sync_to_arc.sh` to rebuild standardized on ARC.
 2. On **htc-login**, start an interactive GPU shell and bootstrap:
 
    ```bash
@@ -42,8 +63,12 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    ```bash
    cp $PE_HUB_ROOT/scripts/cluster/oxford-arc/env.sh.example \
       $PE_HUB_ROOT/scripts/cluster/oxford-arc/env.sh
-   # edit PE_HUB_ROOT, CONDA_ROOT, ARC_MAIL_USER, optional ARC_GPU_CONSTRAINT
+   # edit PE_HUB_ROOT, ARC_MODULES, CONDA_ENV (\$DATA prefix), ARC_MAIL_USER,
+   # optional ARC_GPU_CONSTRAINT. Confirm module name: module spider Anaconda
    ```
+
+   Jobs load `ARC_MODULES` then `conda activate $CONDA_ENV` via `job_env.sh`.
+   Do **not** rely on `conda init` in `.bashrc` for batch jobs.
 
 ## Submit jobs
 
@@ -56,7 +81,7 @@ source scripts/cluster/oxford-arc/env.sh   # optional; submit.sh sources it
 # Validate when the job would start
 DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
 
-# Full HPO (default: medium, 48h, 1 GPU) — Optuna study resumes if re-submitted
+# Full HPO (default: short, 12h, 1 GPU) — Optuna study resumes if re-submitted
 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
 
 # After tuning: train + register weights
@@ -134,7 +159,7 @@ Default peen HPO is ~100 fold trains (20×5) plus a final register — plan for 
 ## Checklist before first real submit
 
 - [ ] Account can reach `htc-login` (VPN or gateway)
-- [ ] Checkout + conda under `$DATA`
+- [ ] Checkout under `$DATA`; Anaconda module + env prefix under `$DATA/envs/`
 - [ ] `peen devices` shows CUDA on an interactive GPU allocation
 - [ ] `datasets/` prepared (`pedb init` or rsynced standardized/formatted caches)
 - [ ] **Local preflight passed**: `./scripts/cluster/oxford-arc/preflight.sh`
