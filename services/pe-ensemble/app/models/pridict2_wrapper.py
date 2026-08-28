@@ -299,49 +299,6 @@ class PERNNDistributionModel(nn.Module):
                 torch.load(path, map_location=device, weights_only=False)
             )
 
-    def load_vendor_statedict_flexible(
-        self,
-        statedict_dir: str,
-        *,
-        device: torch.device,
-    ) -> Dict[str, List[str]]:
-        """Load compatible pretrained components, skipping missing/mismatched ones.
-
-        This is used for transfer learning when the representation backbone should
-        be reused but the output head shape may differ, e.g. a PRIDICT2
-        3-outcome distribution base fine-tuned onto an intended-edit-only target.
-        """
-        loaded: List[str] = []
-        skipped_missing: List[str] = []
-        skipped_mismatched: List[str] = []
-        for name, module in self.iter_components():
-            path = os.path.join(statedict_dir, f"{name}.pkl")
-            if not os.path.isfile(path):
-                skipped_missing.append(name)
-                continue
-            state_dict = torch.load(path, map_location=device, weights_only=False)
-            current_state = module.state_dict()
-            mismatched_keys = [
-                key
-                for key, value in state_dict.items()
-                if key in current_state and tuple(current_state[key].shape) != tuple(value.shape)
-            ]
-            if mismatched_keys:
-                skipped_mismatched.append(name)
-                continue
-            try:
-                module.load_state_dict(state_dict)
-            except RuntimeError:
-                # Unexpected/missing keys (e.g. different RNN depth) — skip component.
-                skipped_mismatched.append(name)
-                continue
-            loaded.append(name)
-        return {
-            "loaded": loaded,
-            "skipped_missing": skipped_missing,
-            "skipped_mismatched": skipped_mismatched,
-        }
-
     def save_vendor_statedict(self, statedict_dir: str) -> None:
         os.makedirs(statedict_dir, exist_ok=True)
         for name, module in self.iter_components():
@@ -600,68 +557,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
         self.selected_cell_type: Optional[str] = None
 
     def _default_outcomes(self) -> List[str]:
-        # Distribution training (KLDloss/CEloss) always needs the three-way
-        # outcome vector. Legacy single-head base runs used intended-edit only.
-        if self.model_name_str in {"base_90k", "base_390k"}:
-            return ["averageedited"]
-        return ["averageedited", "averageunedited", "averageindel"]
-
-    @staticmethod
-    def _resolve_training_outcomes(
-        df: pd.DataFrame,
-        *,
-        requested: Sequence[str],
-        loss_func: str,
-    ) -> List[str]:
-        """Select outcome columns compatible with ``loss_func``.
-
-        KL/CE distribution losses need the full non-null trio
-        (``averageedited`` / ``averageunedited`` / ``averageindel``). In the
-        standardized catalog only ``pridict1/library1`` currently ships that
-        trio; edit-efficiency-only sheets (ClinVar, library-diverse, merges
-        with those) must use ``MSEloss`` on intended edit.
-        """
-        loss_name = str(loss_func).strip()
-        if loss_name in {"KLDloss", "CEloss"}:
-            needed = ["averageedited", "averageunedited", "averageindel"]
-            missing = [col for col in needed if col not in df.columns]
-            if missing:
-                raise ValueError(
-                    f"PRIDICT2 {loss_name} requires outcome columns {needed}; "
-                    f"missing {missing}. Only pridict1/library1 currently has "
-                    "the full trio. For edit-efficiency-only data (ClinVar, "
-                    "library-diverse, L1+ClinVar merge), use loss_func=MSEloss."
-                )
-            incomplete: List[str] = []
-            for col in needed:
-                series = pd.to_numeric(df[col], errors="coerce")
-                n_nan = int(series.isna().sum())
-                if n_nan:
-                    incomplete.append(f"{col} ({n_nan}/{len(df)} NaN)")
-            if incomplete:
-                raise ValueError(
-                    f"PRIDICT2 {loss_name} requires non-null values in {needed} "
-                    f"on every training row; incomplete: {incomplete}. "
-                    "Only pridict1/library1 currently has a complete trio. "
-                    "For ClinVar / library-diverse / merges with those sheets, "
-                    "use loss_func=MSEloss (intended-edit only)."
-                )
-            return list(needed)
-
-        # MSE / RMSE: intended-edit only (do not train on NaN companion outcomes).
-        _ = requested  # API accepts y_ref; MSE always uses intended-edit only.
-        if "averageedited" not in df.columns:
-            raise ValueError(
-                "PRIDICT2 training requires an 'averageedited' column "
-                "(from editing_efficiency)."
-            )
-        edited = pd.to_numeric(df["averageedited"], errors="coerce")
-        n_nan = int(edited.isna().sum())
-        if n_nan:
-            raise ValueError(
-                f"PRIDICT2 {loss_name or 'MSEloss'} requires non-null "
-                f"'averageedited' on every training row ({n_nan}/{len(df)} NaN)."
-            )
         return ["averageedited"]
 
     @staticmethod
@@ -1213,8 +1108,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
         ``groupby(seq_id)`` then yields multi-row groups and crashes on
         ``deepeditposition_lst.strip``.
         """
-        out = df
-        if "seq_id" in out.columns and not out["seq_id"].astype(str).is_unique:
+        out = df.copy() if "seq_id" not in df.columns else df
+        if "seq_id" not in out.columns:
+            out["seq_id"] = [f"seq_{i}" for i in range(len(out))]
+        elif not out["seq_id"].astype(str).is_unique:
             out = out.copy()
             out["seq_id"] = [f"seq_{i}" for i in range(len(out))]
         if "deepeditposition_lst" in out.columns:
@@ -1393,9 +1290,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
     ) -> Dict[str, Any]:
         from pridict2.pridict.pridictv2.run_workflow import build_config_map
 
-        # When fine-tuning, inherit backbone architecture from the pretrained run
-        # so encoders/attentions load cleanly; only the outcome head may differ.
-        # Prefer pretrained dims over baseline defaults (setdefault would keep 1-layer).
+        # When fine-tuning, inherit backbone architecture from the pretrained run.
         build_hparams = dict(hyperparameters)
         weights_name = hyperparameters.get("weights")
         if bool(hyperparameters.get("load_pretrained", False)) and weights_name:
@@ -1420,7 +1315,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         config_map = build_config_map(
             trf_tup,
             experiment_options,
-            loss_func=str(build_hparams.get("loss_func", "KLDloss")),
+            loss_func=str(build_hparams.get("loss_func", "MSEloss")),
         )
         train_loader, val_loader = build_pridict_dataloaders(
             train_dataset=dtensor_train,
@@ -1434,14 +1329,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
             num_outcomes=len(y_ref),
             device=self.device,
         )
-        preload_summary: Optional[Dict[str, List[str]]] = None
         statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
         pretrained_path = vendor_state_dict_path(statedict_dir)
         if pretrained_path:
-            preload_summary = model.load_vendor_statedict_flexible(
-                pretrained_path,
-                device=self.device,
-            )
+            model.load_vendor_statedict(pretrained_path, device=self.device)
 
         train_metrics = train_pridict2_with_lightning(
             model=model,
@@ -1449,7 +1340,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             val_loader=val_loader,
             hyperparameters=build_hparams,
             device=self.device,
-            loss_func=str(build_hparams.get("loss_func", "KLDloss")),
+            loss_func=str(build_hparams.get("loss_func", "MSEloss")),
             progress_log=progress_log,
             cancel_check=cancel_check,
         )
@@ -1477,7 +1368,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "num_val_rows": len(val_df),
             "metrics": fold_metrics,
             "training_metrics": train_metrics,
-            "pretrained_load": preload_summary,
         }
 
     def train(self, train_data: pd.DataFrame, val_data: Optional[pd.DataFrame] = None,
@@ -1498,17 +1388,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(
             hyperparameters
         )
-        loss_func = str(hyperparameters.get("loss_func", "KLDloss"))
         train_native, val_native = resolve_train_val_from_splits(train_data, val_data)
         train_df = self._to_pridict_dataframe(train_native)
         val_df = self._to_pridict_dataframe(val_native)
-        requested = list(
+        y_ref = list(
             hyperparameters.get("y_ref", self._default_outcomes()) or self._default_outcomes()
-        )
-        y_ref = self._resolve_training_outcomes(
-            train_df,
-            requested=requested,
-            loss_func=loss_func,
         )
 
         output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
@@ -1555,8 +1439,6 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "outcomes": y_ref,
             "validation_metrics": run_report["metrics"],
         }
-        if run_report.get("pretrained_load") is not None:
-            result["pretrained_load"] = run_report["pretrained_load"]
         if fold_reports:
             result["cross_validation"] = fold_reports
         return result

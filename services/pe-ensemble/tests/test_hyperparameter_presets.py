@@ -194,6 +194,8 @@ def test_pridict2_search_space_omits_derived_architecture_knobs():
     assert "annot_embed" not in space.params
     assert "z_dim" not in space.params
     assert space.fixed["load_pretrained"] is False
+    assert space.fixed["loss_func"] == "MSEloss"
+    assert space.fixed["y_ref"] == ["averageedited"]
 
     class _Trial:
         def suggest_float(self, name, low, high, log=False):
@@ -207,6 +209,8 @@ def test_pridict2_search_space_omits_derived_architecture_knobs():
 
     suggested = suggest_trial_hyperparameters("pridict2", _Trial())
     assert suggested["embed_dim"] == 128
+    assert suggested["loss_func"] == "MSEloss"
+    assert suggested["y_ref"] == ["averageedited"]
     assert "assemb_opt" not in suggested
     assert "annot_embed" not in suggested
     assert "z_dim" not in suggested

@@ -8,5 +8,5 @@ defaults:
   embed_dim: 64
   num_hidden_layers: 1
   p_dropout: 0.1
-  loss_func: KLDloss
+  loss_func: MSEloss
 datasets: {}

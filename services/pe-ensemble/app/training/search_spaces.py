@@ -121,8 +121,8 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
         # assemb_opt/annot_embed/z_dim are hardcoded or derived in the wrapper.
         fixed={
             "load_pretrained": False,
-            "loss_func": "KLDloss",
-            "y_ref": ["averageedited", "averageunedited", "averageindel"],
+            "loss_func": "MSEloss",
+            "y_ref": ["averageedited"],
         },
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),

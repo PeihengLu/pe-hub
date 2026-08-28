@@ -46,7 +46,7 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
             "embed_dim": 64,
             "num_hidden_layers": 1,
             "p_dropout": 0.1,
-            "loss_func": "KLDloss",
-            "y_ref": ["averageedited", "averageunedited", "averageindel"],
+            "loss_func": "MSEloss",
+            "y_ref": ["averageedited"],
         }
     return {}
