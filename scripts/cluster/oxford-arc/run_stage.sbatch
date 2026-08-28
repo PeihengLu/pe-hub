@@ -25,7 +25,21 @@
 
 set -euo pipefail
 
-ARC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Slurm copies this script to /var/spool/slurmd/... — do not resolve paths via BASH_SOURCE.
+if [[ -n "${PE_HUB_ROOT:-}" ]]; then
+    :
+elif [[ -n "${SLURM_SUBMIT_DIR:-}" && -f "${SLURM_SUBMIT_DIR}/scripts/cluster/oxford-arc/job_env.sh" ]]; then
+    PE_HUB_ROOT="${SLURM_SUBMIT_DIR}"
+else
+    _arc_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "${_arc_self}/job_env.sh" ]]; then
+        ARC_DIR="${_arc_self}"
+        PE_HUB_ROOT="$(cd "${ARC_DIR}/../../.." && pwd)"
+    fi
+fi
+: "${PE_HUB_ROOT:?Set PE_HUB_ROOT (submit.sh sources env.sh and exports it)}"
+ARC_DIR="${PE_HUB_ROOT}/scripts/cluster/oxford-arc"
+
 if [[ -f "${ARC_DIR}/env.sh" ]]; then
     # shellcheck source=./env.sh
     source "${ARC_DIR}/env.sh"

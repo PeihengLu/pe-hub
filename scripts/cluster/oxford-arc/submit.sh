@@ -50,7 +50,7 @@ SBATCH_ARGS=(
     --cpus-per-task="${ARC_CPUS}"
     --mem="${ARC_MEM}"
     --gres="gpu:${ARC_GPUS}"
-    --export=ALL,STAGE_SCRIPT="${STAGE_SCRIPT}"
+    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}"
     --chdir="${PE_HUB_ROOT}"
 )
 
