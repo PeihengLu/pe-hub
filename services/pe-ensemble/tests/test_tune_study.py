@@ -73,3 +73,30 @@ def test_execute_tuning_requires_dataset_key(tuning_env, monkeypatch: pytest.Mon
     request.training.study = None
     with pytest.raises(TrainingError, match="dataset preset key"):
         execute_tuning(request)
+
+
+def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: pytest.MonkeyPatch):
+    from app.training.tune_runner import TrialResult
+
+    def fake_trial(request, *, suggested, register_weights=False):
+        return TrialResult(metric=0.1, hyperparameters=dict(suggested), train_result={})
+
+    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr(
+        "app.training.tune_study.suggest_trial_hyperparameters",
+        lambda model_name, trial: {"lr": 1e-4},
+    )
+    monkeypatch.setattr("app.training.tune_study.execute_training", lambda *args, **kwargs: {})
+
+    request = _request()
+    request.training.study = ["pridict1", "deepprime"]
+    request.training.dataset = ["library1", "deepprime-clinvar"]
+    request.training.cell_line = "hek293t"
+    request.training.pe_system = "pe2"
+    request.n_trials = 1
+
+    summary = execute_tuning(request)
+    assert summary["dataset_preset_key"] == (
+        "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2"
+    )
+    assert summary["preset_path"] is not None

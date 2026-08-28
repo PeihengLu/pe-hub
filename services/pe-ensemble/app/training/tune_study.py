@@ -119,16 +119,20 @@ def execute_tuning(
         )
         best_params.update(dict(training.hyperparameters or {}))
 
-        dataset_key = dataset_preset_key(
-            study=training.study,
-            dataset=training.dataset,
-            cell_line=training.cell_line,
-            pe_system=training.pe_system,
+        dataset_key = (
+            request.dataset_preset_key
+            or dataset_preset_key(
+                study=training.study,
+                dataset=training.dataset,
+                cell_line=training.cell_line,
+                pe_system=training.pe_system,
+            )
         )
         if dataset_key is None:
             raise TrainingError(
                 "Could not derive a dataset preset key. Provide single --study and --dataset "
-                "(and optionally single --cell-line / --pe-system)."
+                "(and optionally single --cell-line / --pe-system), or pass "
+                "--dataset-preset-key for merged PE-DB filters."
             )
 
         provenance = {

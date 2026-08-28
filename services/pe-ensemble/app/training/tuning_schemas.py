@@ -17,6 +17,7 @@ class TuningRequest(BaseModel):
     n_trials: int = Field(default=20, ge=1)
     study_name: Optional[str] = None
     study_storage: Optional[str] = None
+    dataset_preset_key: Optional[str] = None
     write_preset: Optional[str] = None
     no_write_preset: bool = False
     register_best_weights: bool = False

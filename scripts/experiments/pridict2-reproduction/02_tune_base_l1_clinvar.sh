@@ -15,8 +15,9 @@ require_peen
 
 STUDY_NAME="${STUDY_NAME:-pridict2__repro_base_l1_clinvar}"
 FIXED_HP_JSON="${FIXED_HP_JSON:-}"
-# Merged study has no single catalog key; skip check uses a synthetic key.
-DATASET_KEY="${DATASET_KEY:-pridict1/library1+deepprime/deepprime_clinvar}"
+# Merged study uses a composite preset key (study/dataset pairs joined with +).
+DATASET_KEY="${DATASET_KEY:-pridict1/library1+deepprime/deepprime_clinvar/${BASE_CELL_LINE}/${PE_SYSTEM}}"
+DATASET_KEY="$(echo "${DATASET_KEY}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
 
 print_repro_banner "02 Tune base: library1 + DeepPrime ClinVar"
 maybe_skip_if_tuned "${MODEL}" "${DATASET_KEY}"

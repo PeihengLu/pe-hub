@@ -22,7 +22,20 @@ def _cv_block(result: Mapping[str, Any]) -> Any:
 
 
 def _mean_numeric(values: list[float]) -> float:
-    return float(sum(values) / len(values)) if values else float("nan")
+    finite = [value for value in values if not math.isnan(value)]
+    return float(sum(finite) / len(finite)) if finite else float("nan")
+
+
+def _finite_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(parsed):
+        return None
+    return parsed
 
 
 def _oped_cv_spearman(result: Mapping[str, Any]) -> float:
@@ -82,10 +95,35 @@ def _pridict2_cv_spearman(result: Mapping[str, Any]) -> float:
         if not isinstance(fold_metrics, dict):
             continue
         for key in ("averageedited_spearman", "averageedited_pearson"):
-            if key in fold_metrics and fold_metrics[key] is not None:
-                fold_scores.append(float(fold_metrics[key]))
+            value = _finite_float(fold_metrics.get(key))
+            if value is not None:
+                fold_scores.append(value)
                 break
     return _mean_numeric(fold_scores)
+
+
+def _pridict2_neg_best_val_loss(result: Mapping[str, Any]) -> float:
+    training_metrics = result.get("training_metrics")
+    if isinstance(training_metrics, dict):
+        value = _finite_float(training_metrics.get("best_val_loss"))
+        if value is not None:
+            return -value
+
+    cv_reports = _cv_block(result)
+    if not isinstance(cv_reports, list):
+        return float("nan")
+    losses: list[float] = []
+    for report in cv_reports:
+        if not isinstance(report, dict):
+            continue
+        fold_training = report.get("training_metrics")
+        if isinstance(fold_training, dict):
+            value = _finite_float(fold_training.get("best_val_loss"))
+            if value is not None:
+                losses.append(value)
+    if not losses:
+        return float("nan")
+    return -_mean_numeric(losses)
 
 
 def extract_validation_metric(model_name: str, train_payload: Mapping[str, Any]) -> float:
@@ -125,18 +163,23 @@ def extract_validation_metric(model_name: str, train_payload: Mapping[str, Any])
         if not math.isnan(cv_metric):
             return cv_metric
         metrics = result.get("validation_metrics") or {}
-        if not isinstance(metrics, dict):
-            return float("nan")
-        for key in ("averageedited_spearman", "averageedited_pearson"):
-            if key in metrics:
-                return float(metrics[key])
-        spearman_values = [
-            float(value)
-            for metric_key, value in metrics.items()
-            if metric_key.endswith("_spearman") and value is not None
-        ]
-        if spearman_values:
-            return max(spearman_values)
+        if isinstance(metrics, dict):
+            for key in ("averageedited_spearman", "averageedited_pearson"):
+                value = _finite_float(metrics.get(key))
+                if value is not None:
+                    return value
+            spearman_values = [
+                value
+                for metric_key, raw in metrics.items()
+                if metric_key.endswith("_spearman")
+                for value in [_finite_float(raw)]
+                if value is not None
+            ]
+            if spearman_values:
+                return max(spearman_values)
+        cv_loss = _pridict2_neg_best_val_loss(result)
+        if not math.isnan(cv_loss):
+            return cv_loss
         return float("nan")
 
     return float("nan")

@@ -96,6 +96,17 @@ def build_pridict_loss(loss_func: str) -> nn.Module:
     raise ValueError(f"Unsupported PRIDICT2 loss_func: {loss_func}")
 
 
+def predictions_from_decoder_output(
+    logits: torch.Tensor,
+    loss_func: str,
+) -> torch.Tensor:
+    """Convert decoder outputs to outcome predictions for metric computation."""
+    name = str(loss_func).strip()
+    if name in {"KLDloss", "CEloss"}:
+        return torch.exp(logits)
+    return logits
+
+
 # Vendor notebooks fix annot_embed=8 and assemb_opt='stack'. Neither is a
 # tunable hyperparameter: 'add' requires matching embed widths; z_dim is
 # derived from embed_dim + annot_embed under stack assembly.
@@ -956,6 +967,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         y_ref: List[str],
         *,
         batch_size: int = 256,
+        loss_func: Optional[str] = None,
     ) -> pd.DataFrame:
         """Score a dataframe with the in-memory :class:`PERNNDistributionModel`."""
         if not isinstance(self.model, PERNNDistributionModel):
@@ -970,6 +982,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
             wrk_dir=None,
         )
         loader = loaders["eval"]
+        resolved_loss_func = str(
+            loss_func or getattr(self, "_last_loss_func", None) or "MSEloss"
+        )
         pred_chunks: List[np.ndarray] = []
         true_chunks: List[np.ndarray] = []
         self.model.eval()
@@ -980,9 +995,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
                     device=self.device,
                     requires_grad=False,
                 )
-                # Distribution decoder emits log-probs under KLDloss/CEloss.
-                probs = torch.exp(logits)
-                pred_chunks.append(probs.detach().cpu().numpy())
+                pred = predictions_from_decoder_output(logits, resolved_loss_func)
+                pred_chunks.append(pred.detach().cpu().numpy())
                 true_chunks.append(target.detach().cpu().numpy())
         if not pred_chunks:
             return pd.DataFrame()
@@ -1256,9 +1270,15 @@ class PRIDICT2ModelWrapper(BasePEModel):
         self,
         val_df: pd.DataFrame,
         y_ref: List[str],
+        *,
+        loss_func: Optional[str] = None,
     ) -> Dict[str, float]:
         if isinstance(self.model, PERNNDistributionModel):
-            pred_df = self._predict_pernn_dataframe(val_df, y_ref)
+            pred_df = self._predict_pernn_dataframe(
+                val_df,
+                y_ref,
+                loss_func=loss_func,
+            )
         else:
             prepared_val = self.prepare_data(val_df, y_ref=y_ref)
             pred_df = self._predict_from_loaded_or_current_model(
@@ -1360,7 +1380,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
         self.model_components = None
         self.loaded_model_dir = str(model_dir)
         self.is_trained = True
-        fold_metrics = self._metrics_from_validation_predictions(val_df, y_ref)
+        fold_metrics = self._metrics_from_validation_predictions(
+            val_df,
+            y_ref,
+            loss_func=str(build_hparams.get("loss_func", "MSEloss")),
+        )
         return {
             "output_dir": run_output_dir,
             "model_dir": str(model_dir),
@@ -1388,6 +1412,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(
             hyperparameters
         )
+        self._last_loss_func = str(hyperparameters.get("loss_func", "MSEloss"))
         train_native, val_native = resolve_train_val_from_splits(train_data, val_data)
         train_df = self._to_pridict_dataframe(train_native)
         val_df = self._to_pridict_dataframe(val_native)
@@ -1438,6 +1463,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "num_val_rows": int(run_report["num_val_rows"]),
             "outcomes": y_ref,
             "validation_metrics": run_report["metrics"],
+            "training_metrics": run_report["training_metrics"],
         }
         if fold_reports:
             result["cross_validation"] = fold_reports
