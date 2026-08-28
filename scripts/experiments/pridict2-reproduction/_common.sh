@@ -17,6 +17,17 @@ source "${HP_DIR}/_common.sh"
 STATE_DIR="${STATE_DIR:-${EXP_DIR}/state}"
 mkdir -p "${STATE_DIR}"
 
+# SMOKE=1: subsampled DATA_ROOT + isolated artifacts (local pre-ARC check).
+# SMOKE_FULL_DATA=1: keep real DATA_ROOT (e.g. one trial on ARC full data).
+if [[ "${SMOKE:-0}" == "1" ]]; then
+    ARC_SMOKE_DIR="$(cd "${EXP_DIR}/../../cluster/oxford-arc" && pwd)"
+    # shellcheck source=../../cluster/oxford-arc/_smoke_common.sh
+    source "${ARC_SMOKE_DIR}/_smoke_common.sh"
+    setup_smoke_mini_data_root
+    STATE_DIR="${WORK_DIR}/state"
+    mkdir -p "${STATE_DIR}"
+fi
+
 MODEL="${MODEL:-pridict2}"
 PE_SYSTEM="${PE_SYSTEM:-pe2}"
 BASE_CELL_LINE="${BASE_CELL_LINE:-hek293t}"
@@ -27,8 +38,8 @@ NAME_BASE_L1="${NAME_BASE_L1:-pridict2-repro-base-library1}"
 NAME_BASE_L1C="${NAME_BASE_L1C:-pridict2-repro-base-l1-clinvar}"
 NAME_FT_PREFIX="${NAME_FT_PREFIX:-pridict2-repro-ft}"
 
-# Only pridict1/library1 has the full outcome trio. KL/CE is refused by peen when
-# any of those columns is missing or NaN — inject MSEloss for merge / diverse FT.
+# PRIDICT2 uses a single edit-efficiency head (MSEloss on averageedited).
+# pe_db maps editing_efficiency → averageedited at format time.
 force_mse_loss_json() {
     local raw="${1-}"
     if [[ -z "${raw}" ]]; then
@@ -134,5 +145,8 @@ print_repro_banner() {
     print_experiment_banner "${title}"
     echo "STATE_DIR: ${STATE_DIR}"
     echo "MODEL:     ${MODEL}"
+    if [[ "${SMOKE:-0}" == "1" ]]; then
+        echo "SMOKE:     1 (n_trials=${N_TRIALS}, cv_folds=${CV_FOLDS}; mini data unless SMOKE_FULL_DATA=1)"
+    fi
     echo ""
 }

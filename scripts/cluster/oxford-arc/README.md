@@ -14,7 +14,7 @@
 | Repo + data              | `$DATA/...` (project share, ~5 TiB). Avoid `$HOME` (15 GiB) for envs/datasets                              |
 | Conda                    | `module load Anaconda3` (or Mamba); env **prefix** under `$DATA/envs/…` — see `env.sh` / `setup_interactive.sh` |
 | Partitions               | `short` ≤12h · `medium` ≤48h · `long` ≤30d (default 1d unless `--time` set) · `devel` 10m test |
-| GPU                      | `#SBATCH --gres=gpu:1` (+ optional `--constraint='gpu_sku:A100'`)                                          |
+| GPU                      | `#SBATCH --gres=gpu:1` (+ optional `--constraint='gpu_sku:L40S'`)                                          |
 | Build / pip / conda      | **interactive** node, not login: `srun -p interactive --gres=gpu:1 --pty bash`                         |
 
 Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L40S/A100 for **medium**/**long** HPO.
@@ -94,7 +94,7 @@ SMOKE=1 ARC_PARTITION=short ARC_TIME=01:00:00 \
 
 Other pridict2-reproduction stages use the same pattern (`02_…`, `04_…`, `05_…`, …).
 
-Pin a GPU type:
+Pin L40S (default in env.sh) or A100:
 
 ```bash
 ARC_GPU_CONSTRAINT='gpu_sku:L40S' \
@@ -168,16 +168,29 @@ Default peen HPO is ~100 fold trains (20×5) plus a final register — plan for 
 - [ ] Checkout under `$DATA`; Anaconda module + env prefix under `$DATA/envs/`
 - [ ] `peen devices` shows CUDA on an interactive GPU allocation
 - [ ] `datasets/` prepared (`pedb init` or rsynced standardized/formatted caches)
-- [ ] **Local preflight passed**: `./scripts/cluster/oxford-arc/preflight.sh`
+- [ ] **Local smoke passed** (mini data, 1 trial): `SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh`
+- [ ] **Local preflight** (optional full pipeline on mini data): `./scripts/cluster/oxford-arc/preflight.sh`
 - [ ] `env.sh` points at the checkout
 - [ ] `DRY_RUN=1` submit succeeds
 - [ ] Optional: `ARC_MAIL_USER` for END/FAIL mail
 
-### Local preflight (before ARC)
+### Local smoke (before ARC — run this first)
 
-Runs a tiny sampled DATA_ROOT through the same peen shapes as the reproduction
-pipeline (single-sheet HPO, merge+author-fold HPO, train, fine-tune, evaluate,
-ensemble) with isolated presets/weights:
+`SMOKE=1` on any reproduction stage script: subsampled `DATA_ROOT` in `/tmp`, 1 Optuna trial, 2-fold CV, isolated weights/presets. Exercises the same convert → train path as ARC.
+
+```bash
+conda activate pe-hub
+SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
+# or equivalent:
+SMOKE=1 ./scripts/cluster/oxford-arc/preflight.sh
+DEVICE=cuda:0 KEEP_WORK=1 SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
+```
+
+On ARC, pass `SMOKE=1` via `submit.sh` (uses full data by default; add `SMOKE_FULL_DATA=1` explicitly if you already set mini data locally).
+
+### Local preflight (optional, full pipeline)
+
+Runs tune + train + merge + fine-tune + evaluate + ensemble on mini data (omit `SMOKE=1` for the full preflight):
 
 ```bash
 ./scripts/cluster/oxford-arc/preflight.sh

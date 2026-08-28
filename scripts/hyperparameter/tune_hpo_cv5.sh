@@ -80,7 +80,14 @@ if [[ -n "${STUDY_NAME}" ]]; then
     TUNE_ARGS+=(--study-name "${STUDY_NAME}")
 fi
 if [[ "${SMOKE}" == "1" && -z "${FIXED_HP_JSON}" ]]; then
-    FIXED_HP_JSON='{"num_epochs":3,"epochs":3,"epoch_num":3,"batch_size":64}'
+    _smoke_arc="$(cd "${SCRIPT_DIR}/../cluster/oxford-arc" && pwd)"
+    if [[ -f "${_smoke_arc}/_smoke_common.sh" ]]; then
+        # shellcheck source=../cluster/oxford-arc/_smoke_common.sh
+        source "${_smoke_arc}/_smoke_common.sh"
+        FIXED_HP_JSON="$(smoke_fixed_hp_json)"
+    else
+        FIXED_HP_JSON='{"num_epochs":2,"batch_size":16,"lr":0.0001,"loss_func":"MSEloss","y_ref":["averageedited"]}'
+    fi
 fi
 if [[ -n "${FIXED_HP_JSON}" ]]; then
     TUNE_ARGS+=(--fixed-hyperparameters-json "${FIXED_HP_JSON}")

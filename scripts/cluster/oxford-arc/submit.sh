@@ -9,11 +9,17 @@
 #   ./scripts/cluster/oxford-arc/submit.sh 03_train_base_library1.sh
 #
 # Smoke / overrides:
+#   SMOKE=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
+#     → 1 trial, 2-fold CV on full data (submit.sh sets SMOKE_FULL_DATA=1)
 #   SMOKE=1 ARC_PARTITION=short ARC_TIME=01:00:00 \
 #     ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
 #
+# Local smoke (mini DATA_ROOT, same stage script):
+#   SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
+#   SMOKE=1 ./scripts/cluster/oxford-arc/preflight.sh
+#
 # Extra sbatch flags after -- :
-#   ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh -- --constraint='gpu_sku:A100'
+#   ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh -- --constraint='gpu_sku:L40S'
 #
 # Dry-run (validate + estimated start):
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
@@ -42,6 +48,11 @@ fi
 SBATCH_SCRIPT="${ARC_DIR}/run_stage.sbatch"
 JOB_NAME="pe-$(basename "${STAGE_SCRIPT}" .sh | tr '_' '-' | cut -c1-40)"
 
+# On cluster, SMOKE=1 means fewer trials — not subsampled data (local default).
+if [[ "${SMOKE:-0}" == "1" && -z "${SMOKE_FULL_DATA:-}" ]]; then
+    export SMOKE_FULL_DATA=1
+fi
+
 SBATCH_ARGS=(
     --job-name="${JOB_NAME}"
     --clusters="${ARC_CLUSTER}"
@@ -50,7 +61,7 @@ SBATCH_ARGS=(
     --cpus-per-task="${ARC_CPUS}"
     --mem="${ARC_MEM}"
     --gres="gpu:${ARC_GPUS}"
-    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}"
+    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}"
     --chdir="${PE_HUB_ROOT}"
 )
 
@@ -69,5 +80,5 @@ fi
 
 echo "Submitting ${STAGE_SCRIPT}"
 echo "  cluster=${ARC_CLUSTER} partition=${ARC_PARTITION} time=${ARC_TIME} gpus=${ARC_GPUS}"
-echo "  PE_HUB_ROOT=${PE_HUB_ROOT} DEVICE=${DEVICE}"
+echo "  PE_HUB_ROOT=${PE_HUB_ROOT} DEVICE=${DEVICE} SMOKE=${SMOKE:-0}"
 sbatch "${SBATCH_ARGS[@]}" "${EXTRA_SBATCH[@]}" "${SBATCH_SCRIPT}"

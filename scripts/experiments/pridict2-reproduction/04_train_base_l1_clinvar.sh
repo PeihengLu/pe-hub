@@ -18,11 +18,11 @@ maybe_skip_if_state "${STATE_KEY}"
 
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${HP_JSON}" ]]; then
-    HP_JSON='{"num_epochs":3,"batch_size":64}'
+    HP_JSON="$(smoke_fixed_hp_json)"
 elif [[ -z "${HP_JSON}" ]]; then
     HP_JSON='{}'
 fi
-# ClinVar lacks the outcome trio → MSEloss (intended-edit only).
+# ClinVar lacks the outcome trio — MSEloss (same as all PRIDICT2 stages).
 HP_JSON="$(force_mse_loss_json "${HP_JSON}")"
 
 TRAIN_ARGS=(

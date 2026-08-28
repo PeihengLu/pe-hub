@@ -23,11 +23,11 @@ maybe_skip_if_tuned "${MODEL}" "${DATASET_KEY}"
 
 FIXED_HP_JSON="${FIXED_HP_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${FIXED_HP_JSON}" ]]; then
-    FIXED_HP_JSON='{"num_epochs":3,"batch_size":64}'
+    FIXED_HP_JSON="$(smoke_fixed_hp_json)"
 elif [[ -z "${FIXED_HP_JSON}" ]]; then
     FIXED_HP_JSON='{}'
 fi
-# ClinVar is edit-efficiency only → must override Optuna search-space KLDloss.
+# ClinVar / merge path is edit-efficiency only — keep MSEloss explicit for Optuna.
 FIXED_HP_JSON="$(force_mse_loss_json "${FIXED_HP_JSON}")"
 
 TUNE_ARGS=(

@@ -23,7 +23,7 @@ echo ""
 
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
 if [[ "${SMOKE}" == "1" && -z "${HP_JSON}" ]]; then
-    HP_JSON='{"num_epochs":3,"batch_size":64}'
+    HP_JSON="$(smoke_fixed_hp_json)"
 elif [[ -z "${HP_JSON}" ]]; then
     HP_JSON='{}'
 fi

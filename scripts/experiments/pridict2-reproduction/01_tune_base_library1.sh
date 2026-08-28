@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
+#   SMOKE=1 DEVICE=cuda:0 ./.../01_tune_base_library1.sh   # local: mini data, 1 trial
 #   SMOKE=1 SKIP_IF_TUNED=1 DEVICE=mps ./.../01_tune_base_library1.sh
 
 set -euo pipefail

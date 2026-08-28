@@ -30,7 +30,9 @@ SMOKE="${SMOKE:-0}"
 SPLIT_RANDOM_STATE="${SPLIT_RANDOM_STATE:-42}"
 
 if [[ "${SMOKE}" == "1" ]]; then
-    N_TRIALS="${N_TRIALS_SMOKE:-2}"
+    N_TRIALS="${N_TRIALS_SMOKE:-1}"
+    CV_FOLDS="${CV_FOLDS_SMOKE:-2}"
+    TEST_PCT="${TEST_PCT_SMOKE:-0.2}"
 fi
 
 print_experiment_banner() {
@@ -43,6 +45,9 @@ print_experiment_banner() {
     echo "device:    ${DEVICE}"
     echo "cv_folds:  ${CV_FOLDS}"
     echo "test_pct:  ${TEST_PCT}  (ignored when --use-original-fold uses author -1)"
+    if [[ "${SMOKE:-0}" == "1" ]]; then
+        echo "SMOKE:     1 (mini data unless SMOKE_FULL_DATA=1)"
+    fi
     echo ""
 }
 

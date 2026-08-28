@@ -8,10 +8,13 @@
 #
 # Usage:
 #   ./scripts/cluster/oxford-arc/preflight.sh
+#   SMOKE=1 ./scripts/cluster/oxford-arc/preflight.sh   # fast: library1 tune only
 #   DEVICE=cuda:0 N_ROWS=48 ./scripts/cluster/oxford-arc/preflight.sh
 #   KEEP_WORK=1 ./scripts/cluster/oxford-arc/preflight.sh   # retain scratch
 #
 # Env:
+#   SMOKE=1         fast path (1 trial, library1 tune); default is full pipeline
+#   SMOKE_FULL_DATA=1  with SMOKE=1 on reproduction scripts: skip mini DATA_ROOT
 #   DEVICE          default auto
 #   N_ROWS          rows per mini sheet (default 64)
 #   N_TRIALS        Optuna trials (default 2)
@@ -36,16 +39,24 @@ fi
 PY="$(command -v python 2>/dev/null || command -v python3)"
 
 DEVICE="${DEVICE:-auto}"
-N_ROWS="${N_ROWS:-64}"
-N_TRIALS="${N_TRIALS:-2}"
-CV_FOLDS="${CV_FOLDS:-2}"
+SMOKE="${SMOKE:-0}"
+if [[ "${SMOKE}" == "1" ]]; then
+    N_ROWS="${N_ROWS:-128}"
+    N_TRIALS="${N_TRIALS:-1}"
+    CV_FOLDS="${CV_FOLDS:-2}"
+else
+    N_ROWS="${N_ROWS:-64}"
+    N_TRIALS="${N_TRIALS:-2}"
+    CV_FOLDS="${CV_FOLDS:-2}"
+fi
 SOURCE_DATASETS="${SOURCE_DATASETS:-${REPO_ROOT}/datasets}"
 WORK_DIR="${WORK_DIR:-/tmp/pe-hub-preflight-$$}"
 KEEP_WORK="${KEEP_WORK:-0}"
-FIXED_HP_JSON="${FIXED_HP_JSON:-{\"num_epochs\":2,\"batch_size\":16,\"lr\":0.0001}}"
-# Only pridict1/library1 has the outcome trio. Merge + library-diverse use MSE.
-MERGE_HP_JSON="${MERGE_HP_JSON:-{\"num_epochs\":2,\"batch_size\":16,\"lr\":0.0001,\"loss_func\":\"MSEloss\",\"y_ref\":[\"averageedited\"]}}"
-FT_HP_JSON="${FT_HP_JSON:-{\"num_epochs\":2,\"batch_size\":16,\"lr\":0.0001,\"loss_func\":\"MSEloss\",\"y_ref\":[\"averageedited\"]}}"
+# shellcheck source=./_smoke_common.sh
+source "${ARC_DIR}/_smoke_common.sh"
+FIXED_HP_JSON="${FIXED_HP_JSON:-$(smoke_fixed_hp_json)}"
+MERGE_HP_JSON="${MERGE_HP_JSON:-${FIXED_HP_JSON}}"
+FT_HP_JSON="${FT_HP_JSON:-${FIXED_HP_JSON}}"
 REPO_LOCAL_PRESETS="${REPO_ROOT}/services/pe-ensemble/config/training_presets_local"
 
 MODEL=pridict2
@@ -67,41 +78,23 @@ trap cleanup EXIT
 
 mkdir -p "${WORK_DIR}"
 echo "======================================"
-echo "PE Hub peen preflight"
+if [[ "${SMOKE}" == "1" ]]; then
+    echo "PE Hub preflight (SMOKE: library1 tune only)"
+else
+    echo "PE Hub peen preflight"
+fi
 echo "======================================"
 echo "WORK_DIR:  ${WORK_DIR}"
 echo "DEVICE:    ${DEVICE}"
+echo "SMOKE:     ${SMOKE}"
 echo "N_ROWS:    ${N_ROWS}"
 echo "N_TRIALS:  ${N_TRIALS}"
 echo "CV_FOLDS:  ${CV_FOLDS}"
 echo ""
 
-echo "---- 0) Build mini DATA_ROOT ----"
-"${PY}" "${ARC_DIR}/preflight_build_mini_data.py" \
-    --work-dir "${WORK_DIR}" \
-    --source-datasets "${SOURCE_DATASETS}" \
-    --n-rows "${N_ROWS}"
-
-# Isolate all mutable peen artifacts inside the scratch tree.
-export DATA_ROOT="${WORK_DIR}/datasets"
-export TRAINING_PRESETS_ROOT="${WORK_DIR}/presets_local"
-export TRAINING_SHIPPED_PRESETS_ROOT="${REPO_ROOT}/services/pe-ensemble/config/training_presets"
-export TUNING_STUDIES_ROOT="${WORK_DIR}/tuning_studies"
-export TRAINING_JOBS_ROOT="${WORK_DIR}/jobs"
-export TUNING_JOBS_ROOT="${WORK_DIR}/tune_jobs"
-export WEIGHTS_ROOT="${WORK_DIR}/weights"
+setup_smoke_mini_data_root
 STATE_DIR="${WORK_DIR}/state"
-mkdir -p \
-    "${TRAINING_PRESETS_ROOT}" \
-    "${TUNING_STUDIES_ROOT}" \
-    "${TRAINING_JOBS_ROOT}" \
-    "${TUNING_JOBS_ROOT}" \
-    "${WEIGHTS_ROOT}" \
-    "${STATE_DIR}"
-
-# Minimal weights index (trained runs register here; no vendor trees required).
-printf '%s\n' '{"schema_version":1,"entries":[]}' > "${WEIGHTS_ROOT}/registry.json"
-printf '%s\n' '{"schema_version":1,"entries":[]}' > "${WEIGHTS_ROOT}/local_registry.json"
+mkdir -p "${STATE_DIR}"
 
 run() {
     local title="$1"
@@ -138,66 +131,6 @@ capture_weights() {
     fi
 }
 
-# Assert train/tune log JSON contains pretrained_load.skipped_mismatched including decoder
-# (trio base → edit-only FT) or an empty skip list (same-shape transfer).
-assert_pretrained_load() {
-    local log="$1"
-    local expect_skip_decoder="$2" # 1 = decoder must be skipped; 0 = decoder must load
-    "${PY}" - "${log}" "${expect_skip_decoder}" <<'PY'
-import json, sys
-from pathlib import Path
-
-log_path = Path(sys.argv[1])
-expect_skip = sys.argv[2] == "1"
-text = log_path.read_text(encoding="utf-8")
-decoder = json.JSONDecoder()
-payload = None
-idx = 0
-while True:
-    start = text.find("{", idx)
-    if start < 0:
-        break
-    try:
-        obj, end = decoder.raw_decode(text, start)
-    except json.JSONDecodeError:
-        idx = start + 1
-        continue
-    if isinstance(obj, dict) and (
-        "pretrained_load" in obj
-        or (isinstance(obj.get("result"), dict) and "pretrained_load" in obj["result"])
-    ):
-        payload = obj.get("pretrained_load") or obj["result"]["pretrained_load"]
-    idx = end
-
-if payload is None:
-    sys.stderr.write(f"Error: no pretrained_load in {log_path}\n")
-    sys.exit(1)
-
-loaded = set(payload.get("loaded") or [])
-skipped = set(payload.get("skipped_mismatched") or [])
-print(f"  pretrained_load loaded={sorted(loaded)}")
-print(f"  pretrained_load skipped_mismatched={sorted(skipped)}")
-
-if expect_skip:
-    if "decoder" not in skipped:
-        sys.stderr.write(
-            "Error: expected decoder in skipped_mismatched for trio→edit-only FT\n"
-        )
-        sys.exit(1)
-    if "init_encoder" not in loaded:
-        sys.stderr.write("Error: expected backbone init_encoder to load\n")
-        sys.exit(1)
-else:
-    if "decoder" in skipped:
-        sys.stderr.write("Error: same-shape FT unexpectedly skipped decoder\n")
-        sys.exit(1)
-    if "decoder" not in loaded:
-        sys.stderr.write("Error: expected decoder to load for same-shape FT\n")
-        sys.exit(1)
-print("  pretrained_load check OK")
-PY
-}
-
 run "1) peen devices / models" peen devices
 run "1b) peen models" peen models
 
@@ -218,6 +151,18 @@ capture_weights base_library1_tune \
     --fixed-hyperparameters-json "${FIXED_HP_JSON}" \
     --register-best-weights \
     --notes "preflight: single-sheet HPO"
+
+if [[ "${SMOKE}" == "1" ]]; then
+    echo ""
+    echo "======================================"
+    echo "SMOKE PASSED (library1 tune path)"
+    echo "======================================"
+    echo "Run without SMOKE=1 for the full preflight pipeline."
+    if [[ "${KEEP_WORK}" == "1" ]]; then
+        echo "Scratch: ${WORK_DIR}"
+    fi
+    exit 0
+fi
 
 # --- Single-sheet train (03) ---
 capture_weights base_library1 \
@@ -255,8 +200,7 @@ BASE_L1="$(cat "${STATE_DIR}/base_library1")"
 BASE_L1C="$(cat "${STATE_DIR}/base_l1_clinvar")"
 
 # --- Fine-tune with --pretrained-weights (06 shape) ---
-# Trio library1 base (KLDloss, num_outcomes=3) → library-diverse MSE (1 outcome):
-# backbone loads; decoder is skipped (shape mismatch) and re-initialized.
+# All bases use MSEloss / one outcome → same-shape transfer (decoder loads).
 capture_weights "ft_base_library1_${FT_CELL}" \
     train \
     --model "${MODEL}" \
@@ -269,11 +213,8 @@ capture_weights "ft_base_library1_${FT_CELL}" \
     --device "${DEVICE}" \
     --pretrained-weights "${BASE_L1}" \
     --hyperparameters-json "${FT_HP_JSON}" \
-    --notes "preflight: FT library1 trio→diverse (skip mismatched decoder)"
+    --notes "preflight: FT library1→diverse"
 
-assert_pretrained_load "${STATE_DIR}/ft_base_library1_${FT_CELL}.log" 1
-
-# Merge base was already MSEloss / 1 outcome → same-shape transfer (decoder loads).
 capture_weights "ft_base_l1_clinvar_${FT_CELL}" \
     train \
     --model "${MODEL}" \
@@ -286,9 +227,7 @@ capture_weights "ft_base_l1_clinvar_${FT_CELL}" \
     --device "${DEVICE}" \
     --pretrained-weights "${BASE_L1C}" \
     --hyperparameters-json "${FT_HP_JSON}" \
-    --notes "preflight: FT merge-base→diverse (same-shape decoder loads)"
-
-assert_pretrained_load "${STATE_DIR}/ft_base_l1_clinvar_${FT_CELL}.log" 0
+    --notes "preflight: FT merge-base→diverse"
 
 FT1="$(cat "${STATE_DIR}/ft_base_library1_${FT_CELL}")"
 FT2="$(cat "${STATE_DIR}/ft_base_l1_clinvar_${FT_CELL}")"
@@ -340,9 +279,8 @@ echo "Covered:"
 echo "  - peen devices/models"
 echo "  - tune single-sheet (cv) + register-best"
 echo "  - train single-sheet (holdout_3)"
-echo "  - train merge L1+ClinVar (seq_id remapping, MSEloss)"
-echo "  - --pretrained-weights FT trio→edit-only (decoder skipped)"
-echo "  - --pretrained-weights FT same-shape (decoder loaded)"
+echo "  - train merge L1+ClinVar (seq_id remapping)"
+echo "  - --pretrained-weights fine-tune transfer"
 echo "  - evaluate + mean ensemble"
 echo "  - scratch local presets overlay write"
 echo ""

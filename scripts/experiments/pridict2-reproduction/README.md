@@ -12,16 +12,23 @@
 # Other PRIDICT2 sheets use random CV + outer test for HPO (not author
 # `testset_fold`), except the merged L1+ClinVar base which aligns to DeepPrime folds.
 #
-# **Loss:** only `pridict1/library1` has the full outcome trio
-# (`averageedited`/`averageunedited`/`averageindel`). peen refuses KL/CE when
-# any trio column is missing or NaN. Merge (L1+ClinVar) and library-diverse FT
-# stages force `loss_func=MSEloss` (intended-edit only). Library1 base HPO/train
-# keeps the default `KLDloss`.
+# **Loss:** PRIDICT2 is trained with a single edit-efficiency head (`MSEloss` on
+# `averageedited`, mapped from `editing_efficiency` in standardized data). All
+# reproduction stages use MSEloss; KLD/CE distribution training is not used.
 #
 ## Quick start
 #
+# Local smoke (mini data, 1 trial — run before ARC):
+#
 # ```bash
 # conda activate <env> && ./scripts/install-clis.sh
+# SMOKE=1 DEVICE=cuda:0 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
+# # or: SMOKE=1 ./scripts/cluster/oxford-arc/preflight.sh
+# ```
+#
+# Full pipeline smoke (all stages, mini data):
+#
+# ```bash
 # SMOKE=1 DEVICE=mps ./scripts/experiments/pridict2-reproduction/run_all.sh
 # ```
 #
