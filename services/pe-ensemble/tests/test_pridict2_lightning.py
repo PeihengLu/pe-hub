@@ -6,6 +6,7 @@ import torch
 from app.models.pridict2_wrapper import (
     build_pernn_distribution_model,
     build_pridict_loss,
+    predictions_from_decoder_output,
     _PRIDICT2LightningModule,
 )
 
@@ -13,6 +14,18 @@ from app.models.pridict2_wrapper import (
 def test_build_pridict_loss_kld():
     loss = build_pridict_loss("KLDloss")
     assert isinstance(loss, torch.nn.KLDivLoss)
+
+
+def test_predictions_from_decoder_output_mse_uses_logits_directly():
+    logits = torch.tensor([[10.0, 20.0]])
+    pred = predictions_from_decoder_output(logits, "MSEloss")
+    assert torch.allclose(pred, logits)
+
+
+def test_predictions_from_decoder_output_kld_applies_exp():
+    logits = torch.tensor([[0.0, 1.0]])
+    pred = predictions_from_decoder_output(logits, "KLDloss")
+    assert torch.allclose(pred, torch.exp(logits))
 
 
 def test_pridict2_lightning_configure_optimizers_with_scheduler():

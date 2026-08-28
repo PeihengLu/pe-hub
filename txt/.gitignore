@@ -1,8 +1,5 @@
 *
 !.gitignore
 !*.tex
-!*.bib
-# Managed locally per device via Zotero — do not track
-references.bib
 !diagrams/
 !diagrams/**/*

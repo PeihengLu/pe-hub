@@ -27,6 +27,19 @@ def test_dataset_preset_key_specificity():
     assert dataset_preset_key(study="PRIDICT2", dataset="library-2") == "pridict2/library_2"
 
 
+def test_dataset_preset_key_merged_studies():
+    assert dataset_preset_key(
+        study=["pridict1", "deepprime"],
+        dataset=["library1", "deepprime-clinvar"],
+    ) == "pridict1/library1+deepprime/deepprime_clinvar"
+    assert dataset_preset_key(
+        study=["pridict1", "deepprime"],
+        dataset=["library1", "deepprime-clinvar"],
+        cell_line="hek293t",
+        pe_system="pe2",
+    ) == "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2"
+
+
 def test_candidate_preset_keys_most_specific_first():
     keys = candidate_preset_keys(
         study="pridict2",
@@ -35,6 +48,19 @@ def test_candidate_preset_keys_most_specific_first():
         pe_system="pe2",
     )
     assert keys == ["pridict2/library2/hek293t/pe2", "pridict2/library2"]
+
+
+def test_candidate_preset_keys_merged_studies():
+    keys = candidate_preset_keys(
+        study=["pridict1", "deepprime"],
+        dataset=["library1", "deepprime-clinvar"],
+        cell_line="hek293t",
+        pe_system="pe2",
+    )
+    assert keys == [
+        "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2",
+        "pridict1/library1+deepprime/deepprime_clinvar",
+    ]
 
 
 def test_resolve_hyperparameters_merge_order(tmp_path: Path):
@@ -327,6 +353,34 @@ def test_extract_validation_metric_pridict2_prefers_cv_mean():
         },
     )
     assert metric == pytest.approx(0.3)
+
+
+def test_extract_validation_metric_pridict2_skips_nan_spearman():
+    metric = extract_validation_metric(
+        "pridict2",
+        {
+            "result": {
+                "validation_metrics": {
+                    "averageedited_spearman": float("nan"),
+                    "averageedited_pearson": 0.42,
+                }
+            }
+        },
+    )
+    assert metric == pytest.approx(0.42)
+
+
+def test_extract_validation_metric_pridict2_falls_back_to_best_val_loss():
+    metric = extract_validation_metric(
+        "pridict2",
+        {
+            "result": {
+                "validation_metrics": {"averageedited_spearman": float("nan")},
+                "training_metrics": {"best_val_loss": 0.25},
+            }
+        },
+    )
+    assert metric == pytest.approx(-0.25)
 
 
 def test_training_request_hyperparameter_mode_default():

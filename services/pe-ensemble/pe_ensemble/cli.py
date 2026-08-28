@@ -278,6 +278,7 @@ def build_tuning_request(args: argparse.Namespace) -> TuningRequest:
         n_trials=args.n_trials,
         study_name=args.study_name,
         study_storage=args.study_storage,
+        dataset_preset_key=getattr(args, "dataset_preset_key", None),
         write_preset=args.write_preset,
         no_write_preset=args.no_write_preset,
         register_best_weights=args.register_best_weights,
@@ -401,6 +402,11 @@ def _add_tune_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--n-trials", type=int, default=20)
     parser.add_argument("--study-name", default=None)
     parser.add_argument("--study-storage", default=None)
+    parser.add_argument(
+        "--dataset-preset-key",
+        default=None,
+        help="Explicit preset lookup key (required for some merged PE-DB filters)",
+    )
     parser.add_argument(
         "--write-preset",
         default=None,
