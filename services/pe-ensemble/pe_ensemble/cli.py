@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -348,8 +349,24 @@ def build_ensemble_request(args: argparse.Namespace) -> EnsembleRequest:
     )
 
 
+def _configure_cli_logging() -> None:
+    """Send application INFO logs to stdout (SLURM .out) instead of stderr (.err)."""
+    root = logging.getLogger()
+    if any(
+        isinstance(handler, logging.StreamHandler) and handler.stream is sys.stdout
+        for handler in root.handlers
+    ):
+        return
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    root.addHandler(handler)
+    if root.level == logging.NOTSET or root.level > logging.INFO:
+        root.setLevel(logging.INFO)
+
+
 def _prepare_runtime(argv: Optional[List[str]]) -> Optional[int]:
     """Bootstrap plugins and handle global early-exit flags."""
+    _configure_cli_logging()
     enable_cli_pe_db_access()
     early = _early_parse(argv)
     if early.list_devices:

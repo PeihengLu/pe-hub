@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -113,6 +113,7 @@ def fit_lightning_module(
             self.best_val_loss: float = float("inf")
             self.best_epoch: int = -1
             self.best_state_dict: Optional[Dict[str, torch.Tensor]] = None
+            self._val_batch_losses: List[torch.Tensor] = []
 
         @staticmethod
         def _as_float(metrics: Dict[str, Any], key: str) -> float:
@@ -123,11 +124,53 @@ def fit_lightning_module(
                 return float(value.detach().cpu().item())
             return float(value)
 
+        def _metric_from_trainer(self, trainer: Any, key: str) -> float:
+            # logged_metrics is fresher than callback_metrics inside
+            # on_validation_epoch_end on some Lightning 2.x builds.
+            for source in (trainer.logged_metrics, trainer.callback_metrics):
+                metrics = dict(source) if source else {}
+                value = self._as_float(metrics, key)
+                if np.isfinite(value):
+                    return value
+            return float("nan")
+
+        def on_validation_epoch_start(
+            self,
+            trainer: Any,
+            pl_module: Any,
+        ) -> None:
+            del trainer, pl_module
+            self._val_batch_losses = []
+
+        def on_validation_batch_end(
+            self,
+            trainer: Any,
+            pl_module: Any,
+            outputs: Any,
+            batch: Any,
+            batch_idx: int,
+            dataloader_idx: int = 0,
+        ) -> None:
+            del trainer, pl_module, batch, batch_idx, dataloader_idx
+            if outputs is None:
+                return
+            if torch.is_tensor(outputs):
+                self._val_batch_losses.append(outputs.detach().float())
+                return
+            if isinstance(outputs, Mapping):
+                loss = outputs.get("loss")
+                if torch.is_tensor(loss):
+                    self._val_batch_losses.append(loss.detach().float())
+
         def on_validation_epoch_end(self, trainer: Any, pl_module: Any) -> None:
             metrics = dict(trainer.callback_metrics)
             epoch = int(trainer.current_epoch)
-            train_loss = self._as_float(metrics, "train_loss")
-            val_loss = self._as_float(metrics, "val_loss")
+            train_loss = self._metric_from_trainer(trainer, "train_loss")
+            if self._val_batch_losses:
+                val_loss = float(torch.stack(self._val_batch_losses).mean().item())
+            else:
+                val_loss = self._metric_from_trainer(trainer, "val_loss")
+            self._val_batch_losses = []
             row: Dict[str, float] = {
                 "epoch": float(epoch),
                 "train_loss": train_loss,

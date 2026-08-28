@@ -21,7 +21,7 @@
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
 #SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --error=slurm-%j.out
 
 set -euo pipefail
 

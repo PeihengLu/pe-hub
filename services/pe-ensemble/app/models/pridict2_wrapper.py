@@ -350,6 +350,10 @@ class _PRIDICT2LightningModule(pl.LightningModule):
         self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
         return loss
 
+    def on_fit_start(self) -> None:
+        # Vendor RNN blocks keep a separate ``.device`` for hidden-state init.
+        self.model.set_device(self.device)
+
     def validation_step(self, batch: PRIDICT_BATCH, _batch_idx: int) -> torch.Tensor:
         loss = self._step(batch, train=False)
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
@@ -425,8 +429,12 @@ def build_pridict_dataloaders(
     train_dataset: Any,
     val_dataset: Any,
     batch_size: int,
+    num_workers: int = 0,
 ) -> Tuple[DataLoader, DataLoader]:
-    config = {"batch_size": int(batch_size), "num_workers": 0}
+    config = {
+        "batch_size": int(batch_size),
+        "num_workers": int(num_workers),
+    }
     partition = {"train": train_dataset, "validation": val_dataset}
     loaders, _, _, _ = construct_load_dataloaders(
         partition,
@@ -466,6 +474,7 @@ def train_pridict2_with_lightning(
     loss_func: str,
     progress_log: Optional[Callable[[str], None]] = None,
     cancel_check: Optional[Callable[[], None]] = None,
+    progress_log_prefix: str = "",
 ) -> Dict[str, Any]:
     if bool(hyperparameters.get("freezing", False)):
         apply_pridict_freezing(
@@ -493,7 +502,11 @@ def train_pridict2_with_lightning(
             enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
             log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
         ),
-        on_epoch_end=make_epoch_logger(progress_log, cancel_check=cancel_check),
+        on_epoch_end=make_epoch_logger(
+            progress_log,
+            prefix=progress_log_prefix,
+            cancel_check=cancel_check,
+        ),
     )
     # Encoder modules keep an explicit ``.device`` attribute used for masks.
     model.set_device(device)
@@ -502,6 +515,7 @@ def train_pridict2_with_lightning(
         progress_log,
         best_epoch=int(metrics["best_epoch"]),
         best_val_loss=float(metrics["best_val_loss"]),
+        prefix=progress_log_prefix,
     )
     return metrics
 
@@ -1307,6 +1321,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         run_suffix: str,
         progress_log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], None]] = None,
+        progress_log_prefix: str = "",
     ) -> Dict[str, Any]:
         from pridict2.pridict.pridictv2.run_workflow import build_config_map
 
@@ -1341,6 +1356,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             train_dataset=dtensor_train,
             val_dataset=dtensor_val,
             batch_size=batch_size,
+            num_workers=int(build_hparams.get("num_workers", 4 if self.device.type == "cuda" else 0)),
         )
 
         model = build_pernn_distribution_model(
@@ -1363,6 +1379,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             loss_func=str(build_hparams.get("loss_func", "MSEloss")),
             progress_log=progress_log,
             cancel_check=cancel_check,
+            progress_log_prefix=progress_log_prefix,
         )
 
         run_output_dir = f"{output_dir}/{run_suffix}"
@@ -1440,6 +1457,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
                     run_suffix=f"cv_{fold_label}",
                     progress_log=progress_log,
                     cancel_check=cancel_check,
+                    progress_log_prefix=f"cv {fold_label} |",
                 )
                 fold_reports.append({"fold": fold_idx, "fold_label": fold_label, **report})
 
@@ -1454,6 +1472,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             run_suffix="final",
             progress_log=progress_log,
             cancel_check=cancel_check,
+            progress_log_prefix="final |",
         )
         result: Dict[str, Any] = {
             "status": "success",

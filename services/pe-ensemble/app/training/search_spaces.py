@@ -4,6 +4,8 @@ Scheduler settings are intentionally excluded; users set those at train time.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Mapping, Optional
 
@@ -127,8 +129,8 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),
-            "batch_size": CategoricalParam((64, 128, 256)),
-            "num_epochs": IntParam(15, 40),
+            "batch_size": CategoricalParam((128, 256, 512, 1024)),
+            "num_epochs": IntParam(10, 30),
             "embed_dim": CategoricalParam((32, 64, 128)),
             "num_hidden_layers": CategoricalParam((1, 2, 3)),
             "p_dropout": FloatParam(0.05, 0.45),
@@ -143,6 +145,60 @@ def get_search_space(model_name: str) -> SearchSpaceSpec:
         supported = ", ".join(sorted(SEARCH_SPACES))
         raise ValueError(f"No search space for model '{model_name}'. Supported: {supported}")
     return SEARCH_SPACES[key]
+
+
+def _search_space_canonical(space: SearchSpaceSpec) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    for name, spec in sorted(space.params.items()):
+        if isinstance(spec, FloatParam):
+            params[name] = {
+                "type": "float",
+                "low": float(spec.low),
+                "high": float(spec.high),
+                "log": bool(spec.log),
+            }
+        elif isinstance(spec, IntParam):
+            params[name] = {
+                "type": "int",
+                "low": int(spec.low),
+                "high": int(spec.high),
+            }
+        elif isinstance(spec, CategoricalParam):
+            params[name] = {
+                "type": "categorical",
+                "choices": list(spec.choices),
+            }
+    return {
+        "metric": space.metric,
+        "direction": space.direction,
+        "fixed": dict(space.fixed),
+        "params": params,
+    }
+
+
+def search_space_fingerprint(model_name: str) -> str:
+    """Stable short id for the current Optuna search space (8 hex chars)."""
+    space = get_search_space(model_name)
+    payload = json.dumps(_search_space_canonical(space), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+
+def search_space_study_suffix(model_name: str) -> str:
+    return f"__sp_{search_space_fingerprint(model_name)}"
+
+
+def resolve_study_name(base_name: str, model_name: str) -> str:
+    """Append a search-space suffix so Optuna studies are not resumed across space changes."""
+    suffix = search_space_study_suffix(model_name)
+    cleaned = base_name.strip()
+    if cleaned.endswith(suffix):
+        return cleaned
+    marker = "__sp_"
+    if marker in cleaned:
+        head, _, tail = cleaned.rpartition(marker)
+        if len(tail) == 8 and all(ch in "0123456789abcdef" for ch in tail.lower()):
+            cleaned = head
+    return f"{cleaned}{suffix}"
 
 
 def materialize_hyperparameters(

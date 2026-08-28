@@ -13,7 +13,14 @@ from app.training.hyperparameter_presets import (
     write_dataset_preset,
 )
 from app.training.schemas import TrainingRequest
-from app.training.search_spaces import get_search_space, suggest_trial_hyperparameters
+from app.training.search_spaces import (
+    get_search_space,
+    materialize_hyperparameters,
+    resolve_study_name,
+    search_space_fingerprint,
+    search_space_study_suffix,
+    suggest_trial_hyperparameters,
+)
 from app.training.tune_runner import extract_validation_metric
 
 
@@ -242,9 +249,21 @@ def test_pridict2_search_space_omits_derived_architecture_knobs():
     assert "z_dim" not in suggested
 
 
-def test_materialize_hyperparameters_applies_fixed_and_oped_aliases():
-    from app.training.search_spaces import materialize_hyperparameters
+def test_search_space_fingerprint_is_stable():
+    first = search_space_fingerprint("pridict2")
+    second = search_space_fingerprint("pridict2")
+    assert first == second
+    assert len(first) == 8
 
+
+def test_resolve_study_name_appends_search_space_suffix():
+    resolved = resolve_study_name("pridict2__repro_base_library1", "pridict2")
+    suffix = search_space_study_suffix("pridict2")
+    assert resolved.endswith(suffix)
+    assert resolve_study_name(resolved, "pridict2") == resolved
+
+
+def test_materialize_hyperparameters_applies_fixed_and_oped_aliases():
     oped = materialize_hyperparameters(
         "oped",
         {

@@ -103,6 +103,51 @@ class _FitDeviceModule(pl.LightningModule):
         return torch.optim.Adam(self.model.parameters(), lr=1e-2)
 
 
+def test_fit_lightning_module_val_loss_updates_across_epochs():
+    rows: list[dict[str, float]] = []
+    x = torch.randn(128, 4)
+    y = torch.randn(128, 1)
+    loader = DataLoader(TensorDataset(x, y), batch_size=16, shuffle=True)
+
+    class _LearningModule(pl.LightningModule):
+        def __init__(self) -> None:
+            super().__init__()
+            self.model = torch.nn.Linear(4, 1)
+
+        def training_step(
+            self, batch: tuple[torch.Tensor, torch.Tensor], _batch_idx: int
+        ) -> torch.Tensor:
+            features, targets = batch
+            loss = ((self.model(features) - targets) ** 2).mean()
+            self.log("train_loss", loss, on_epoch=True, on_step=False)
+            return loss
+
+        def validation_step(
+            self, batch: tuple[torch.Tensor, torch.Tensor], _batch_idx: int
+        ) -> torch.Tensor:
+            features, targets = batch
+            loss = ((self.model(features) - targets) ** 2).mean()
+            self.log("val_loss", loss, on_epoch=True, on_step=False)
+            return loss
+
+        def configure_optimizers(self) -> torch.optim.Optimizer:
+            return torch.optim.Adam(self.model.parameters(), lr=0.05)
+
+    module = _LearningModule()
+    metrics = fit_lightning_module(
+        module,
+        train_loader=loader,
+        val_loader=loader,
+        device=torch.device("cpu"),
+        config=LightningTrainerConfig(max_epochs=4, patience=None, enable_progress_bar=False),
+        on_epoch_end=rows.append,
+    )
+    assert len(rows) == 4
+    val_losses = [row["val_loss"] for row in rows]
+    assert val_losses[0] != val_losses[-1]
+    assert int(metrics["best_epoch"]) >= 0
+
+
 def test_fit_lightning_module_restores_training_device():
     if not torch.cuda.is_available():
         return

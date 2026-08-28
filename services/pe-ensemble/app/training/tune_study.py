@@ -14,6 +14,8 @@ from .runner import TrainingError, execute_training
 from .search_spaces import (
     get_search_space,
     materialize_hyperparameters,
+    resolve_study_name,
+    search_space_fingerprint,
     suggest_trial_hyperparameters,
 )
 from .tune_jobs import (
@@ -76,13 +78,19 @@ def execute_tuning(
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         space = get_search_space(training.model_name)
-        study_name = request.study_name or _default_study_name(request)
+        base_study_name = request.study_name or _default_study_name(request)
+        study_name = resolve_study_name(base_study_name, training.model_name)
         storage = request.study_storage or _default_study_storage(
             study_name,
             tuning_studies_root(),
         )
+        expected_fingerprint = search_space_fingerprint(training.model_name)
 
-        _log(f"Starting Optuna study {study_name!r} ({request.n_trials} trials)", job_id=job_id)
+        _log(
+            f"Starting Optuna study {study_name!r} ({request.n_trials} trials, "
+            f"search_space={expected_fingerprint})",
+            job_id=job_id,
+        )
 
         study = optuna.create_study(
             study_name=study_name,
@@ -90,6 +98,15 @@ def execute_tuning(
             storage=storage,
             load_if_exists=True,
         )
+        stored_fingerprint = study.user_attrs.get("search_space_fingerprint")
+        if stored_fingerprint and stored_fingerprint != expected_fingerprint:
+            raise TrainingError(
+                f"Study {study_name!r} was created with search space "
+                f"{stored_fingerprint!r} but the current code uses {expected_fingerprint!r}. "
+                "Choose a new --study-name or remove the existing study database."
+            )
+        if not stored_fingerprint:
+            study.set_user_attr("search_space_fingerprint", expected_fingerprint)
 
         def objective(trial: "optuna.Trial") -> float:
             if job_id and is_cancel_requested("tune", job_id):

@@ -3,6 +3,12 @@
 # Uses --merge --use-original-fold so overlapping library1 loci inherit
 # DeepPrime original_fold; remaining loci get random CV (+ outer test_pct).
 #
+# This stage is much heavier than 01 (338k+ rows, 6 folds/trial). On ARC HTC
+# submit with the medium partition and 48h wall time, and prefer L40S GPUs:
+#   ARC_PARTITION=medium ARC_TIME=48:00:00 \
+#     ARC_GPU_CONSTRAINT=gpu_sku:L40S \
+#     ./scripts/cluster/oxford-arc/submit.sh 02_tune_base_l1_clinvar.sh
+#
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/02_tune_base_l1_clinvar.sh
 #   SMOKE=1 DEVICE=mps ./.../02_tune_base_l1_clinvar.sh
