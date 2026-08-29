@@ -38,6 +38,47 @@ Full pipeline (tune → base train → fine-tune → mean ensemble):
 
 See [`pridict2-reproduction/README.md`](pridict2-reproduction/README.md).
 
+## Base model evaluation (pooled benchmarks)
+
+Cross-benchmark evaluation of base vendor weights with leak prevention on:
+
+- **Weights:** `DeepPrime_base`, OPED merged, OptiPrime `base`, and all PRIDICT2 CV
+  fold runs (`pridict1_{1,2}__exp_*__run_{0..4}`)
+- **Benchmarks:** MinSePIE insert (pooled), DeepPE (pooled), DeepPrime ClinVar,
+  PRIDICT library1, PRIDICT library-diverse, OptiPrime lib-mmr, OptiPrime lib-cv
+
+```bash
+conda activate pedb
+# Optional: backfill OptiPrime train_target_loci for cross-dataset leak checks
+cd services/pe-ensemble && python -m app.models.optiprime_vendor_provenance && cd ../..
+
+DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
+# Script invokes ``python -m pe_ensemble.cli`` (more reliable than the peen entrypoint).
+python scripts/experiments/summarize_eval_results.py results/base_model_eval/<RUN_ID>/results.jsonl
+```
+
+Outputs under `results/base_model_eval/<RUN_ID>/`:
+
+- `results.jsonl` — one record per evaluation (including `data_leak` aborts)
+- `summary.csv` — flat table for plotting
+- `summary_cv_mean_std.csv` — PRIDICT2 experiment × benchmark mean±std across folds
+
+Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`
+
+## From-scratch train probe
+
+Lightweight sequential from-scratch trains (`load_pretrained=false`) for DeepPrime,
+OPED, and PRIDICT2 on library1, library-diverse, and DeepPrime ClinVar. Streams
+peen output and prints each job's full `train.log`.
+
+```bash
+conda activate pedb
+DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
+SMOKE=1 DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
+MODELS=oped DATASET_NAMES=pridict1-library1 DEVICE=mps \
+  ./scripts/experiments/probe_scratch_train.sh
+```
+
 ## Other recipes
 
 | Script                                 | Purpose                                       |
