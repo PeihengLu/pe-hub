@@ -1,15 +1,13 @@
-# everything but raw data and README files
-*
-!.gitignore
-!README.md
-!raw/
-!raw/**/
-!raw/**/*
-!analysis/
-!analysis/**/
-!analysis/**/*
-!*.py
-!dataprep/
+# Regenerable pe-db outputs (rebuild via pedb init / initialize_database)
+exported/
+standardized/
+formatted/
+catalog/
+
+# leftover junk
 ~*
 pridict1_library1.csv
 .DS_Store
+
+# DVC-tracked genomes (pointer: reference.dvc)
+/reference

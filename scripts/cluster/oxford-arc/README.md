@@ -35,6 +35,7 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    rsync -avz --progress \
      --exclude '.git/objects/' --exclude '__pycache__/' \
      --exclude 'datasets/exported/' --exclude 'datasets/formatted/' --exclude 'datasets/catalog/' \
+     --exclude 'datasets/reference/' --exclude 'results/' --exclude '.dvc/cache/' \
      --exclude 'services/pe-ensemble/weights/' \
      --exclude 'services/pe-ensemble/tuning_studies/' \
      --exclude 'services/pe-ensemble/config/training_presets_local/' \
@@ -51,6 +52,8 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    Prefer transferring into **`$DATA`**. Gateway does not expose `$HOME`.
    `datasets/raw` + `datasets/standardized` are kept by default; add
    `SKIP_STANDARDIZED=1` on `sync_to_arc.sh` to rebuild standardized on ARC.
+   Reference genomes and eval `results/` are **DVC** (not rsynced); see
+   [DVC on ARC](#dvc-reference-genomes-and-eval-results) below.
 2. On **htc-login**, start an interactive GPU shell and bootstrap:
 
    ```bash
@@ -69,6 +72,43 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
 
    Jobs load `ARC_MODULES` then `conda activate $CONDA_ENV` via `job_env.sh`.
    Do **not** rely on `conda init` in `.bashrc` for batch jobs.
+
+## DVC (reference genomes and eval results)
+
+`datasets/raw/` and vendor/plugin blobs under `services/pe-ensemble/weights/`
+stay in **git** so clones share them. DVC is only for bulky machine-local
+artifacts:
+
+| Tracked | Git | DVC (ARC store) |
+|---------|-----|-----------------|
+| Study raw files | `datasets/raw/` | — |
+| Vendor / plugin weights | `services/pe-ensemble/weights/` (not `*__*__*__*` IDs) | — |
+| hg38 / mm39 FASTA | — | `datasets/reference.dvc` |
+| Eval outputs | — | `results.dvc` |
+| A trained weight set you want versioned | — | `dvc add services/pe-ensemble/weights/<model>/<id>` |
+
+Store path is **`/data/<ARC_PROJECT>/<USER>/dvc-store`** (project is shared by
+the group; each member keeps their own store, same layout as `$DATA/pe-hub`).
+`.dvc/config` only has a `USER` placeholder — always run the setup script so
+gitignored `.dvc/config.local` has your real path (USB-style mount names never
+belong in git).
+
+```bash
+conda activate pedb
+pip install 'dvc[ssh]'   # once
+# laptop (VPN) or ARC — writes /data/coml-deepcmb/$ARC_USER/dvc-store:
+ARC_USER=you ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
+# first machine that has the data:
+dvc push
+# the other machine (same ARC_USER / same store):
+dvc pull
+```
+
+Off-campus SSH: put `ProxyJump gateway.arc.ox.ac.uk` for `htc-login` in
+`~/.ssh/config` (key auth; DVC’s SSH client is picky about password/2FA jumps).
+
+HPO presets, Optuna DBs, and live trained checkpoints still use
+`sync_from_arc.sh` / rsync.
 
 ## Submit jobs
 
@@ -116,6 +156,8 @@ tail -f $PE_HUB_ROOT/slurm-<jobid>.out
 
 | What | Where | How to bring home |
 |------|--------|-------------------|
+| Reference genomes | `datasets/reference/` | **DVC** (`dvc pull`) |
+| Eval run outputs | `results/` | **DVC** (`dvc pull`) |
 | HPO dataset presets | `config/training_presets_local/` | **rsync** (gitignored; empty until you tune or sync) |
 | Shipped model defaults | `config/training_presets/` | **Git** (defaults; promote rarely) |
 | Trained weights + index | `weights/*__*__*__*/` + `local_registry.json` | **rsync** (gitignored) |

@@ -13,5 +13,38 @@
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/oped/pegRNA_PredictingCodes/Model_Trained/pegRNA_Model_Merged_saved.order3_decoder_weights.pt"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": true,
+      "loci_recorded": true,
+      "n_target_loci": 2355,
+      "target_uid_fingerprint": "sha1:82b0689ede6acdb18a1abfa1162a376e12a0de13",
+      "train_folds_only": true,
+      "vendor_training_lineage": [
+        {
+          "dataset": "deeppe (train folds)",
+          "study": "deeppe"
+        }
+      ]
+    },
+    "dataset_name": "deeppe (train folds)",
+    "dataset_source": "vendor",
+    "filters": {
+      "dataset": [
+        "deeppe-ht",
+        "deeppe-type",
+        "deeppe-position",
+        "deeppe-endo"
+      ],
+      "study": [
+        "deeppe"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": {
+      "original_fold_test_value": -1.0,
+      "use_original_fold": true
+    }
+  }
 }

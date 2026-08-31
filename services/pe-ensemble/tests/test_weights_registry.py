@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
 from app.models import deepprime_vendor_provenance
@@ -152,11 +153,18 @@ def test_sync_deepprime_vendor_provenance_backfills_manifest_and_loci(
     monkeypatch.setattr(
         deepprime_vendor_provenance,
         "_collect_dataset_loci",
-        lambda _specs: {
-            ("deepprime_clinvar", "hek293t", "pe2"): {"ps:clin-a", "ps:clin-b"},
-            ("deepprime_off", "hek293t", "pe2_off"): {"ps:off-a"},
-            ("deepprime_small", "hek293t", "pe2"): {"ps:small-a"},
-        },
+        lambda _specs: (
+            {
+                ("deepprime_clinvar", "hek293t", "pe2"): {"ps:clin-a", "ps:clin-b"},
+                ("deepprime_off", "hek293t", "pe2_off"): {"ps:off-a"},
+                ("deepprime_small", "hek293t", "pe2"): {"ps:small-a"},
+            },
+            {
+                ("deepprime_clinvar", "hek293t", "pe2"): True,
+                ("deepprime_off", "hek293t", "pe2_off"): True,
+                ("deepprime_small", "hek293t", "pe2"): True,
+            },
+        ),
     )
     monkeypatch.setattr(
         deepprime_vendor_provenance,
@@ -169,6 +177,8 @@ def test_sync_deepprime_vendor_provenance_backfills_manifest_and_loci(
 
     base_manifest = weights_registry.get_manifest("deepprime", "DeepPrime_base")
     assert base_manifest["training"]["filters"]["dataset"] == ["deepprime-clinvar"]
+    assert base_manifest["training"]["data_provenance"]["has_original_test_split"] is True
+    assert base_manifest["training"]["data_provenance"]["train_folds_only"] is True
     assert weights_registry.load_training_loci("deepprime", "DeepPrime_base") == {
         "ps:clin-a",
         "ps:clin-b",
@@ -275,3 +285,21 @@ def test_is_git_tracked_source():
     assert weights_registry.is_git_tracked_source("plugin")
     assert not weights_registry.is_git_tracked_source("trained")
     assert not weights_registry.is_git_tracked_source(None)
+
+
+def test_deepprime_sheet_target_uids_excludes_author_test_fold():
+    frame = pd.DataFrame(
+        {
+            "wt_sequence": [
+                "AAAA" + "ACGTACGTACGTACGTACGT" + "N" * 50,
+                "CCCC" + "TGCATGCATGCATGCATGCA" + "N" * 50,
+                "GGGG" + "ATATATATATATATATATAT" + "N" * 50,
+            ],
+            "fold": [0, "Test", 1],
+        }
+    )
+    train_uids = deepprime_vendor_provenance._sheet_target_uids(frame, train_only=True)
+    all_uids = deepprime_vendor_provenance._sheet_target_uids(frame, train_only=False)
+    assert len(all_uids) == 3
+    assert len(train_uids) == 2
+    assert deepprime_vendor_provenance._sheet_has_author_test_split(frame) is True

@@ -3,10 +3,14 @@
 The vendor checkpoints do not come with PE-Ensemble training metadata, but we
 do know their source datasets:
 
-- ``DeepPrime_base``: trained on the full DeepPrime ClinVar library
-- ``DeepPrime_off``: trained on the DeepPrime off-target library
+- ``DeepPrime_base``: trained on DeepPrime ClinVar **train folds** (not ``Test``)
+- ``DeepPrime_off``: trained on the DeepPrime off-target train folds
 - ``DP_variant_*``: fine-tuned on one matching ``deepprime-small`` datasheet
-  after initializing from the ClinVar backbone
+  (train folds) after initializing from the ClinVar backbone
+
+Author sheets label held-out rows with ``fold == "Test"`` (standardized as
+``original_fold == -1``). Training loci sidecars must exclude those rows so
+in-domain evaluation on the author test fold is not falsely flagged as leak.
 
 This module converts that knowledge into:
 
@@ -104,10 +108,41 @@ def _read_sheet(sheet_name: str) -> pd.DataFrame:
     return frame
 
 
-def _sheet_target_uids(frame: pd.DataFrame) -> set[str]:
-    if "wt_sequence" not in frame.columns:
+def _is_author_train_fold(value: object) -> bool:
+    """True for DeepPrime train folds (0–4); False for author ``Test`` / -1."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        # No fold label: treat as training (conservative for leak checks).
+        return True
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in {"test", "-1"}:
+            return False
+        try:
+            value = float(token)
+        except ValueError:
+            return True
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return True
+    if pd.isna(numeric):
+        return True
+    return numeric != -1.0
+
+
+def _frame_train_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Drop author held-out rows when a ``fold`` column is present."""
+    if "fold" not in frame.columns or frame.empty:
+        return frame
+    mask = frame["fold"].map(_is_author_train_fold)
+    return frame.loc[mask].reset_index(drop=True)
+
+
+def _sheet_target_uids(frame: pd.DataFrame, *, train_only: bool = True) -> set[str]:
+    working = _frame_train_rows(frame) if train_only else frame
+    if "wt_sequence" not in working.columns:
         return set()
-    wt_series = frame["wt_sequence"].astype("string").fillna("")
+    wt_series = working["wt_sequence"].astype("string").fillna("")
     loci: set[str] = set()
     for wt in wt_series.tolist():
         wt_value = str(wt).strip().upper()
@@ -120,15 +155,27 @@ def _sheet_target_uids(frame: pd.DataFrame) -> set[str]:
     return loci
 
 
-def _collect_dataset_loci(specs: Iterable[_DeepPrimeSheetSpec]) -> dict[tuple[str, str, str], set[str]]:
+def _sheet_has_author_test_split(frame: pd.DataFrame) -> bool:
+    if "fold" not in frame.columns or frame.empty:
+        return False
+    return bool((~frame["fold"].map(_is_author_train_fold)).any())
+
+
+def _collect_dataset_loci(
+    specs: Iterable[_DeepPrimeSheetSpec],
+) -> tuple[dict[tuple[str, str, str], set[str]], dict[tuple[str, str, str], bool]]:
+    """Return train-fold loci and whether each sheet key had an author Test split."""
     loci_by_key: dict[tuple[str, str, str], set[str]] = {}
+    has_test_by_key: dict[tuple[str, str, str], bool] = {}
     for spec in specs:
         key = (spec.dataset, spec.cell_line, spec.pe_system)
-        loci = _sheet_target_uids(_read_sheet(spec.sheet_name))
+        frame = _read_sheet(spec.sheet_name)
+        loci = _sheet_target_uids(frame, train_only=True)
         if not loci:
             continue
         loci_by_key[key] = loci
-    return loci_by_key
+        has_test_by_key[key] = _sheet_has_author_test_split(frame)
+    return loci_by_key, has_test_by_key
 
 
 def _union_matching(
@@ -150,13 +197,38 @@ def _union_matching(
     return merged
 
 
-def _data_provenance(loci: set[str], *, lineage: list[dict[str, object]]) -> dict[str, object]:
+def _any_has_test(
+    has_test_by_key: dict[tuple[str, str, str], bool],
+    *,
+    dataset: str,
+    cell_line: Optional[str] = None,
+    pe_system: Optional[str] = None,
+) -> bool:
+    for (entry_dataset, entry_cell_line, entry_pe_system), has_test in has_test_by_key.items():
+        if entry_dataset != _normalize_name(dataset):
+            continue
+        if cell_line is not None and entry_cell_line != _normalize_name(cell_line):
+            continue
+        if pe_system is not None and entry_pe_system != _normalize_name(pe_system):
+            continue
+        if has_test:
+            return True
+    return False
+
+
+def _data_provenance(
+    loci: set[str],
+    *,
+    lineage: list[dict[str, object]],
+    has_original_test_split: bool,
+) -> dict[str, object]:
     return {
         "target_uid_fingerprint": weights_registry.loci_fingerprint(loci),
         "n_target_loci": len(loci),
         "loci_recorded": bool(loci),
-        "has_original_test_split": False,
+        "has_original_test_split": bool(has_original_test_split),
         "vendor_training_lineage": lineage,
+        "train_folds_only": True,
     }
 
 
@@ -167,15 +239,27 @@ def _write_weight(
     filters: dict[str, object],
     dataset_name: str,
     lineage: list[dict[str, object]],
+    has_original_test_split: bool,
 ) -> None:
     training = {
         "dataset_source": "vendor",
         "dataset_name": dataset_name,
         "filters": filters,
-        "split": None,
+        "split": (
+            {
+                "use_original_fold": True,
+                "original_fold_test_value": -1.0,
+            }
+            if has_original_test_split
+            else None
+        ),
         "hyperparameters": {},
         "model_kwargs": {},
-        "data_provenance": _data_provenance(loci, lineage=lineage),
+        "data_provenance": _data_provenance(
+            loci,
+            lineage=lineage,
+            has_original_test_split=has_original_test_split,
+        ),
     }
     weights_registry.write_training_provenance(
         "deepprime",
@@ -191,7 +275,7 @@ def sync_deepprime_vendor_provenance() -> dict[str, int]:
         raise FileNotFoundError(f"DeepPrime workbook not found: {_DEEPPRIME_WORKBOOK}")
 
     specs = _read_summary()
-    loci_by_key = _collect_dataset_loci(specs)
+    loci_by_key, has_test_by_key = _collect_dataset_loci(specs)
 
     clinvar_loci = _union_matching(loci_by_key, dataset="deepprime-clinvar")
     off_loci = _union_matching(loci_by_key, dataset="deepprime-off")
@@ -200,14 +284,18 @@ def sync_deepprime_vendor_provenance() -> dict[str, int]:
     if not off_loci:
         raise ValueError("No loci resolved for deepprime-off")
 
+    clinvar_has_test = _any_has_test(has_test_by_key, dataset="deepprime-clinvar")
+    off_has_test = _any_has_test(has_test_by_key, dataset="deepprime-off")
+
     updated = 0
 
     _write_weight(
         "DeepPrime_base",
         loci=clinvar_loci,
         filters={"study": ["deepprime"], "dataset": ["deepprime-clinvar"]},
-        dataset_name="deepprime-clinvar",
+        dataset_name="deepprime-clinvar (train folds)",
         lineage=[{"study": "deepprime", "dataset": "deepprime-clinvar"}],
+        has_original_test_split=clinvar_has_test,
     )
     updated += 1
 
@@ -215,8 +303,9 @@ def sync_deepprime_vendor_provenance() -> dict[str, int]:
         "DeepPrime_off",
         loci=off_loci,
         filters={"study": ["deepprime"], "dataset": ["deepprime-off"]},
-        dataset_name="deepprime-off",
+        dataset_name="deepprime-off (train folds)",
         lineage=[{"study": "deepprime", "dataset": "deepprime-off"}],
+        has_original_test_split=off_has_test,
     )
     updated += 1
 
@@ -232,6 +321,12 @@ def sync_deepprime_vendor_provenance() -> dict[str, int]:
                 f"No deepprime-small loci resolved for {weight_id} "
                 f"({cell_line}-{pe_system})"
             )
+        small_has_test = _any_has_test(
+            has_test_by_key,
+            dataset="deepprime-small",
+            cell_line=cell_line,
+            pe_system=pe_system,
+        )
         lineage = [
             {"study": "deepprime", "dataset": "deepprime-clinvar"},
             {
@@ -250,9 +345,17 @@ def sync_deepprime_vendor_provenance() -> dict[str, int]:
                 "cell_line": [cell_line],
                 "pe_system": [pe_system],
             },
-            dataset_name=f"deepprime-clinvar + deepprime-small/{cell_line}-{pe_system}",
+            dataset_name=(
+                f"deepprime-clinvar + deepprime-small/{cell_line}-{pe_system} "
+                "(train folds)"
+            ),
             lineage=lineage,
+            has_original_test_split=clinvar_has_test or small_has_test,
         )
         updated += 1
 
     return {"updated_weights": updated}
+
+
+if __name__ == "__main__":
+    print(sync_deepprime_vendor_provenance())

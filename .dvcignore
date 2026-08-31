@@ -1,0 +1,29 @@
+# Protect git-tracked vendor data from accidental `dvc add`.
+datasets/raw/
+
+# Regenerable pe-db caches
+datasets/exported/
+datasets/standardized/
+datasets/formatted/
+datasets/catalog/
+
+# Vendor / plugin weight blobs stay in git. Only locally trained IDs
+# (model__scope__YYYYMMDD__shortid) may be added to DVC.
+services/pe-ensemble/weights/**
+!services/pe-ensemble/weights/*/*__*__*__*/
+!services/pe-ensemble/weights/*/*__*__*__*/**
+
+# Runtime scratch
+**/__pycache__/
+**/.pytest_cache/
+checkpoints/
+artifacts/
+services/pe-ensemble/jobs/
+services/pe-ensemble/eval_jobs/
+services/pe-ensemble/ensemble_jobs/
+services/pe-ensemble/validation_jobs/
+services/pe-ensemble/tuning_studies/
+services/pe-ensemble/config/training_presets_local/
+services/pe-ensemble/checkpoints/
+scripts/experiments/pridict2-reproduction/state/
+node_modules/

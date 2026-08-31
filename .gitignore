@@ -16,3 +16,11 @@ scripts/cluster/oxford-arc/env.sh
 
 # Training scratch (PRIDICT2 fold checkpoints, etc.)
 /artifacts/
+
+# DVC (cache/tmp stay local; config.local is per-machine remote URL)
+/.dvc/config.local
+/.dvc/tmp
+/.dvc/cache
+
+# Eval / experiment outputs (DVC-tracked; see results.dvc)
+/results

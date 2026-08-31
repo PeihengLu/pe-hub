@@ -51,6 +51,7 @@ EXCLUDES=(
     --exclude='datasets/exported/'
     --exclude='datasets/formatted/'
     --exclude='datasets/catalog/'
+    --exclude='datasets/reference/'
 
     # Model training / eval / ensemble artifacts
     --exclude='services/pe-ensemble/weights/'
@@ -63,6 +64,9 @@ EXCLUDES=(
     --exclude='services/pe-ensemble/checkpoints/'
     --exclude='artifacts/'
     --exclude='checkpoints/'
+    --exclude='results/'
+    --exclude='.dvc/cache/'
+    --exclude='.dvc/tmp/'
 
     # Experiment pipeline state (cluster-owned after submit)
     --exclude='scripts/experiments/pridict2-reproduction/state/'
@@ -95,13 +99,14 @@ fi
 
 echo "From: ${LOCAL_ROOT}/"
 echo "To:   ${ARC_REMOTE}/"
-echo "Excludes: exported/formatted/catalog, weights, jobs, eval/ensemble/validation,"
-echo "          tuning_studies, presets_local, artifacts, experiment state"
+echo "Excludes: exported/formatted/catalog/reference, weights, jobs, eval/ensemble/validation,"
+echo "          tuning_studies, presets_local, artifacts, results, .dvc/cache, experiment state"
 if [[ "${SKIP_STANDARDIZED:-0}" == "1" ]]; then
     echo "          + datasets/standardized (SKIP_STANDARDIZED=1)"
 else
     echo "Keeps: datasets/raw + datasets/standardized + vendor/models (omit standardized with SKIP_STANDARDIZED=1)"
 fi
+echo "DVC:   after rsync, on ARC run setup_dvc_remote.sh && dvc pull (genomes + eval results)"
 echo ""
 
 rsync "${RSYNC_FLAGS[@]}" "${EXCLUDES[@]}" \

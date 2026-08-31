@@ -92,9 +92,12 @@ class OptiPrimeModelWrapper(BasePEModel):
             return
         try:
             entry_dir = weights_registry.resolve_dir("optiprime", name)
-            self.load_model(str(entry_dir))
-            return
-        except ValueError:
+            # Registry dirs may only hold manifest/provenance; fold checkpoints
+            # can still live under vendor/models/optiprime/weights/.
+            if any(p.is_dir() and p.name.startswith("model_") for p in entry_dir.iterdir()):
+                self.load_model(str(entry_dir))
+                return
+        except (ValueError, FileNotFoundError, OSError):
             pass
         self._init_vendor()
         vendor_weights = self._vendor_root / "weights"

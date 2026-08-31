@@ -1,0 +1,18 @@
+# Copy to the repo:  cp scripts/cluster/oxford-arc/dvc.config.local.example .dvc/config.local
+# Or run:            ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
+#
+# This file is gitignored. It overrides the `arc` remote URL from .dvc/config
+# so laptop vs cluster paths do not leak into git.
+#
+# Store layout: /data/<ARC_PROJECT>/<USER>/dvc-store
+# (project shared by the group; each user has their own dvc-store)
+
+# --- On a laptop (VPN / Uni net) ---
+# ['remote "arc"']
+#     url = ssh://USER@htc-login.arc.ox.ac.uk/data/coml-deepcmb/USER/dvc-store
+#     user = USER
+
+# --- On ARC ($DATA is already /data/<project>/<user>) ---
+# ['remote "arc"']
+#     url = /data/coml-deepcmb/USER/dvc-store
+#     # or simply: url = $DATA/dvc-store

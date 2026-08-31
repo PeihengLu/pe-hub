@@ -8,11 +8,16 @@ of an evaluation's test partition against the loci a weight set was trained on
 When leakage is detected -- or cannot be ruled out (e.g. the dataset provided
 no original test split and the weight set has no recorded provenance) -- a
 structured, machine-parseable result is emitted instead of misleading metrics.
+
+For recorded train/test locus overlap, the default policy is to **exclude**
+overlapping target loci from the test partition and continue when at least one
+locus remains. Full overlap (nothing left) still aborts unless
+``allow_data_leak`` is set.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import pandas as pd
 
@@ -37,6 +42,44 @@ class LeakAssessment:
     is_leak: bool
     reason: str
     detail: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LeakExclusion:
+    """Result of dropping training-overlapping loci from a test partition."""
+
+    filtered_df: pd.DataFrame
+    overlap_uids: tuple[str, ...]
+    n_rows_before: int
+    n_rows_after: int
+    n_loci_before: int
+    n_loci_after: int
+
+    @property
+    def n_overlap_loci(self) -> int:
+        return len(self.overlap_uids)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.filtered_df.empty
+
+    def warning_payload(self, *, reason: str = REASON_TRAIN_TEST_OVERLAP) -> Dict[str, Any]:
+        return {
+            "reason": reason,
+            "action": "excluded_overlap_loci",
+            "n_overlap_loci": self.n_overlap_loci,
+            "n_test_loci_before": self.n_loci_before,
+            "n_test_loci_after": self.n_loci_after,
+            "n_test_rows_before": self.n_rows_before,
+            "n_test_rows_after": self.n_rows_after,
+            "example_overlap_target_uids": list(self.overlap_uids[:_MAX_EXAMPLE_UIDS]),
+            "message": (
+                f"Excluded {self.n_overlap_loci} overlapping target loci "
+                f"({self.n_rows_before - self.n_rows_after} rows) from the test "
+                f"partition; evaluating {self.n_loci_after} remaining loci "
+                f"({self.n_rows_after} rows)."
+            ),
+        }
 
 
 def _clean_uid_set(values) -> set[str]:
@@ -64,6 +107,70 @@ def _test_split_source_counts(test_df: pd.DataFrame) -> Dict[str, int]:
         test_df["split_source"].astype("string").fillna("none").value_counts().to_dict()
     )
     return {str(key): int(value) for key, value in counts.items()}
+
+
+def _row_target_uids(test_df: pd.DataFrame) -> Optional[pd.Series]:
+    if TARGET_UID_COLUMN in test_df.columns:
+        return test_df[TARGET_UID_COLUMN].astype("string")
+    if "wt_sequence" in test_df.columns:
+        try:
+            return target_uid_series(test_df).astype("string")
+        except Exception:
+            return None
+    return None
+
+
+def exclude_overlapping_loci(
+    test_df: pd.DataFrame,
+    training_loci: Set[str],
+) -> Optional[LeakExclusion]:
+    """Drop rows whose ``target_uid`` is in ``training_loci``.
+
+    Returns ``None`` when target UIDs cannot be resolved (caller should not
+    invent a filter). Returns an exclusion with an empty frame when every
+    test locus overlaps training.
+    """
+    if test_df.empty or not training_loci:
+        return LeakExclusion(
+            filtered_df=test_df.copy(),
+            overlap_uids=tuple(),
+            n_rows_before=int(len(test_df)),
+            n_rows_after=int(len(test_df)),
+            n_loci_before=0,
+            n_loci_after=0,
+        )
+
+    uid_series = _row_target_uids(test_df)
+    if uid_series is None:
+        return None
+
+    cleaned = uid_series.fillna("").astype(str)
+    test_uids = _clean_uid_set(cleaned.tolist())
+    overlap = sorted(test_uids & set(training_loci))
+    if not overlap:
+        return LeakExclusion(
+            filtered_df=test_df.copy(),
+            overlap_uids=tuple(),
+            n_rows_before=int(len(test_df)),
+            n_rows_after=int(len(test_df)),
+            n_loci_before=len(test_uids),
+            n_loci_after=len(test_uids),
+        )
+
+    overlap_set = set(overlap)
+    keep_mask = ~cleaned.isin(overlap_set)
+    # Also drop rows with missing UIDs when any overlap exists? Keep them —
+    # missing UID cannot be proven to overlap.
+    filtered = test_df.loc[keep_mask].reset_index(drop=True)
+    remaining_uids = _clean_uid_set(cleaned.loc[keep_mask].tolist())
+    return LeakExclusion(
+        filtered_df=filtered,
+        overlap_uids=tuple(overlap),
+        n_rows_before=int(len(test_df)),
+        n_rows_after=int(len(filtered)),
+        n_loci_before=len(test_uids),
+        n_loci_after=len(remaining_uids),
+    )
 
 
 def assess_leakage(

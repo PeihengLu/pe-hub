@@ -59,10 +59,11 @@ class EvaluationRequest(BaseModel):
     allow_data_leak: bool = Field(
         default=False,
         description=(
-            "When False (default), evaluation aborts with a parseable data_leak "
-            "error result if the test split overlaps the model's recorded "
-            "training loci or leak cannot be ruled out (e.g. no original test "
-            "split). Set True to proceed anyway and attach a leak warning."
+            "When False (default), recorded train/test locus overlap excludes "
+            "overlapping target loci from the test partition and continues when "
+            "any loci remain; full overlap or unverifiable provenance still aborts "
+            "with a parseable data_leak error. Set True to keep overlapping rows "
+            "and attach a leak warning instead."
         ),
     )
 

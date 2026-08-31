@@ -42,15 +42,21 @@ See [`pridict2-reproduction/README.md`](pridict2-reproduction/README.md).
 
 Cross-benchmark evaluation of base vendor weights with leak prevention on:
 
-- **Weights:** `DeepPrime_base`, OPED merged, OptiPrime `base`, and all PRIDICT2 CV
-  fold runs (`pridict1_{1,2}__exp_*__run_{0..4}`)
+- **Weights:** `DeepPrime_base`, OPED merged, OptiPrime `base`, and August 2023
+  PRIDICT2 CV folds with the HEK head
+  (`pridict1_{1,2}__exp_2023-08-*__run_{0..4}__HEK`). December 2023 PRIDICT2
+  experiments are excluded (incomplete bundles; see notes).
 - **Benchmarks:** MinSePIE insert (pooled), DeepPE (pooled), DeepPrime ClinVar,
   PRIDICT library1, PRIDICT library-diverse, OptiPrime lib-mmr, OptiPrime lib-cv
 
 ```bash
 conda activate pedb
-# Optional: backfill OptiPrime train_target_loci for cross-dataset leak checks
-cd services/pe-ensemble && python -m app.models.optiprime_vendor_provenance && cd ../..
+# Optional: backfill vendor train_target_loci (train folds only for DeepPrime/OPED)
+cd services/pe-ensemble
+python -m app.models.deepprime_vendor_provenance
+python -m app.models.oped_vendor_provenance
+python -m app.models.optiprime_vendor_provenance
+cd ../..
 
 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # Script invokes ``python -m pe_ensemble.cli`` (more reliable than the peen entrypoint).
@@ -62,6 +68,23 @@ Outputs under `results/base_model_eval/<RUN_ID>/`:
 - `results.jsonl` — one record per evaluation (including `data_leak` aborts)
 - `summary.csv` — flat table for plotting
 - `summary_cv_mean_std.csv` — PRIDICT2 experiment × benchmark mean±std across folds
+
+Latest completed run id is also written to `results/base_model_eval/LATEST_RUN_ID`.
+The `results/` tree is gitignored and tracked with DVC (`results.dvc`); push/pull
+via the ARC remote (see the Oxford ARC README).
+
+**Notes from the reference run:**
+- PRIDICT2 December 2023 experiments are dropped from the eval matrix: config
+  expects `K562MLH1dn` heads that were never packaged, and vendor sources cannot
+  be remigrated. They remain in the weights registry as known-broken.
+- Vendor provenance for DeepPrime / OPED records **train folds only** (author
+  `Test` / `original_fold=-1` excluded). Sync with
+  `python -m app.models.deepprime_vendor_provenance` and
+  `python -m app.models.oped_vendor_provenance` from `services/pe-ensemble`.
+- Partial train/test locus overlap excludes overlapping `target_uid`s from the
+  test partition and continues; full overlap (e.g. OptiPrime ensemble ×
+  lib-mmr/lib-cv) still aborts as `data_leak` unless `--allow-data-leak`.
+- OptiPrime needs JAX stack deps (`jax`, `flax`, `chex`, …).
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`
 

@@ -351,6 +351,92 @@ class OPEDModelWrapper(BasePEModel):
         stem = hashlib.sha256(payload).hexdigest()
         return cache_dir / f"{stem}.pkl"
     
+    # Vendored pretrained decoder checkpoint hyperparameters (inferred from
+    # ``pegRNA_Model_Merged_saved.order3_decoder_weights``).
+    VENDOR_DECODER_HPARAMS = {
+        "ntokens": [4, 16, 64],
+        "embedding_size": 64,
+        "hidden_size": [2048, 2048, 2048],
+        "hidden_size_fully": [1024, 2048, 2048, 1024, 1024, 256],
+        "output_size": 1,
+        "nhead": 8,
+        "num_encoder_layers": [1, 1, 1],
+        "dropout": 0.1,
+        "other_size": 0,
+    }
+
+    @staticmethod
+    def _infer_architecture_from_state_dict(state_dict: Dict[str, torch.Tensor]) -> Dict[str, Any]:
+        """Infer OPED class + constructor kwargs from a portable state_dict."""
+        is_encoder_decoder = any(key.startswith("encoder_decoder.") for key in state_dict)
+        prefix = "encoder_decoder" if is_encoder_decoder else "encoder"
+
+        embed_keys = sorted(
+            key for key in state_dict if key.startswith("embedding.") and key.endswith(".weight")
+        )
+        if not embed_keys:
+            raise ValueError("OPED state_dict is missing embedding weights")
+        ntokens = [int(state_dict[key].shape[0]) - 1 for key in embed_keys]
+        embedding_size = int(state_dict[embed_keys[0]].shape[1])
+
+        # Per sequence type (Target/PBS/RT), take max depth across k-mer orders.
+        n_seq = 3
+        n_orders = len(ntokens)
+        num_encoder_layers: List[int] = []
+        hidden_size: List[int] = []
+        for seq_i in range(n_seq):
+            max_layers = 1
+            ffn_dim = 2048
+            for order_j in range(n_orders):
+                mod = order_j * n_seq + seq_i
+                layer_ids = [
+                    int(key.split(".")[3])
+                    for key in state_dict
+                    if key.startswith(f"{prefix}.{mod}.layers.")
+                ]
+                if layer_ids:
+                    max_layers = max(max_layers, max(layer_ids) + 1)
+                linear1 = state_dict.get(f"{prefix}.{mod}.layers.0.linear1.weight")
+                if linear1 is not None:
+                    ffn_dim = int(linear1.shape[0])
+            num_encoder_layers.append(max_layers)
+            hidden_size.append(ffn_dim)
+
+        # Fully-connected Sequential uses Linear at indices 0,3,6,...
+        fc_out_sizes: List[int] = []
+        idx = 0
+        while f"fully_connected_layers.{idx}.weight" in state_dict:
+            fc_out_sizes.append(int(state_dict[f"fully_connected_layers.{idx}.weight"].shape[0]))
+            idx += 3
+        if len(fc_out_sizes) <= 1:
+            hidden_size_fully = None
+            output_size = int(fc_out_sizes[0]) if fc_out_sizes else 1
+        else:
+            hidden_size_fully = fc_out_sizes[:-1]
+            output_size = int(fc_out_sizes[-1])
+
+        nhead = 8
+        # Prefer a divisor of embedding_size; fall back to 1.
+        for candidate in (8, 4, 2, 1):
+            if embedding_size % candidate == 0:
+                nhead = candidate
+                break
+
+        return {
+            "kind": "encoder_decoder" if is_encoder_decoder else "encoder",
+            "kwargs": {
+                "ntokens": ntokens,
+                "embedding_size": embedding_size,
+                "hidden_size": hidden_size,
+                "hidden_size_fully": hidden_size_fully,
+                "output_size": output_size,
+                "nhead": nhead,
+                "num_encoder_layers": num_encoder_layers,
+                "dropout": 0.1,
+                "other_size": 0,
+            },
+        }
+
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
         Load pre-trained OPED model from a state_dict.
@@ -364,28 +450,27 @@ class OPEDModelWrapper(BasePEModel):
             Only state_dict files are supported. OPED's legacy full-pickle
             artifacts are version-fragile and are explicitly rejected; convert
             them once with ``app.models.convert_oped_weights``.
+
+            Architecture is inferred from the checkpoint. The vendored
+            ``order3_decoder`` weights are an encoder–decoder Order-3 model, not
+            the encoder-only class.
         """
-        from oped.pegRNA_PredictingCodes.train_model import TransformerEncoderModelOrder3
+        from oped.pegRNA_PredictingCodes.train_model import (
+            TransformerEncoderDecoderModelOrder3,
+            TransformerEncoderModelOrder3,
+        )
 
         weights_path = self._resolve_weights_path(model_path)
         self.model_dir = os.path.dirname(weights_path)
 
-        # Architecture must match the trained checkpoint. ntokens is a per-order
-        # list ([4, 16, 64]); the embeddings are sized ntokens+1 to reserve the
-        # padding index 0.
-        self.model = TransformerEncoderModelOrder3(
-            ntokens=self.MODEL_NTOKENS,
-            embedding_size=64,
-            hidden_size=[2048, 2048, 2048],
-            hidden_size_fully=None,
-            output_size=1,
-            nhead=8,
-            num_encoder_layers=[6, 6, 6],
-            dropout=0.1,
-            other_size=0
-        )
-
         state_dict = self._load_state_dict(weights_path)
+        arch = self._infer_architecture_from_state_dict(state_dict)
+        model_cls = (
+            TransformerEncoderDecoderModelOrder3
+            if arch["kind"] == "encoder_decoder"
+            else TransformerEncoderModelOrder3
+        )
+        self.model = model_cls(**arch["kwargs"])
         self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
@@ -850,7 +935,7 @@ class OPEDModelWrapper(BasePEModel):
         info = super().get_model_info()
         info.update({
             'model_type': 'Transformer (Order 3)',
-            'architecture': 'Encoder-only Transformer with attention',
+            'architecture': 'Encoder-decoder Transformer (Order 3) with attention',
             'description': 'OPED model for predicting Prime Editing efficiency'
         })
         return info

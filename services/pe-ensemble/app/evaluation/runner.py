@@ -13,7 +13,13 @@ from ..training.progress_log import tee_stream_to_log
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .benchmark import BenchmarkResolutionError, resolve_evaluation_request
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
-from .leakage import assess_leakage, leak_error_payload
+from ..models import weights_registry
+from .leakage import (
+    REASON_TRAIN_TEST_OVERLAP,
+    assess_leakage,
+    exclude_overlapping_loci,
+    leak_error_payload,
+)
 from .schemas import EvaluationRequest
 
 logger = logging.getLogger(__name__)
@@ -132,33 +138,78 @@ def execute_evaluation(
 
             _log(f"Resolved {len(test_df)} test rows")
 
+            leak = None
+            leak_exclusion_warning: Optional[Dict[str, Any]] = None
             leak = assess_leakage(
                 test_df=test_df,
                 split=request.split,
                 model=model_name,
                 weights_id=request.weights,
             )
-            if leak is not None and leak.is_leak and not request.allow_data_leak:
-                payload = leak_error_payload(
-                    leak,
-                    model=model_name,
-                    benchmark_name=request.benchmark_name,
-                    weights=request.weights,
-                    device_id=resolved_device_id,
-                    n_samples=int(len(test_df)),
-                )
-                message = (
-                    f"Aborting evaluation: potential data leak ({leak.reason}). "
-                    f"{leak.detail.get('message', '')}"
-                )
-                _log(message)
-                if job_id:
-                    mark_failed(
-                        job_id,
-                        f"{payload['error_type']}: {leak.reason}",
-                        result=payload,
+            if leak is not None and leak.is_leak:
+                if (
+                    leak.reason == REASON_TRAIN_TEST_OVERLAP
+                    and not request.allow_data_leak
+                ):
+                    training_loci = weights_registry.load_training_loci(
+                        model_name, request.weights
+                    ) or set()
+                    exclusion = exclude_overlapping_loci(test_df, training_loci)
+                    if exclusion is not None and not exclusion.is_empty:
+                        test_df = exclusion.filtered_df
+                        leak_exclusion_warning = exclusion.warning_payload()
+                        _log(leak_exclusion_warning["message"])
+                    else:
+                        payload = leak_error_payload(
+                            leak,
+                            model=model_name,
+                            benchmark_name=request.benchmark_name,
+                            weights=request.weights,
+                            device_id=resolved_device_id,
+                            n_samples=int(len(test_df)),
+                        )
+                        if exclusion is not None and exclusion.is_empty:
+                            payload["leak"] = {
+                                **payload.get("leak", {}),
+                                **exclusion.warning_payload(),
+                                "message": (
+                                    "All evaluation target loci overlap this model's "
+                                    "training data; nothing remains after exclusion."
+                                ),
+                            }
+                        message = (
+                            f"Aborting evaluation: potential data leak ({leak.reason}). "
+                            f"{payload['leak'].get('message', leak.detail.get('message', ''))}"
+                        )
+                        _log(message)
+                        if job_id:
+                            mark_failed(
+                                job_id,
+                                f"{payload['error_type']}: {leak.reason}",
+                                result=payload,
+                            )
+                        return payload
+                elif not request.allow_data_leak:
+                    payload = leak_error_payload(
+                        leak,
+                        model=model_name,
+                        benchmark_name=request.benchmark_name,
+                        weights=request.weights,
+                        device_id=resolved_device_id,
+                        n_samples=int(len(test_df)),
                     )
-                return payload
+                    message = (
+                        f"Aborting evaluation: potential data leak ({leak.reason}). "
+                        f"{leak.detail.get('message', '')}"
+                    )
+                    _log(message)
+                    if job_id:
+                        mark_failed(
+                            job_id,
+                            f"{payload['error_type']}: {leak.reason}",
+                            result=payload,
+                        )
+                    return payload
 
             _raise_if_cancelled()
             model = ModelFactory.create_model(model_name, device=device)
@@ -196,7 +247,13 @@ def execute_evaluation(
             "metrics": metrics,
             "auto_training_benchmark": request.auto_training_benchmark,
         }
-        if leak is not None and leak.is_leak and request.allow_data_leak:
+        if leak_exclusion_warning is not None:
+            payload["leak_warning"] = leak_exclusion_warning
+            _log(
+                "Warning: proceeded after excluding training-overlapping test loci; "
+                "see leak_warning for counts."
+            )
+        elif leak is not None and leak.is_leak and request.allow_data_leak:
             payload["leak_warning"] = {"reason": leak.reason, **leak.detail}
             _log(
                 f"Warning: proceeded despite potential data leak ({leak.reason}); "

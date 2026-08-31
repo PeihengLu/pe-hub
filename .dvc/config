@@ -1,0 +1,6 @@
+[core]
+    remote = arc
+['remote "arc"']
+    # Template only — run setup_dvc_remote.sh so config.local replaces USER
+    # with your ARC username: /data/<project>/<user>/dvc-store
+    url = ssh://htc-login.arc.ox.ac.uk/data/coml-deepcmb/USER/dvc-store

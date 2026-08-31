@@ -36,10 +36,11 @@
   "source": "vendor",
   "training": {
     "data_provenance": {
-      "has_original_test_split": false,
+      "has_original_test_split": true,
       "loci_recorded": true,
-      "n_target_loci": 49892,
-      "target_uid_fingerprint": "sha1:58d0d976273f7d12d340bbf897f54079bc7608c5",
+      "n_target_loci": 46924,
+      "target_uid_fingerprint": "sha1:5fafa126fd242544035cd23741a0a7151563ac7d",
+      "train_folds_only": true,
       "vendor_training_lineage": [
         {
           "dataset": "deepprime-clinvar",
@@ -53,7 +54,7 @@
         }
       ]
     },
-    "dataset_name": "deepprime-clinvar + deepprime-small/hek293t-nrch_pe2",
+    "dataset_name": "deepprime-clinvar + deepprime-small/hek293t-nrch_pe2 (train folds)",
     "dataset_source": "vendor",
     "filters": {
       "cell_line": [
@@ -72,6 +73,9 @@
     },
     "hyperparameters": {},
     "model_kwargs": {},
-    "split": null
+    "split": {
+      "original_fold_test_value": -1.0,
+      "use_original_fold": true
+    }
   }
 }

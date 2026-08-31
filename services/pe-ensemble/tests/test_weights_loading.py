@@ -77,6 +77,22 @@ def test_oped_weights_load_as_state_dict():
     assert sd["embedding.0.weight"].shape[0] == 5
     assert sd["embedding.1.weight"].shape[0] == 17
     assert sd["embedding.2.weight"].shape[0] == 65
+    # Vendored pretrained checkpoint is the encoder–decoder Order-3 model.
+    assert any(key.startswith("encoder_decoder.") for key in sd)
+
+
+def test_oped_vendor_weights_load_into_model():
+    """Regression: decoder checkpoint must load into EncoderDecoder Order-3."""
+    registry_dir = WEIGHTS_ROOT / "oped" / "pegRNA_Model_Merged_saved.order3_decoder_weights"
+    if not (registry_dir / "weights.pt").is_file():
+        pytest.skip("OPED registry weights not available")
+    from app.models.oped_wrapper import OPEDModelWrapper
+
+    wrapper = OPEDModelWrapper(device=torch.device("cpu"))
+    wrapper.load_weights_by_name("pegRNA_Model_Merged_saved.order3_decoder_weights")
+    assert wrapper.is_trained
+    assert wrapper.model is not None
+    assert type(wrapper.model).__name__ == "TransformerEncoderDecoderModelOrder3"
 
 
 def test_oped_legacy_full_pickle_is_rejected():

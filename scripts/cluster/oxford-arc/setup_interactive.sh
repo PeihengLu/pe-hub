@@ -81,6 +81,11 @@ python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null || \
 cd "${PE_HUB_ROOT}"
 ./scripts/install-clis.sh
 
+if ! command -v dvc >/dev/null 2>&1; then
+    echo "Installing dvc (ARC local remote does not need SSH, extra is harmless)…"
+    pip install 'dvc[ssh]'
+fi
+
 echo "Seeding / preparing datasets if needed (may take a while)…"
 if [[ ! -d "${PE_HUB_ROOT}/datasets/standardized" ]]; then
     pedb init || true
