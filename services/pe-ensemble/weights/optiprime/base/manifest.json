@@ -14,10 +14,18 @@
   "source": "vendor",
   "training": {
     "data_provenance": {
+      "external_sources": [
+        "PRIDICT library1 (Mathis et al. 2023, ref. 54)",
+        "DeepPrime ClinVar train folds (Yu et al. 2023, ref. 55)",
+        "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56)"
+      ],
       "has_original_test_split": false,
       "loci_recorded": true,
-      "n_target_loci": 1723,
-      "target_uid_fingerprint": "sha1:5a45db9bd865cb0ffaab0ea170ca5c605d1499f7",
+      "n_target_loci": 84050,
+      "per_dataset_train_folds_only": {
+        "deepprime-clinvar": true
+      },
+      "target_uid_fingerprint": "sha1:8d930869963fbbbbb99d54928d98cf664cfbd623",
       "vendor_training_lineage": [
         {
           "dataset": "lib-mmr",
@@ -26,18 +34,36 @@
         {
           "dataset": "lib-cv",
           "study": "optiprime"
+        },
+        {
+          "dataset": "library1",
+          "study": "pridict1"
+        },
+        {
+          "dataset": "deepprime-clinvar",
+          "study": "deepprime"
+        },
+        {
+          "dataset": "library-diverse",
+          "study": "pridict2"
         }
       ]
     },
-    "dataset_name": "lib-mmr + lib-cv",
+    "dataset_name": "lib-mmr + lib-cv + library1 + deepprime-clinvar + library-diverse",
     "dataset_source": "vendor",
     "filters": {
       "dataset": [
         "lib-mmr",
-        "lib-cv"
+        "lib-cv",
+        "library1",
+        "deepprime-clinvar",
+        "library-diverse"
       ],
       "study": [
-        "optiprime"
+        "deepprime",
+        "optiprime",
+        "pridict1",
+        "pridict2"
       ]
     },
     "hyperparameters": {},

@@ -311,6 +311,7 @@ For shipped vendor (pretrained) models, training provenance is reconstructed con
     \item \textbf{DeepPrime:} loci come from the DeepPrime author-provided ClinVar library and the fine-tuning sheets used to generate the distributed weight variants (e.g. Small and Off datasets).
     \item \textbf{PRIDICTv2 (PRIDICT2):} loci are treated as the full PRIDICT1 target loci used for PRIDICT2 training (PRIDICT1 does not provide a vendor hold-out split in PE-DB, so all target loci in the selected PRIDICT1 Library 2 cell subsets are conservatively marked as “seen”).
     \item \textbf{OPED:} loci come from DeepPE Library 1 and Library 2 (Position/Type), as represented in PE-DB standardized datasets \nolinkurl{deeppe\_ht}, \nolinkurl{deeppe\_position}, and \nolinkurl{deeppe\_type} (HEK293T; PE2 reporters).
+    \item \textbf{OptiPrime:} loci come from Lib-MMR and Lib-CV (this study) plus external training data cited by Hsu et al.: PRIDICT library~1, DeepPrime ClinVar (train folds only), and PRIDICT2 library-diverse.
 \end{itemize}
 
 \subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
