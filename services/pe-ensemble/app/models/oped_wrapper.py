@@ -696,6 +696,12 @@ class OPEDModelWrapper(BasePEModel):
                 cancel_check=cancel_check,
             ),
         )
+        if int(metrics["best_epoch"]) < 0 or not np.isfinite(float(metrics["best_val_loss"])):
+            raise ValueError(
+                "OPED training finished without a finite validation loss "
+                "(often caused by all-pad PBS/RT encodings from very short sequences). "
+                f"history_epochs={len(metrics.get('history') or [])}."
+            )
         log_training_best(
             progress_log,
             best_epoch=int(metrics["best_epoch"]),

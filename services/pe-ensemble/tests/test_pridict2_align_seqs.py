@@ -28,7 +28,7 @@ def _minimal_align_df(n: int = 3) -> pd.DataFrame:
 
 
 def test_align_seqs_keeps_unique_seq_id_after_groupby():
-    """Unique seq_id rows must survive vendor align_seqs (pandas 3 groupby index)."""
+    """Unique seq_id rows survive align_seqs (merge key preserved)."""
     proc = PESeqProcessor()
     df = _minimal_align_df()
 
@@ -37,3 +37,19 @@ def test_align_seqs_keeps_unique_seq_id_after_groupby():
     assert "seq_id" in aligned.columns
     assert aligned["seq_id"].tolist() == df["seq_id"].tolist()
     assert len(aligned) == len(df)
+
+
+def test_align_seqs_survives_pandas_include_groups_default():
+    """Regression: reset_index() with include_groups=True duplicated seq_id."""
+    proc = PESeqProcessor()
+    df = _minimal_align_df(n=5)
+    # Mixed edit types like library1.
+    df.loc[1, "Correction_Type"] = "Insertion"
+    df.loc[1, "Correction_Length"] = 2
+    df.loc[1, "wide_mutated_target"] = "ACGTTACGT"
+    df.loc[2, "Correction_Type"] = "Deletion"
+    df.loc[2, "Correction_Length"] = 1
+    df.loc[2, "wide_initial_target"] = "ACGTTACGT"
+    aligned = proc.align_seqs(df, "wide_initial_target", "wide_mutated_target")
+    assert aligned["seq_id"].is_unique
+    assert {"wide_initial_target_align", "wide_mutated_target_align"}.issubset(aligned.columns)

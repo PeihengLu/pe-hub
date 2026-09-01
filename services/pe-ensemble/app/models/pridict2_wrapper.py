@@ -1130,14 +1130,19 @@ class PRIDICT2ModelWrapper(BasePEModel):
 
     @staticmethod
     def _prepare_pridict_frame(df: pd.DataFrame) -> pd.DataFrame:
-        """Ensure unique ``seq_id`` and string edit-position lists for vendor preprocess.
+        """Light frame hygiene before vendor preprocess.
 
-        Merged PE-DB exports can collide on per-sheet ``seq_*`` IDs; PRIDICT2
-        ``groupby(seq_id)`` then yields multi-row groups and crashes on
-        ``deepeditposition_lst.strip``.
+        ``seq_id`` uniquify is only needed when callers concatenate per-sheet
+        PRIDICT2 caches that each restart at ``seq_0`` (PE-DB merge already
+        remaps this in ``_convert_pending_sheets_via_formatted_cache``). It is
+        unrelated to the pandas groupby/reset_index ``seq_id`` collision fixed
+        in vendor ``align_seqs``.
+
+        ``deepeditposition_lst`` must be strings — vendor code calls ``.strip``.
         """
-        out = df.copy() if "seq_id" not in df.columns else df
+        out = df
         if "seq_id" not in out.columns:
+            out = out.copy()
             out["seq_id"] = [f"seq_{i}" for i in range(len(out))]
         elif not out["seq_id"].astype(str).is_unique:
             out = out.copy()
