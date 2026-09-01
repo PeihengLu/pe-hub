@@ -103,4 +103,3 @@ PY
 echo ""
 echo "Ready. Submit from htc-login (with env.sh configured):"
 echo "  ${ARC_DIR}/submit.sh 01_tune_base_library1.sh"
-echo "  ${ARC_DIR}/submit.sh 03_train_base_library1.sh"

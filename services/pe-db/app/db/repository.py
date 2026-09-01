@@ -64,7 +64,10 @@ def _convert_pending_sheets_via_formatted_cache(
     ``pd.concat([filtered for ...], ignore_index=True)``.
 
     Per-sheet formatted caches reuse ``seq_0..n`` IDs; after concat those collide and
-    break PRIDICT2 (groupby ``seq_id`` expects one row per id). Remap to unique IDs.
+    break PRIDICT2 (``groupby(seq_id)`` expects one row per id). Remap to unique IDs.
+
+    This is a real multi-sheet ID collision, not the pandas ``align_seqs`` /
+    ``reset_index`` issue (that happens even with already-unique IDs).
     """
     converted_parts: list[pd.DataFrame] = []
     for descriptor, data, filtered in pending:
