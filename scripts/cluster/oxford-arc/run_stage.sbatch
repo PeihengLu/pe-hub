@@ -48,14 +48,23 @@ fi
 source "${ARC_DIR}/job_env.sh"
 
 STAGE_SCRIPT="${STAGE_SCRIPT:?Set STAGE_SCRIPT (e.g. 01_tune_base_library1.sh)}"
-REPRO_DIR="${PE_HUB_ROOT}/scripts/experiments/pridict2-reproduction"
 
 if [[ "${STAGE_SCRIPT}" != /* ]]; then
-    if [[ -x "${REPRO_DIR}/${STAGE_SCRIPT}" ]]; then
-        STAGE_SCRIPT="${REPRO_DIR}/${STAGE_SCRIPT}"
+    _resolved=""
+    for _exp_dir in \
+        "${PE_HUB_ROOT}/scripts/experiments/scratch-benchmark" \
+        "${PE_HUB_ROOT}/scripts/experiments/pridict2-reproduction"; do
+        if [[ -f "${_exp_dir}/${STAGE_SCRIPT}" ]]; then
+            _resolved="${_exp_dir}/${STAGE_SCRIPT}"
+            break
+        fi
+    done
+    if [[ -n "${_resolved}" ]]; then
+        STAGE_SCRIPT="${_resolved}"
     elif [[ -x "${PE_HUB_ROOT}/${STAGE_SCRIPT}" ]]; then
         STAGE_SCRIPT="${PE_HUB_ROOT}/${STAGE_SCRIPT}"
     fi
+    unset _resolved _exp_dir
 fi
 
 if [[ ! -x "${STAGE_SCRIPT}" && ! -f "${STAGE_SCRIPT}" ]]; then

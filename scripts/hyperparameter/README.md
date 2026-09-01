@@ -4,6 +4,7 @@
 # |--------|---------|
 # | `check_tuning_status.sh` | List / check whether a model×dataset Optuna preset exists |
 # | `tune_hpo_cv5.sh` | Generic `peen tune` with 5-fold CV + outer test holdout |
+# | `tune_hpo_holdout3.sh` | Generic `peen tune` with holdout_3 (70/15/15) |
 # | `_common.sh` | Shared env defaults (`N_TRIALS`, `DEVICE`, `SKIP_IF_TUNED`, …) |
 #
 # Dataset-specific experiment recipes live under [`../experiments/`](../experiments/README.md).

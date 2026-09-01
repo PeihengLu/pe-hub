@@ -24,6 +24,7 @@ from pe_common.model_interface import BasePEModel
 from pe_common.training import (
     apply_fine_tune_freezing,
     build_lr_scheduler,
+    dataloader_kwargs,
     fit_lightning_module,
     LightningTrainerConfig,
     regression_metrics,
@@ -204,17 +205,23 @@ class DeepPrimeModelWrapper(BasePEModel):
         y_val = self._extract_targets(val_source, val_feature_df, "Validation")
         train_inputs = self.prepare_data(train_feature_df)
         val_inputs = self.prepare_data(val_feature_df)
+        loader_kwargs = dataloader_kwargs(
+            num_workers=hyperparameters.get("num_workers"),
+            pin_memory=self.device.type == "cuda",
+        )
         train_loader = DataLoader(
             _DeepPrimeTensorDataset(train_inputs["g"], train_inputs["x"], y_train),
             batch_size=batch_size,
             shuffle=reshuffle_each_epoch,
             drop_last=False,
+            **loader_kwargs,
         )
         val_loader = DataLoader(
             _DeepPrimeTensorDataset(val_inputs["g"], val_inputs["x"], y_val),
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
+            **loader_kwargs,
         )
 
         history: List[Dict[str, float]] = []

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -41,6 +42,29 @@ class EarlyStopping:
 def ensure_lightning_available() -> None:
     """PyTorch Lightning is assumed to be installed."""
     return None
+
+
+def resolve_dataloader_num_workers(num_workers: Optional[Any] = None) -> int:
+    """Resolve DataLoader worker count; default matches Lightning's CPU-based recommendation."""
+    if num_workers is not None:
+        return max(0, int(num_workers))
+    cpu_count = os.cpu_count() or 1
+    return max(0, cpu_count - 1)
+
+
+def dataloader_kwargs(
+    *,
+    num_workers: Optional[Any] = None,
+    pin_memory: bool = False,
+) -> Dict[str, Any]:
+    """Common DataLoader kwargs for training/eval prefetch."""
+    workers = resolve_dataloader_num_workers(num_workers)
+    kwargs: Dict[str, Any] = {"num_workers": workers}
+    if workers > 0:
+        kwargs["persistent_workers"] = True
+    if pin_memory:
+        kwargs["pin_memory"] = True
+    return kwargs
 
 
 def lightning_accelerator_from_device(device: torch.device) -> str:

@@ -70,6 +70,8 @@ EXCLUDES=(
 
     # Experiment pipeline state (cluster-owned after submit)
     --exclude='scripts/experiments/pridict2-reproduction/state/'
+    --exclude='scripts/experiments/scratch-benchmark/state/'
+    --exclude='scripts/experiments/scratch-benchmark/results/'
 
     # Slurm logs at checkout root
     --exclude='slurm-*.out'

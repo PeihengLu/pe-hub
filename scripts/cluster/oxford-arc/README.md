@@ -134,6 +134,16 @@ SMOKE=1 ARC_PARTITION=short ARC_TIME=01:00:00 \
 
 Other pridict2-reproduction stages use the same pattern (`02_…`, `04_…`, `05_…`, …).
 
+**Scratch benchmark** (DeepPrime / OPED / PRIDICT2 × library1 / library-diverse / ClinVar, holdout_3 HPO):
+
+```bash
+./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh   # scratch-benchmark/
+./scripts/cluster/oxford-arc/submit.sh 02_train_matrix.sh
+./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
+```
+
+See [`scripts/experiments/scratch-benchmark/README.md`](../../experiments/scratch-benchmark/README.md).
+
 Pin L40S (default in env.sh) or A100:
 
 ```bash

@@ -173,6 +173,60 @@ Optional model architecture flags (merged into `hyperparameters`; see also `--hy
 | OPED | `--oped-embedding-size`, `--oped-ffn-dim`, `--oped-encoder-layers`, `--oped-nhead`, `--oped-dropout` |
 | PRIDICT2 | `--pridict2-embed-dim`, `--pridict2-num-hidden-layers`, `--pridict2-dropout` |
 
+### Training hyperparameters
+
+Pass training and regularization settings via `--hyperparameters-json` (a JSON object). By default
+(`--hyperparameter-mode merge`) values are layered on top of model baselines and shipped dataset
+presets under `config/training_presets/`; Optuna hits land in `config/training_presets_local/`
+(gitignored). Use `--hyperparameter-mode replace` to ignore presets and supply the full dict
+yourself. Architecture CLI flags and `--pretrained-weights` are also folded into the resolved
+hyperparameter dict.
+
+`scheduler` and `scheduler_kwargs` are never loaded from presets; set them explicitly at train
+time when needed.
+
+#### Shared (DeepPrime, OPED, PRIDICT2)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `lr` | model-specific | Learning rate |
+| `batch_size` | `128` | Minibatch size |
+| `weight_decay` | model-specific | L2 regularization (Adam weight decay) |
+| `grad_clip` | `1.0` | Max gradient norm; `<= 0` disables clipping |
+| `early_stopping_patience` | `10` | Validation epochs without improvement before stop |
+| `early_stopping_min_delta` | `0.0` | Minimum validation-loss improvement to reset patience |
+| `scheduler` | model-specific | `none`, `step`, `cosine`, or `exponential` |
+| `scheduler_kwargs` | model-specific | Scheduler constructor kwargs (see below) |
+| `progress_bar` | `false` | PyTorch Lightning progress bar |
+| `log_every_n_steps` | `25` | Lightning logging interval |
+| `num_workers` | auto | DataLoader worker processes |
+| `reshuffle_each_epoch` | `true` | Reshuffle training data each epoch (DeepPrime, OPED) |
+| `freezing` | `false` | Freeze backbone layers; auto-`true` with `--pretrained-weights` |
+| `load_pretrained` | `false` | Load a registered checkpoint before training |
+| `weights` | — | Weight set ID (set automatically by `--pretrained-weights`) |
+
+`scheduler_kwargs` keys: `step` — `step_size`, `gamma`; `cosine` — `t_max`, `eta_min`;
+`exponential` — `gamma`.
+
+#### Model-specific keys
+
+| Model | Epoch key | Dropout | Other architecture / training keys |
+|-------|---------|---------|-------------------------------------|
+| DeepPrime | `epochs` (default `5`) | — | `hidden_size`, `num_layers` (or `--dp-*` flags) |
+| OPED | `epoch_num` (default `100`) | `drop_out` / `dropout` (default `0.1`; or `--oped-dropout`) | `embedding_size`, `hidden_size`, `num_encoder_layers`, `nhead` (or `--oped-*` flags). Default scheduler: `step` with `{"step_size": 10, "gamma": 0.95}` |
+| PRIDICT2 | `num_epochs` (default `20`) | `p_dropout` / `dropout` (default `0.1`; or `--pridict2-dropout`) | `embed_dim`, `num_hidden_layers`, `bidirection` (or `--pridict2-*` flags); `loss_func` (`MSEloss`, `KLDloss`, `CEloss`); `y_ref` target columns (default `["averageedited"]`); `trainable_layernames` when fine-tuning (default `["decoder"]`) |
+
+Example with regularization and scheduler overrides:
+
+```bash
+peen train \
+  --model pridict2 \
+  --dataset-name library2 \
+  --dataset library2 \
+  --pridict2-dropout 0.2 \
+  --hyperparameters-json '{"lr":0.0003,"weight_decay":0.001,"grad_clip":0.5,"num_epochs":30,"scheduler":"cosine","scheduler_kwargs":{"t_max":30}}'
+```
+
 Example OPED training with a smaller architecture:
 
 ```bash

@@ -32,6 +32,7 @@ from pe_common.training import (
     fit_lightning_module,
     LightningTrainerConfig,
     regression_metrics,
+    resolve_dataloader_num_workers,
 )
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -429,11 +430,11 @@ def build_pridict_dataloaders(
     train_dataset: Any,
     val_dataset: Any,
     batch_size: int,
-    num_workers: int = 0,
+    num_workers: Optional[Any] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     config = {
         "batch_size": int(batch_size),
-        "num_workers": int(num_workers),
+        "num_workers": resolve_dataloader_num_workers(num_workers),
     }
     partition = {"train": train_dataset, "validation": val_dataset}
     loaders, _, _, _ = construct_load_dataloaders(
@@ -1361,7 +1362,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             train_dataset=dtensor_train,
             val_dataset=dtensor_val,
             batch_size=batch_size,
-            num_workers=int(build_hparams.get("num_workers", 4 if self.device.type == "cuda" else 0)),
+            num_workers=build_hparams.get("num_workers"),
         )
 
         model = build_pernn_distribution_model(

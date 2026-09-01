@@ -15,8 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pe-common"))
 from pe_common.training import (
     LightningTrainerConfig,
     apply_fine_tune_freezing,
+    dataloader_kwargs,
     fit_lightning_module,
     format_epoch_metrics_row,
+    resolve_dataloader_num_workers,
     run_supervised_training_loop,
 )
 
@@ -164,3 +166,23 @@ def test_fit_lightning_module_restores_training_device():
         config=LightningTrainerConfig(max_epochs=1, patience=None, enable_progress_bar=False),
     )
     assert next(module.model.parameters()).device.type == "cuda"
+
+
+def test_resolve_dataloader_num_workers_explicit():
+    assert resolve_dataloader_num_workers(8) == 8
+    assert resolve_dataloader_num_workers(0) == 0
+    assert resolve_dataloader_num_workers(-3) == 0
+
+
+def test_dataloader_kwargs_defaults():
+    kwargs = dataloader_kwargs()
+    assert kwargs["num_workers"] == resolve_dataloader_num_workers()
+    if kwargs["num_workers"] > 0:
+        assert kwargs["persistent_workers"] is True
+
+
+def test_dataloader_kwargs_pin_memory():
+    kwargs = dataloader_kwargs(num_workers=2, pin_memory=True)
+    assert kwargs["num_workers"] == 2
+    assert kwargs["pin_memory"] is True
+    assert kwargs["persistent_workers"] is True

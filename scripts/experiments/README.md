@@ -88,6 +88,20 @@ via the ARC remote (see the Oxford ARC README).
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`
 
+## Scratch benchmark (cross-model, holdout_3 HPO)
+
+Tune → train → evaluate matrix for DeepPrime, OPED, and PRIDICT2 on library1,
+library-diverse, and DeepPrime ClinVar (same benchmarks as the probe script).
+ARC-ready via `submit.sh`.
+
+```bash
+conda activate pe-hub
+SMOKE=1 DEVICE=cuda:0 ./scripts/experiments/scratch-benchmark/run_all.sh
+./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh   # on ARC
+```
+
+See [`scratch-benchmark/README.md`](scratch-benchmark/README.md).
+
 ## From-scratch train probe
 
 Lightweight sequential from-scratch trains (`load_pretrained=false`) for DeepPrime,
@@ -100,6 +114,12 @@ DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
 SMOKE=1 DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
 MODELS=oped DATASET_NAMES=pridict1-library1 DEVICE=mps \
   ./scripts/experiments/probe_scratch_train.sh
+
+# Targeted smoke probes (NUM_WORKERS defaults to 15)
+SMOKE=1 DEVICE=cuda:0 MODELS=pridict2 DATASET_NAMES=pridict1-library1 \
+  NUM_WORKERS=15 ./scripts/experiments/probe_scratch_train.sh
+SMOKE=1 DEVICE=cuda:0 MODELS=oped DATASET_NAMES=deepprime-clinvar \
+  NUM_WORKERS=15 ./scripts/experiments/probe_scratch_train.sh
 ```
 
 ## Other recipes

@@ -21,6 +21,7 @@ from pe_common.sequence_utils import (
 from pe_common.training import (
     apply_fine_tune_freezing,
     build_lr_scheduler,
+    dataloader_kwargs,
     fit_lightning_module,
     LightningTrainerConfig,
     pearson_spearman,
@@ -664,17 +665,23 @@ class OPEDModelWrapper(BasePEModel):
         grad_clip = float(hparams.get("grad_clip", 1.0))
         early_stopping_patience = int(hparams.get("early_stopping_patience", 10))
         early_stopping_delta = float(hparams.get("early_stopping_min_delta", 0.0))
+        loader_kwargs = dataloader_kwargs(
+            num_workers=hparams.get("num_workers"),
+            pin_memory=self.device.type == "cuda",
+        )
         train_loader = DataLoader(
             _OPEDEncodedDataset(train_df),
             batch_size=batch_size,
             shuffle=bool(hparams.get("reshuffle_each_epoch", True)),
             drop_last=False,
+            **loader_kwargs,
         )
         val_loader = DataLoader(
             _OPEDEncodedDataset(val_df),
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
+            **loader_kwargs,
         )
         lightning_module = _OPEDLightningRegressor(model=model, hparams=hparams)
         metrics = fit_lightning_module(

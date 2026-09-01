@@ -11,6 +11,7 @@
 # Env:
 #   DEVICE, SMOKE=1 (first model × first dataset, 2 epochs)
 #   MODELS="oped deepprime"  DATASET_NAMES="pridict1-library1"
+#   NUM_WORKERS=15 (DataLoader prefetch workers; default 15)
 
 set -euo pipefail
 
@@ -35,6 +36,7 @@ else
   EPOCHS_PRIDICT2="${EPOCHS_PRIDICT2:-30}"
   BATCH_SIZE="${BATCH_SIZE:-128}"
 fi
+NUM_WORKERS="${NUM_WORKERS:-15}"
 
 MODELS_ARR=(deepprime oped pridict2)
 if [[ -n "${MODELS:-}" ]]; then
@@ -83,11 +85,18 @@ hp_json() {
   EPOCHS_OPED="${EPOCHS_OPED}" \
   EPOCHS_PRIDICT2="${EPOCHS_PRIDICT2}" \
   BATCH_SIZE="${BATCH_SIZE}" \
+  NUM_WORKERS="${NUM_WORKERS}" \
   python - <<'PY'
 import json, os
 model = os.environ["MODEL"].strip().lower()
 batch = int(os.environ["BATCH_SIZE"])
-hp = {"load_pretrained": False, "batch_size": batch, "freezing": False}
+workers = int(os.environ["NUM_WORKERS"])
+hp = {
+    "load_pretrained": False,
+    "batch_size": batch,
+    "freezing": False,
+    "num_workers": workers,
+}
 if model == "deepprime":
     n = int(os.environ["EPOCHS_DEEPPRIME"])
     hp.update({"epochs": n, "early_stopping_patience": n})
@@ -110,6 +119,7 @@ PY
 
 print_experiment_banner "From-scratch train probe"
 echo "DEVICE: ${DEVICE}"
+echo "num_workers: ${NUM_WORKERS}"
 echo "models: ${MODELS_ARR[*]}"
 echo "datasets:"
 for row in "${DATASETS[@]}"; do
@@ -160,7 +170,7 @@ for MODEL in "${MODELS_ARR[@]}"; do
     JOB_ID="$(awk -F= '/^job_id=/{print $2; exit}' "${TMP}" || true)"
     JOBS_ROOT="$(awk -F= '/^jobs_root=/{print $2; exit}' "${TMP}" || true)"
     rm -f "${TMP}"
-
+  
     if [[ -n "${JOB_ID}" && -n "${JOBS_ROOT}" && -f "${JOBS_ROOT}/${JOB_ID}/train.log" ]]; then
       echo ""
       echo "----- full train.log (${JOB_ID}) -----"
