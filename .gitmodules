@@ -4,6 +4,7 @@
 [submodule "vendor/models/OPED"]
 	path = vendor/models/oped
 	url = git@github.com:PeihengLu/OPED.git
+	branch = master
 [submodule "vendor/models/PRIDICT2"]
 	path = vendor/models/pridict2
 	url = git@github.com:PeihengLu/PRIDICT2.git
