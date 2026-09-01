@@ -2,10 +2,11 @@
 # Install pedb + peen CLIs (editable), enable bash/zsh tab completion, print usage.
 #
 # Usage (from repo root or anywhere):
-#   conda activate pedb    # or your venv — required
+#   ./scripts/setup-python-env.sh        # first time: create Python 3.11 env
+#   conda activate pe-hub                # or pedb / venv
 #   ./scripts/install-clis.sh
 #
-# Prefer an activated conda/venv. Do not use Apple Command Line Tools Python.
+# Requires Python 3.11 (see environment.yml). Skip OptiPrime deps: SKIP_OPTIPRIME=1
 # Skip completion with: SKIP_CLI_COMPLETION=1 ./scripts/install-clis.sh
 #
 # Tab completion (macOS/Linux bash/zsh): prefers conda activate.d so hooks load
@@ -17,18 +18,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Prefer explicit PYTHON, then conda env, then python3/python on PATH.
-if [[ -n "${PYTHON:-}" ]]; then
-    :
-elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
-    PYTHON="${CONDA_PREFIX}/bin/python"
-elif [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
-    PYTHON="${VIRTUAL_ENV}/bin/python"
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON="$(command -v python3)"
-elif command -v python >/dev/null 2>&1; then
-    PYTHON="$(command -v python)"
-else
+# shellcheck source=scripts/python-env.sh
+source "${REPO_ROOT}/scripts/python-env.sh"
+
+if ! PYTHON="$(pe_hub_resolve_python)"; then
     echo "Error: no Python interpreter found." >&2
     exit 1
 fi
@@ -42,27 +35,13 @@ echo "======================================"
 echo "Repo:    ${REPO_ROOT}"
 echo "Python:  ${PY_REAL}"
 echo "Prefix:  ${PY_PREFIX}"
+echo "Target:  Python ${PE_HUB_PYTHON_VERSION} (see environment.yml)"
 echo ""
 
-# Refuse Apple CLT / system frameworks Python (not writable for editable installs).
-case "${PY_REAL}" in
-    /Library/Developer/CommandLineTools/*|/usr/bin/python*|/System/*)
-        echo "Error: refusing system/Command Line Tools Python." >&2
-        echo "" >&2
-        echo "Activate a writable environment first, then re-run:" >&2
-        echo "  conda activate pedb" >&2
-        echo "  ./scripts/install-clis.sh" >&2
-        echo "" >&2
-        echo "Or:  PYTHON=/path/to/env/bin/python ./scripts/install-clis.sh" >&2
-        exit 1
-        ;;
-esac
-
-if [[ -z "${CONDA_PREFIX:-}" && -z "${VIRTUAL_ENV:-}" ]]; then
-    echo "Warning: CONDA_PREFIX / VIRTUAL_ENV not set." >&2
-    echo "If install fails with Permission denied, activate conda/venv and retry." >&2
-    echo "" >&2
-fi
+pe_hub_refuse_system_python "${PY_REAL}" || exit 1
+pe_hub_require_python_version "${PYTHON}" || exit 1
+pe_hub_warn_if_no_virtual_env
+pe_hub_export_pip_constraint "${REPO_ROOT}"
 
 # Vendor model code lives in git submodules under vendor/models/.
 sync_vendor_submodules() {
@@ -111,6 +90,11 @@ echo "Installing pe-common, pe-db (pedb), pe-ensemble (peen) ..."
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common"
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/services/pe-db"
 "${PYTHON}" -m pip install -e "${REPO_ROOT}/services/pe-ensemble[library]"
+if [[ "${SKIP_OPTIPRIME:-0}" != "1" ]]; then
+    bash "${REPO_ROOT}/scripts/install-optiprime-deps.sh"
+else
+    echo "Skipping OptiPrime deps (SKIP_OPTIPRIME=1)."
+fi
 # Scripts land in the env bin; ensure we look there even if PATH is stale.
 ENV_BIN="$("${PYTHON}" -c 'import sys, pathlib; print(pathlib.Path(sys.executable).parent)')"
 export PATH="${ENV_BIN}:${PATH}"

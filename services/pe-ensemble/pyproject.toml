@@ -7,7 +7,7 @@ name = "pe-ensemble"
 version = "0.2.0"
 description = "Prime Editing Ensemble Service - unified interface for training and evaluating PE prediction models (DeepPrime, OPED, PRIDICT2)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -50,6 +50,21 @@ pe-db = [
 ]
 library = [
     "pe-db>=0.2.0",
+]
+
+# OptiPrime (JAX/Flax mechanistic model). rs3 is installed separately via
+# scripts/install-optiprime-deps.sh because PyPI pins scikit-learn<=1.0.2.
+optiprime = [
+    "jax>=0.4.20,<0.12",
+    "jaxlib>=0.4.20,<0.12",
+    "flax>=0.8,<0.13",
+    "optax>=0.2,<0.3",
+    "chex>=0.1.8,<0.2",
+    "networkx>=3.0",
+    "h5py>=3.8",
+    "lightgbm>=3.0.0,<=3.3.5",
+    "sglearn>=1.2.5",
+    "seqfold>=0.7.7",
 ]
 
 # Vendor model dependencies (installed from local paths)

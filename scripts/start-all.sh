@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./scripts/start-all.sh              # dev servers with reload (default)
-#   ./scripts/start-all.sh --install    # install deps for all three, then start
+#   ./scripts/start-all.sh --install    # create env + install deps, then start
 #   ./scripts/start-all.sh --no-reload  # backends without uvicorn auto-reload
 #   ./scripts/start-all.sh --pe-db-port 8080 --ensemble-port 8081 --frontend-port 3000
 #   ./scripts/start-all.sh --force-reexport  # re-export raw data before starting PE-DB
@@ -16,6 +16,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PE_DB_DIR="${REPO_ROOT}/services/pe-db"
 PE_ENSEMBLE_DIR="${REPO_ROOT}/services/pe-ensemble"
 FRONTEND_DIR="${REPO_ROOT}/pe-hub"
+
+# shellcheck source=scripts/python-env.sh
+source "${REPO_ROOT}/scripts/python-env.sh"
 
 INSTALL_DEPS=false
 RELOAD=true
@@ -141,22 +144,16 @@ if [[ -z "${CONDA_PREFIX:-}" && -z "${VIRTUAL_ENV:-}" ]]; then
 fi
 
 resolve_python() {
-    if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
-        echo "${CONDA_PREFIX}/bin/python"
-    elif [[ -n "${VIRTUAL_ENV:-}" && -x "${VIRTUAL_ENV}/bin/python" ]]; then
-        echo "${VIRTUAL_ENV}/bin/python"
-    elif command -v python >/dev/null 2>&1; then
-        command -v python
-    elif command -v python3 >/dev/null 2>&1; then
-        command -v python3
-    else
-        return 1
-    fi
+    pe_hub_resolve_python
 }
 
 if ! PYTHON="$(resolve_python)"; then
     echo "Error: no Python interpreter found on PATH" >&2
     exit 1
+fi
+
+if ! pe_hub_require_python_version "${PYTHON}"; then
+    echo "Warning: continuing with unsupported Python (install may be incomplete)." >&2
 fi
 
 MIN_NODE_MAJOR=18
@@ -336,18 +333,15 @@ start_frontend() {
 }
 
 if [[ "${INSTALL_DEPS}" == true ]]; then
-    if [[ -f "${REPO_ROOT}/.gitmodules" ]] && git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
-        echo "Initializing and updating git submodules ..."
-        git -C "${REPO_ROOT}" submodule update --init --recursive
+    PY_REAL="$("${PYTHON}" -c 'import sys; print(sys.executable)')"
+    pe_hub_refuse_system_python "${PY_REAL}" || exit 1
+    if ! pe_hub_require_python_version "${PYTHON}"; then
+        echo "Run ./scripts/setup-python-env.sh first, then re-run with --install." >&2
+        exit 1
     fi
 
-    echo "Installing PE Database dependencies ..."
-    "${PYTHON}" -m pip install -e "${PE_DB_DIR}"
-    "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common" --no-deps
-
-    echo "Installing PE Ensemble dependencies ..."
-    "${PYTHON}" -m pip install -e "${REPO_ROOT}/packages/pe-common"
-    "${PYTHON}" -m pip install -e "${PE_ENSEMBLE_DIR}[library]"
+    echo "Installing PE-Hub Python packages (pedb, peen, OptiPrime) ..."
+    bash "${REPO_ROOT}/scripts/install-clis.sh"
 
     echo "Installing frontend dependencies ..."
     (cd "${FRONTEND_DIR}" && npm install)

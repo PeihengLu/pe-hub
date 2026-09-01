@@ -24,7 +24,7 @@ Data loading goes through **`peen` → `pe_db.library`** (same filter/merge/spli
    Non-overlapping library1 loci get random CV (+ optional outer test).
    See [pe-db filter docs](../../services/pe-db/README.md#splits-author-folds-and-merge).
 
-Prerequisites: `conda activate <env> && ./scripts/install-clis.sh`
+Prerequisites: `./scripts/setup-python-env.sh` then `conda activate pe-hub && ./scripts/install-clis.sh`
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/<script>.sh`
 
@@ -84,7 +84,7 @@ via the ARC remote (see the Oxford ARC README).
 - Partial train/test locus overlap excludes overlapping `target_uid`s from the
   test partition and continues; full overlap (e.g. OptiPrime ensemble ×
   lib-mmr/lib-cv) still aborts as `data_leak` unless `--allow-data-leak`.
-- OptiPrime needs JAX stack deps (`jax`, `flax`, `chex`, …).
+- OptiPrime needs the JAX stack (`jax`, `flax`, `chex`, …). Installed automatically by `./scripts/install-clis.sh` on Python 3.11.
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`
 

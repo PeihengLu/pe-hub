@@ -2,28 +2,25 @@
 
 ## Quick start
 
-Activate a conda/venv first (not system/Apple CLT Python).
+Requires **Python 3.11** (`./scripts/setup-python-env.sh --install`). Python 3.13+ is unsupported.
+
+**CLI only:**
 
 ```bash
-conda activate pedb                # or: source venv/bin/activate
-./scripts/start-all.sh --install   # first time (portal)
+./scripts/setup-python-env.sh --install
+conda activate pe-hub
+```
+
+**Web portal:**
+
+```bash
+./scripts/setup-python-env.sh --install
+conda activate pe-hub
+./scripts/start-all.sh --install
 ./scripts/start-all.sh
 ```
 
-CLIs only (`pedb` / `peen`, includes tab completion):
-
-```bash
-conda activate pedb
-./scripts/install-clis.sh
-conda deactivate && conda activate pedb   # reload completion
-```
-
-Or set up Python manually:
-
-```bash
-make setup && source venv/bin/activate
-make install
-```
+Custom env name: `./scripts/setup-python-env.sh --name pedb --install`
 
 ## Service URLs
 

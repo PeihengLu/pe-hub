@@ -14,17 +14,21 @@ help:
 	@echo "  make data-prep      - Prepare datasets"
 
 setup:
-	python -m venv venv
+	@if command -v python3.11 >/dev/null 2>&1; then \
+		python3.11 -m venv venv; \
+	elif command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; exit(0 if sys.version_info[:2]==(3,11) else 1)'; then \
+		python3 -m venv venv; \
+	else \
+		echo "Error: Python 3.11 required. Use: ./scripts/setup-python-env.sh" >&2; \
+		exit 1; \
+	fi
 	@echo "Virtual environment created. Activate it with:"
 	@echo "  source venv/bin/activate  (Linux/macOS)"
 	@echo "  venv\\Scripts\\activate     (Windows)"
+	@echo "Then run: ./scripts/install-clis.sh"
 
 install:
-	pip install --upgrade pip
-	pip install -e .
-	pip install -e .[dev]
-	pip install -e packages/pe-common
-	python -m ipykernel install --user --name=pe-db --display-name="Python (PE-DB)"
+	./scripts/install-clis.sh
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

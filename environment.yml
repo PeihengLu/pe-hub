@@ -1,0 +1,24 @@
+# Canonical PE-Hub conda environment (Python 3.11).
+#
+# Create / update:
+#   conda env create -f environment.yml
+#   conda env update -f environment.yml --prune
+#
+# Then install project packages:
+#   conda activate pe-hub
+#   ./scripts/install-clis.sh
+#
+# The name "pe-hub" matches this file. You may use another name via:
+#   conda create -n pedb python=3.11 -y && conda activate pedb
+
+name: pe-hub
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11.*
+  - pip>=24
+  # ViennaRNA used by pe-db conversion and OptiPrime featurization.
+  - viennarna>=2.5
+  # PE Hub frontend (Vite 5 needs Node 18+; 20 LTS is the default).
+  - nodejs=20
