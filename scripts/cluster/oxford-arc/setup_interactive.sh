@@ -62,17 +62,44 @@ if [[ -f "$(conda info --base)/etc/profile.d/conda.sh" ]]; then
     source "$(conda info --base)/etc/profile.d/conda.sh"
 fi
 
-if [[ ! -d "${CONDA_ENV}" ]]; then
-    echo "Creating conda env prefix ${CONDA_ENV} (python 3.11)…"
+ENV_FILE="${PE_HUB_ROOT}/environment.yml"
+PYTHON_PIN="python=3.11.*"
+
+_verify_conda_python_311() {
+    local ver minor
+    ver="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")')"
+    minor="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    if [[ "${minor}" != "3.11" ]]; then
+        echo "Error: ${CONDA_ENV} has Python ${ver}; PE-Hub requires 3.11.x." >&2
+        echo "Conda likely upgraded Python while installing bioconda packages." >&2
+        echo "Remove the env and re-run this script:" >&2
+        echo "  conda deactivate" >&2
+        echo "  rm -rf \"${CONDA_ENV}\"" >&2
+        echo "  bash \"${ARC_DIR}/setup_interactive.sh\"" >&2
+        exit 1
+    fi
+}
+
+if [[ ! -x "${CONDA_ENV}/bin/python" ]]; then
+    echo "Creating conda env prefix ${CONDA_ENV} (${PYTHON_PIN})…"
     mkdir -p "$(dirname "${CONDA_ENV}")"
-    conda create -y --prefix "${CONDA_ENV}" python=3.11 pip
+    if [[ -f "${ENV_FILE}" ]]; then
+        conda env create --prefix "${CONDA_ENV}" -f "${ENV_FILE}"
+    else
+        conda create -y --prefix "${CONDA_ENV}" "${PYTHON_PIN}" pip
+    fi
 fi
 
 # Activate prefix (works with named envs too).
 conda activate "${CONDA_ENV}" 2>/dev/null || source activate "${CONDA_ENV}"
+_verify_conda_python_311
 
 echo "Installing ViennaRNA (bioconda) if missing…"
-python -c "import RNA" 2>/dev/null || conda install -y -c bioconda -c conda-forge viennarna
+if ! python -c "import RNA" 2>/dev/null; then
+    # Pin Python — bare `conda install viennarna` can pull 3.13 on newer solvers.
+    conda install -y -c bioconda -c conda-forge "${PYTHON_PIN}" viennarna
+    _verify_conda_python_311
+fi
 
 echo "Installing PyTorch (CUDA wheel). Adjust cu121/cu124 if needed for the node driver…"
 python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null || \
