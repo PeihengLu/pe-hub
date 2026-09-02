@@ -38,28 +38,29 @@ IDX=0
 TOTAL=$(($(selected_models | wc -w) * $(selected_matrix_rows | wc -l)))
 
 while IFS= read -r row; do
-    IFS='|' read -r bench study dataset <<< "${row}"
+    parse_matrix_row "${row}"
     while read -r model; do
         [[ -n "${model}" ]] || continue
         IDX=$((IDX + 1))
-        key="$(cell_key "${model}" "${bench}")"
+        key="$(cell_key "${model}" "${MATRIX_BENCH}")"
         weights_state="weights__${key}"
         weights_id="$(read_state "${weights_state}")"
 
-        SAFE_NAME="${model}__${bench}"
+        SAFE_NAME="${model}__${MATRIX_BENCH}"
         STDOUT_FILE="${LOG_DIR}/${SAFE_NAME}.stdout"
         STDERR_FILE="${LOG_DIR}/${SAFE_NAME}.stderr"
 
-        echo "[${IDX}/${TOTAL}] ${model} / ${weights_id} @ ${bench}"
+        echo "[${IDX}/${TOTAL}] ${model} / ${weights_id} @ ${MATRIX_BENCH}"
 
         EVAL_ARGS=(
             evaluate
             --model "${model}"
             --weights "${weights_id}"
             --custom-benchmark
-            --benchmark-name "${bench}"
-            --study "${study}"
-            --dataset "${dataset}"
+            --benchmark-name "${MATRIX_BENCH}"
+        )
+        append_study_dataset_args EVAL_ARGS "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
+        EVAL_ARGS+=(
             --device "${DEVICE}"
             --sync
         )
@@ -72,9 +73,9 @@ print(json.dumps({
   'run_id': '''${RUN_ID}''',
   'model': '''${model}''',
   'weights': '''${weights_id}''',
-  'benchmark_name': '''${bench}''',
-  'study': '''${study}''',
-  'dataset': '''${dataset}''',
+  'benchmark_name': '''${MATRIX_BENCH}''',
+  'study': '''${MATRIX_STUDY}''',
+  'datasets': '''${MATRIX_DATASETS}'''.split(','),
   'split_strategy': 'holdout_3',
   'split_random_state': int('''${SPLIT_RANDOM_STATE}'''),
 }))
@@ -158,7 +159,7 @@ if jsonl.is_file():
             rows.append(json.loads(line))
 
 fields = [
-    "run_id", "model", "weights", "benchmark_name", "study", "dataset",
+    "run_id", "model", "weights", "benchmark_name", "study", "datasets",
     "status", "test_spearman", "test_pearson", "test_mse", "exit_code",
 ]
 with csv_path.open("w", newline="", encoding="utf-8") as handle:

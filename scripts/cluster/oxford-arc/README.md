@@ -21,39 +21,23 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
 
 ## One-time setup
 
-1. Clone or rsync pe-hub under `$DATA` (from your laptop, not the login node for big trees):
+1. Clone pe-hub under `$DATA` on **htc-login** (or clone locally and use the same
+   workflow on both machines):
 
    ```bash
-   # Prefer the helper (skips weights/jobs/eval artifacts + exported/formatted caches):
-   ./scripts/cluster/oxford-arc/sync_to_arc.sh
-   DRY_RUN=1 ./scripts/cluster/oxford-arc/sync_to_arc.sh   # preview
+   cd $DATA
+   git clone --recurse-submodules git@github.com:<org>/pe-hub.git pe-hub
+   cd pe-hub
    ```
 
-   Manual equivalent (VPN → htc-login; use gateway off-net):
+   If you already cloned without submodules:
 
    ```bash
-   rsync -avz --progress \
-     --exclude '.git/objects/' --exclude '__pycache__/' \
-     --exclude 'datasets/exported/' --exclude 'datasets/formatted/' --exclude 'datasets/catalog/' \
-     --exclude 'datasets/reference/' --exclude 'results/' --exclude '.dvc/cache/' \
-     --exclude 'services/pe-ensemble/weights/' \
-     --exclude 'services/pe-ensemble/tuning_studies/' \
-     --exclude 'services/pe-ensemble/config/training_presets_local/' \
-     --exclude 'services/pe-ensemble/jobs/' \
-     --exclude 'services/pe-ensemble/eval_jobs/' \
-     --exclude 'services/pe-ensemble/ensemble_jobs/' \
-     --exclude 'services/pe-ensemble/validation_jobs/' \
-     --exclude 'services/pe-ensemble/checkpoints/' \
-     --exclude 'artifacts/' --exclude 'checkpoints/' \
-     --exclude 'scripts/experiments/pridict2-reproduction/state/' \
-     ./ you@htc-login.arc.ox.ac.uk:/data/<project>/<user>/pe-hub/
+   git submodule update --init --recursive
    ```
 
-   Prefer transferring into **`$DATA`**. Gateway does not expose `$HOME`.
-   `datasets/raw` + `datasets/standardized` are kept by default; add
-   `SKIP_STANDARDIZED=1` on `sync_to_arc.sh` to rebuild standardized on ARC.
-   Reference genomes and eval `results/` are **DVC** (not rsynced); see
-   [DVC on ARC](#dvc-reference-genomes-and-eval-results) below.
+   Build datasets on ARC with `pedb init`. Pull shared reference genomes with
+   `dvc pull` — see [DVC on ARC](#dvc-selective-artifacts).
 2. On **htc-login**, start an interactive GPU shell and bootstrap:
 
    ```bash
@@ -73,42 +57,49 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    Jobs load `ARC_MODULES` then `conda activate $CONDA_ENV` via `job_env.sh`.
    Do **not** rely on `conda init` in `.bashrc` for batch jobs.
 
-## DVC (reference genomes and eval results)
+## DVC (selective artifacts)
 
 `datasets/raw/` and vendor/plugin blobs under `services/pe-ensemble/weights/`
-stay in **git** so clones share them. DVC is only for bulky machine-local
-artifacts:
+stay in **git**. Use DVC only for bulky artifacts you deliberately choose to
+keep — not a bulk sync of every run.
 
-| Tracked | Git | DVC (ARC store) |
-|---------|-----|-----------------|
-| Study raw files | `datasets/raw/` | — |
-| Vendor / plugin weights | `services/pe-ensemble/weights/` (not `*__*__*__*` IDs) | — |
-| hg38 / mm39 FASTA | — | `datasets/reference.dvc` |
-| Eval outputs | — | `results.dvc` |
-| A trained weight set you want versioned | — | `dvc add services/pe-ensemble/weights/<model>/<id>` |
+| In git already | Worth `dvc add` when… | Usually skip |
+|----------------|----------------------|--------------|
+| `datasets/raw/` | — | — |
+| Vendor / plugin weights | — | — |
+| `datasets/reference/` | always (already tracked: `datasets/reference.dvc`) | — |
+| Trained weights `*__*__*__*/` | final/best run you want to evaluate or compare | smoke, failed, superseded trials |
+| `training_presets_local/*.yaml` | HPO finished; want reproducible training | will re-tune anyway |
+| Benchmark results | run you care about (summary CSV, eval JSONL) | intermediate matrix cells |
+| `tuning_studies/*.db` | resuming Optuna on another machine | presets + weights are enough |
+| `scripts/experiments/*/state/` | — | tiny ID files; recreate from logs |
+| Standardized/formatted caches | — | regenerate with `pedb init` |
 
-Store path is **`/data/<ARC_PROJECT>/<USER>/dvc-store`** (project is shared by
-the group; each member keeps their own store, same layout as `$DATA/pe-hub`).
-`.dvc/config` only has a `USER` placeholder — always run the setup script so
-gitignored `.dvc/config.local` has your real path (USB-style mount names never
-belong in git).
+Store path: **`/data/<ARC_PROJECT>/<USER>/dvc-store`** (same layout as
+`$DATA/pe-hub`). Run `setup_dvc_remote.sh` once per machine so gitignored
+`.dvc/config.local` points at your store (local path on ARC, SSH from laptop).
 
 ```bash
-conda activate pedb
-pip install 'dvc[ssh]'   # once
-# laptop (VPN) or ARC — writes /data/coml-deepcmb/$ARC_USER/dvc-store:
+conda activate pe-hub
+pip install 'dvc[ssh]'   # once; setup_interactive.sh does this on ARC
 ARC_USER=you ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
-# first machine that has the data:
+
+# Shared reference genomes (already in repo):
+dvc pull datasets/reference.dvc
+
+# After a run you want to keep (example — one weight set):
+dvc add services/pe-ensemble/weights/pridict2/pridict2__custom__20260901__abc123
 dvc push
-# the other machine (same ARC_USER / same store):
-dvc pull
+git add services/pe-ensemble/weights/pridict2/pridict2__custom__20260901__abc123.dvc
+git commit -m 'Track pridict2 benchmark weights'
+git push
+
+# On the other machine:
+git pull && dvc pull
 ```
 
 Off-campus SSH: put `ProxyJump gateway.arc.ox.ac.uk` for `htc-login` in
 `~/.ssh/config` (key auth; DVC’s SSH client is picky about password/2FA jumps).
-
-HPO presets, Optuna DBs, and live trained checkpoints still use
-`sync_from_arc.sh` / rsync.
 
 ## Submit jobs
 
@@ -162,29 +153,32 @@ scancel --clusters=htc <jobid>
 tail -f $PE_HUB_ROOT/slurm-<jobid>.out
 ```
 
-## Artifacts (persist under the repo on `$DATA`)
+## Artifacts
 
-| What | Where | How to bring home |
-|------|--------|-------------------|
-| Reference genomes | `datasets/reference/` | **DVC** (`dvc pull`) |
-| Eval run outputs | `results/` | **DVC** (`dvc pull`) |
-| HPO dataset presets | `config/training_presets_local/` | **rsync** (gitignored; empty until you tune or sync) |
-| Shipped model defaults | `config/training_presets/` | **Git** (defaults; promote rarely) |
-| Trained weights + index | `weights/*__*__*__*/` + `local_registry.json` | **rsync** (gitignored) |
-| Pipeline state IDs | `scripts/experiments/pridict2-reproduction/state/` | rsync (optional) |
-| Optuna study DB | `tuning_studies/*.db` | rsync only if resuming elsewhere |
+Most outputs live under the repo on `$DATA` and are gitignored. Only version
+what you would regret losing — see [DVC table](#dvc-selective-artifacts) above.
 
-Paths above are under `services/pe-ensemble/` except pipeline state. Override with `WEIGHTS_ROOT` / `TUNING_STUDIES_ROOT` / `TRAINING_PRESETS_ROOT` (local overlay).
+| What | Where |
+|------|--------|
+| Reference genomes | `datasets/reference/` (`datasets/reference.dvc`) |
+| HPO presets | `services/pe-ensemble/config/training_presets_local/` |
+| Trained weights | `services/pe-ensemble/weights/*__*__*__*/` |
+| Benchmark results | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/` |
+| Shipped defaults | `services/pe-ensemble/config/training_presets/` (git) |
+
+Override roots with `WEIGHTS_ROOT`, `TUNING_STUDIES_ROOT`, `TRAINING_PRESETS_ROOT`.
 
 ## Bring results home
 
-Routine tuning does **not** go to GitHub. Sync local presets + weights:
+Pick what to keep, then `dvc add` + `dvc push` on ARC and commit the `.dvc`
+pointers. On laptop: `git pull && dvc pull`.
 
 ```bash
-# on laptop
-./scripts/cluster/oxford-arc/sync_from_arc.sh
-peen weights --model pridict2
-./scripts/hyperparameter/check_tuning_status.sh pridict2
+# example: one weight set + its preset YAML
+dvc add services/pe-ensemble/weights/deepprime/deepprime__custom__20260901__abc123
+dvc add services/pe-ensemble/config/training_presets_local/deepprime.yaml
+dvc push
+git add '*.dvc' && git commit -m 'deepprime library1 benchmark' && git push
 ```
 
 Pull the gitignored cluster `env.sh` (partition, paths, modules) from ARC:
@@ -219,7 +213,7 @@ Default peen HPO is ~100 fold trains (20×5) plus a final register — plan for 
 - [ ] Account can reach `htc-login` (VPN or gateway)
 - [ ] Checkout under `$DATA`; Anaconda module + env prefix under `$DATA/envs/`
 - [ ] `peen devices` shows CUDA on an interactive GPU allocation
-- [ ] `datasets/` prepared (`pedb init` or rsynced standardized/formatted caches)
+- [ ] `datasets/` prepared (`pedb init`; `dvc pull datasets/reference.dvc` for genomes)
 - [ ] **Local smoke passed** (mini data, 1 trial): `SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh`
 - [ ] **Local preflight** (optional full pipeline on mini data): `./scripts/cluster/oxford-arc/preflight.sh`
 - [ ] `env.sh` points at the checkout

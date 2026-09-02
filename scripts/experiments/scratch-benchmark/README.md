@@ -1,22 +1,28 @@
 # Scratch benchmark (from-scratch model comparison)
 
 Cross-model experiment for **DeepPrime**, **OPED**, and **PRIDICT2** on the same
-benchmarks as `probe_scratch_train.sh`, with **Optuna tuning** and **holdout_3**
-(70/15/15) splits. Designed for local runs and Oxford ARC batch submission.
+pooled benchmarks as `evaluate_base_model_benchmarks.sh`, with **Optuna tuning**
+and **holdout_3** (70/15/15) splits. Designed for local runs and Oxford ARC batch
+submission.
 
-Excludes OptiPrime.
+The **OptiPrime model** is excluded (no scratch HPO search space); **lib-mmr** /
+**lib-cv** are included as datasets all three models train on.
 
 ## Matrix
 
-| Benchmark | Study / dataset | Split |
-|-----------|-----------------|-------|
-| `pridict1-library1` | pridict1 / library1 | random holdout_3, seed 42 |
-| `pridict2-library-diverse` | pridict2 / library-diverse | random holdout_3, seed 42 |
-| `deepprime-clinvar` | deepprime / deepprime-clinvar | random holdout_3, seed 42 |
+| Benchmark | Study / dataset(s) | ~Rows | Split |
+|-----------|-------------------|------:|-------|
+| `pridict1-library1` | pridict1 / library1 | 92k | random holdout_3, seed 42 |
+| `pridict2-library-diverse` | pridict2 / library-diverse | 66k | random holdout_3, seed 42 |
+| `deeppe-pooled` | deeppe / ht + type + position + endo | 49k | random holdout_3, seed 42 |
+| `minsepie-insert-pooled` | minsepie / set12 + 18nt + codon-variant + codon-hek3 | 27k | random holdout_3, seed 42 |
+| `optiprime-lib-mmr` | optiprime / lib-mmr | 36k | random holdout_3, seed 42 |
+| `optiprime-lib-cv` | optiprime / lib-cv | 37k | random holdout_3, seed 42 |
+| `deepprime-clinvar` | deepprime / deepprime-clinvar | 289k | random holdout_3, seed 42 |
 
 All cells use `--no-use-original-fold --split-random-state 42` (no author folds).
 
-Models × benchmarks = **9 cells**. Each cell: tune → train (register weights) → evaluate on test.
+Models × benchmarks = **21 cells** (7 × 3). Each cell: tune → train → evaluate on test.
 
 ## Local usage
 
@@ -77,7 +83,7 @@ ARC_PARTITION=medium ARC_TIME=1-00:00:00 \
 MODEL=oped BENCHMARK=deepprime-clinvar \
   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
-# All 9 cells in parallel (9 separate 1-GPU jobs — recommended if you have quota)
+# All 21 cells in parallel (one 1-GPU job per cell — recommended if you have quota)
 ./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 01_tune_matrix.sh
 ./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 02_train_matrix.sh
 ./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 03_evaluate_matrix.sh
@@ -88,16 +94,23 @@ MODEL=oped BENCHMARK=deepprime-clinvar \
 **Single training/tuning job:** one GPU only. Lightning is configured with `devices=1` in
 `pe_common.training`; extra GPUs on the same SLURM allocation stay idle.
 
-**Parallel throughput:** submit one job per matrix cell (9 jobs × 1 L40S). Use
+**Parallel throughput:** submit one job per matrix cell (21 jobs × 1 L40S). Use
 `submit_arc_matrix.sh` above, or manual `MODEL=… BENCHMARK=… submit.sh …` per cell.
 Each job should keep `ARC_GPUS=1` and `DEVICE=cuda:0` (defaults in `env.sh`).
 
-Bring artifacts home:
+Save only runs you care about (see
+[`scripts/cluster/oxford-arc/README.md`](../../cluster/oxford-arc/README.md#dvc-selective-artifacts)):
 
 ```bash
-./scripts/cluster/oxford-arc/sync_from_arc.sh
+# on ARC — example: benchmark results folder + one weight set
+dvc add scripts/experiments/scratch-benchmark/results/<RUN_ID>
+dvc add services/pe-ensemble/weights/<model>/<weights_id>
+dvc push
+git add '*.dvc' && git commit -m 'scratch-benchmark run' && git push
+
+# on laptop
+git pull && dvc pull
 cat scripts/experiments/scratch-benchmark/results/LATEST_RUN_ID
-# summary CSV under results/<RUN_ID>/summary.csv
 ```
 
 ## Outputs
@@ -129,4 +142,4 @@ Smoke overrides (`SMOKE=1`): 1 trial, mini data locally; on ARC use `SMOKE=1` wi
 - All models train **from scratch** (`load_pretrained=false`).
 - Tuning optimizes **validation** metrics; **test** is only used in stage 03.
 - PRIDICT2 uses `MSEloss` on `averageedited` (same as probe/reproduction).
-- ClinVar is much slower than library1 (~260k rows); consider filtering benchmarks during development.
+- ClinVar (~289k rows) is much slower; DeepPE / MinSePIE / lib-mmr / lib-cv are smaller and better fits for **short** (12h) per-cell jobs.

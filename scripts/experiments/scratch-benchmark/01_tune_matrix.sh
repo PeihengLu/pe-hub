@@ -25,10 +25,10 @@ fi
 print_benchmark_banner "01 Tune matrix (holdout_3 HPO)"
 
 while IFS= read -r row; do
-    IFS='|' read -r bench study dataset <<< "${row}"
+    parse_matrix_row "${row}"
     while read -r model; do
         [[ -n "${model}" ]] || continue
-        key="$(cell_key "${model}" "${bench}")"
+        key="$(cell_key "${model}" "${MATRIX_BENCH}")"
         state_key="tuned__${key}"
 
         if [[ "${SKIP_IF_DONE:-0}" == "1" && -f "$(state_path "${state_key}")" ]]; then
@@ -36,24 +36,23 @@ while IFS= read -r row; do
             continue
         fi
 
-        preset_key="$(dataset_preset_key_for_cell "${study}" "${dataset}")"
+        preset_key="$(dataset_preset_key_for_cell "${MATRIX_STUDY}" "${MATRIX_DATASETS}")"
         fixed_hp="$(fixed_tune_hp_json "${model}")"
 
         echo "======================================"
-        echo "TUNE ${model} @ ${bench}"
+        echo "TUNE ${model} @ ${MATRIX_BENCH}"
         echo "======================================"
 
         TUNE_ARGS=(
             --model "${model}"
-            --dataset-name "$(dataset_name_for_cell "${model}" "${bench}")"
-            --study "${study}"
-            --dataset "${dataset}"
+            --dataset-name "$(dataset_name_for_cell "${model}" "${MATRIX_BENCH}")"
         )
+        append_study_dataset_args TUNE_ARGS "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
 
         split_args_for_cell
         TUNE_ARGS+=("${SPLIT_ARGS[@]}")
 
-        export STUDY_NAME="$(study_name_for_cell "${model}" "${bench}")"
+        export STUDY_NAME="$(study_name_for_cell "${model}" "${MATRIX_BENCH}")"
         export DATASET_KEY="${preset_key}"
         export FIXED_HP_JSON="${fixed_hp}"
 

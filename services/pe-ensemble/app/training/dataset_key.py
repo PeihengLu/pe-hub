@@ -39,6 +39,21 @@ def filter_values_list(value: FilterValue) -> list[str]:
     return out
 
 
+def same_study_multi_dataset_base(
+    *,
+    study: FilterValue = None,
+    dataset: FilterValue = None,
+) -> Optional[str]:
+    """Build a same-study pooled key such as ``deeppe/deeppe_ht+deeppe_type``."""
+    study_name = single_filter_value(study)
+    datasets = filter_values_list(dataset)
+    if not study_name or len(datasets) < 2:
+        return None
+    study_norm = normalize_segment(study_name)
+    ds_part = "+".join(normalize_segment(name) for name in datasets)
+    return f"{study_norm}/{ds_part}"
+
+
 def merged_study_dataset_base(
     *,
     study: FilterValue = None,
@@ -87,6 +102,14 @@ def dataset_preset_key(
             pe_system=pe_system,
         )
 
+    pooled_base = same_study_multi_dataset_base(study=study, dataset=dataset)
+    if pooled_base:
+        return _append_cell_pe_suffix(
+            pooled_base,
+            cell_line=cell_line,
+            pe_system=pe_system,
+        )
+
     merged_base = merged_study_dataset_base(study=study, dataset=dataset)
     if merged_base:
         return _append_cell_pe_suffix(
@@ -118,6 +141,10 @@ def candidate_preset_keys(
     merged_base = merged_study_dataset_base(study=study, dataset=dataset)
     if merged_base and merged_base not in keys:
         keys.append(merged_base)
+
+    pooled_base = same_study_multi_dataset_base(study=study, dataset=dataset)
+    if pooled_base and pooled_base not in keys:
+        keys.append(pooled_base)
 
     study_name = single_filter_value(study)
     dataset_name = single_filter_value(dataset)

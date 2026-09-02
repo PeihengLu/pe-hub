@@ -22,7 +22,7 @@ datasets/
 
 `raw/` stays in **git**. Reference genomes are **DVC** (`dvc pull`) so they are
 not in GitHub; the store is Oxford ARC (see
-[`scripts/cluster/oxford-arc/README.md`](../scripts/cluster/oxford-arc/README.md#dvc-reference-genomes-and-eval-results)).
+[`scripts/cluster/oxford-arc/README.md`](../scripts/cluster/oxford-arc/README.md#dvc-selective-artifacts)).
 
 The PE Database service generates `exported/`, `standardized/`, and `catalog/` on
 startup via `initialize_database()` (see `services/pe-db/README.md`).

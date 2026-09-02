@@ -2,9 +2,10 @@
 # Shared helpers for the scratch-benchmark experiment:
 #   model × dataset matrix, holdout_3 tune → train → evaluate (from scratch).
 #
-# Datasets mirror scripts/experiments/probe_scratch_train.sh:
-#   pridict1-library1, pridict2-library-diverse, deepprime-clinvar
-# Models: deepprime, oped, pridict2 (not optiprime).
+# Benchmarks align with scripts/experiments/evaluate_base_model_benchmarks.sh:
+#   pridict1-library1, pridict2-library-diverse, deepprime-clinvar,
+#   deeppe-pooled, minsepie-insert-pooled, optiprime-lib-mmr, optiprime-lib-cv
+# Models: deepprime, oped, pridict2 (OptiPrime model excluded; lib-* are datasets).
 
 set -euo pipefail
 
@@ -39,11 +40,15 @@ MAX_EPOCHS_OPED="${MAX_EPOCHS_OPED:-50}"
 MAX_EPOCHS_PRIDICT2="${MAX_EPOCHS_PRIDICT2:-50}"
 BATCH_SIZE="${BATCH_SIZE:-128}"
 
-# bench_name|study|dataset
+# bench_name|study|datasets_csv  (comma-separated when pooled under one study)
 MATRIX_ALL=(
     "pridict1-library1|pridict1|library1"
     "pridict2-library-diverse|pridict2|library-diverse"
     "deepprime-clinvar|deepprime|deepprime-clinvar"
+    "deeppe-pooled|deeppe|deeppe-ht,deeppe-type,deeppe-position,deeppe-endo"
+    "minsepie-insert-pooled|minsepie|library-insert-set12,library-insert-18nt,library-insert-codon-variant,library-insert-codon-hek3"
+    "optiprime-lib-mmr|optiprime|lib-mmr"
+    "optiprime-lib-cv|optiprime|lib-cv"
 )
 
 MODELS_ALL=(deepprime oped pridict2)
@@ -135,8 +140,56 @@ cell_key() {
 
 dataset_preset_key_for_cell() {
     local study="$1"
-    local dataset="$2"
-    echo "${study}/${dataset}" | tr '[:upper:]' '[:lower:]' | tr '-' '_'
+    local datasets_csv="$2"
+    local py
+    py="$(command -v python 2>/dev/null || command -v python3)"
+    STUDY="${study}" DATASETS_CSV="${datasets_csv}" REPO_ROOT="${HP_DIR}/../.." \
+        "${py}" - <<'PY'
+import os, sys
+from pathlib import Path
+
+root = Path(os.environ["REPO_ROOT"]) / "services" / "pe-ensemble"
+sys.path.insert(0, str(root))
+from app.training.dataset_key import dataset_preset_key
+
+study = os.environ["STUDY"]
+datasets = [part.strip() for part in os.environ["DATASETS_CSV"].split(",") if part.strip()]
+if not datasets:
+    raise SystemExit("empty datasets list")
+payload = datasets[0] if len(datasets) == 1 else datasets
+key = dataset_preset_key(study=study, dataset=payload)
+if not key:
+    raise SystemExit(f"could not derive preset key for {study!r} / {datasets!r}")
+print(key)
+PY
+}
+
+parse_matrix_row() {
+    local row="$1"
+    IFS='|' read -r MATRIX_BENCH MATRIX_STUDY MATRIX_DATASETS <<< "${row}"
+    : "${MATRIX_BENCH:?invalid matrix row: ${row}}"
+    : "${MATRIX_STUDY:?invalid matrix row: ${row}}"
+    : "${MATRIX_DATASETS:?invalid matrix row: ${row}}"
+}
+
+append_study_dataset_args() {
+    local -n _out="$1"
+    local study="$2"
+    local datasets_csv="$3"
+    local ds
+    _out+=(--study "${study}")
+    IFS=',' read -ra _ds_arr <<< "${datasets_csv}"
+    for ds in "${_ds_arr[@]}"; do
+        ds="${ds#"${ds%%[![:space:]]*}"}"
+        ds="${ds%"${ds##*[![:space:]]}"}"
+        [[ -n "${ds}" ]] || continue
+        _out+=(--dataset "${ds}")
+    done
+}
+
+datasets_display_for_row() {
+    local datasets_csv="$1"
+    echo "${datasets_csv//,/, }"
 }
 
 study_name_for_cell() {
@@ -251,8 +304,9 @@ print_benchmark_banner() {
     echo "benchmarks:"
     local row bench
     while IFS= read -r row; do
-        IFS='|' read -r bench _s _d <<< "${row}"
-        echo "  ${bench} (random holdout, seed=${SPLIT_RANDOM_STATE})"
+        parse_matrix_row "${row}"
+        IFS='|' read -r bench _study _datasets <<< "${row}"
+        echo "  ${bench} (${_study}: $(datasets_display_for_row "${_datasets}"), holdout seed=${SPLIT_RANDOM_STATE})"
     done < <(selected_matrix_rows)
     if [[ "${SMOKE:-0}" == "1" ]]; then
         echo "SMOKE:       1 (n_trials=${N_TRIALS}; mini data unless SMOKE_FULL_DATA=1)"

@@ -47,6 +47,25 @@ def test_dataset_preset_key_merged_studies():
     ) == "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2"
 
 
+def test_dataset_preset_key_same_study_pooled():
+    assert dataset_preset_key(
+        study="deeppe",
+        dataset=["deeppe-ht", "deeppe-type", "deeppe-position", "deeppe-endo"],
+    ) == "deeppe/deeppe_ht+deeppe_type+deeppe_position+deeppe_endo"
+    assert dataset_preset_key(
+        study="minsepie",
+        dataset=[
+            "library-insert-set12",
+            "library-insert-18nt",
+            "library-insert-codon-variant",
+            "library-insert-codon-hek3",
+        ],
+    ) == (
+        "minsepie/library_insert_set12+library_insert_18nt+"
+        "library_insert_codon_variant+library_insert_codon_hek3"
+    )
+
+
 def test_candidate_preset_keys_most_specific_first():
     keys = candidate_preset_keys(
         study="pridict2",

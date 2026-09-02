@@ -16,7 +16,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 ARC_SUBMIT="${REPO_ROOT}/scripts/cluster/oxford-arc/submit.sh"
 STAGE="${1:?Usage: $0 <01_tune_matrix.sh|02_train_matrix.sh|03_evaluate_matrix.sh>}"
 

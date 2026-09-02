@@ -55,7 +55,8 @@ sync_vendor_submodules() {
     fi
     if ! git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
         echo "Warning: no git checkout — cannot init vendor/models submodules." >&2
-        echo "  If you rsynced without vendor sources, clone with submodules or sync again." >&2
+        echo "  If vendor sources are missing, clone with submodules:" >&2
+        echo "    git clone --recurse-submodules … && git submodule update --init --recursive" >&2
         echo "" >&2
         return 0
     fi

@@ -22,10 +22,10 @@ fi
 print_benchmark_banner "02 Train matrix (merge preset, register weights)"
 
 while IFS= read -r row; do
-    IFS='|' read -r bench study dataset <<< "${row}"
+    parse_matrix_row "${row}"
     while read -r model; do
         [[ -n "${model}" ]] || continue
-        key="$(cell_key "${model}" "${bench}")"
+        key="$(cell_key "${model}" "${MATRIX_BENCH}")"
         state_key="weights__${key}"
 
         maybe_skip_if_state "${state_key}"
@@ -43,21 +43,20 @@ while IFS= read -r row; do
         fi
 
         echo "======================================"
-        echo "TRAIN ${model} @ ${bench}"
+        echo "TRAIN ${model} @ ${MATRIX_BENCH}"
         echo "======================================"
 
         TRAIN_ARGS=(
             train
             --model "${model}"
-            --dataset-name "$(dataset_name_for_cell "${model}" "${bench}")"
-            --study "${study}"
-            --dataset "${dataset}"
+            --dataset-name "$(dataset_name_for_cell "${model}" "${MATRIX_BENCH}")"
             --hyperparameter-mode merge
             --hyperparameters-json "${hp_json}"
             --register-best-weights
             --device "${DEVICE}"
-            --notes "${EXP_PREFIX}: train ${model} on ${bench} (holdout_3, from scratch)"
+            --notes "${EXP_PREFIX}: train ${model} on ${MATRIX_BENCH} (holdout_3, from scratch)"
         )
+        append_study_dataset_args TRAIN_ARGS "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
 
         split_args_for_cell
         TRAIN_ARGS+=("${SPLIT_ARGS[@]}")

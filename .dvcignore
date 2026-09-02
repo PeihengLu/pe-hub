@@ -13,7 +13,7 @@ services/pe-ensemble/weights/**
 !services/pe-ensemble/weights/*/*__*__*__*/
 !services/pe-ensemble/weights/*/*__*__*__*/**
 
-# Runtime scratch
+# Runtime scratch (not synced via DVC)
 **/__pycache__/
 **/.pytest_cache/
 checkpoints/
@@ -22,8 +22,5 @@ services/pe-ensemble/jobs/
 services/pe-ensemble/eval_jobs/
 services/pe-ensemble/ensemble_jobs/
 services/pe-ensemble/validation_jobs/
-services/pe-ensemble/tuning_studies/
-services/pe-ensemble/config/training_presets_local/
 services/pe-ensemble/checkpoints/
-scripts/experiments/pridict2-reproduction/state/
 node_modules/
