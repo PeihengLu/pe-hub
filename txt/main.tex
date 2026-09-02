@@ -44,13 +44,24 @@
 
 \section{Introduction}
 
-(genetic disorder background)
+Rare diseases are defined as those affecting fewer than 200{,}000 people in the United States or fewer than 1 in 2{,}000 in Europe~\cite{boycottInternationalCooperationEnable2017}.
+Estimates have long clustered around 7{,}000, but a harmonised count of leaf terms across Orphanet, OMIM, GARD and related resources yields 10{,}393 distinct rare-disease entities~\cite{haendelHowManyRare2020}.
+Although individually uncommon, they are collectively substantial: the Mendelian, or monogenic, subset alone affects at least 1 in 50 individuals in European-derived populations~\cite{boycottInternationalCooperationEnable2017}. As a result, substantial effort has been devoted to the development of gene therapy for rare diseases, especially monogenic disorders that are in principle correctable at the causal locus rather than managed only at the level of symptoms.
 
+The characterisation of CRISPR-Cas9 as an RNA-programmable DNA endonuclease provided a practical route to such locus-specific intervention~\cite{jinekProgrammableDualRNAguided2012}.
+The system was rapidly adapted for multiplex genome engineering in human and mouse cells~\cite{congMultiplexGenomeEngineering2013,maliRNAGuidedHumanGenome2013} and has since become a general platform for genome manipulation~\cite{doudnaNewFrontierGenome2014}.
+However, wild-type Cas9 cleaves both DNA strands, and the resulting double-strand breaks are typically resolved by error-prone end-joining, producing uncontrolled mixtures of insertions and deletions and a risk of chromosomal rearrangements~\cite{anzaloneGenomeEditingCRISPR2020,schepImpactChromatinContext2021,anzaloneProgrammableDeletionReplacement2022}.
+Off-target cleavage at related genomic sites is a further concern for therapeutic use~\cite{alkanCRISPRCas9OfftargetingAssessment2018}.
+Precise installation of a defined sequence by homology-directed repair remains possible in principle, but HDR is inefficient in most therapeutically relevant cell types and still requires a double-strand break~\cite{anzaloneGenomeEditingCRISPR2020}.
 
-(invention of cas9 and base editing)
+Base editing was developed to install point mutations without these double-strand-break-associated outcomes.
+By fusing a Cas9 nickase to a nucleobase deaminase, cytosine base editors convert C$\cdot$G to T$\cdot$A~\cite{komorProgrammableEditingTarget2016} and adenine base editors convert A$\cdot$T to G$\cdot$C~\cite{gaudelliProgrammableBaseEditing2017}, together enabling all four transition mutations with high product purity and far fewer indels than nuclease-based editing.
+These tools are well matched to the large class of pathogenic variants that are transitions, but they cannot efficiently introduce transversions, insertions or deletions, and they can convert additional cytosines or adenines within a defined activity window, potentially resulting in undesirable effects~\cite{anzaloneGenomeEditingCRISPR2020,anzaloneSearchandreplaceGenomeEditing2019}.
 
-
-Built on the same nicking mechanism as CRISPR-Cas9, prime editing represents a cutting-edge gene editing technology that enables precise and flexible modifications of the genome on across multiple species, including human\cite{anzaloneSearchandreplaceGenomeEditing2019}. While CRISPR-Cas9 disrupts the genome with double strand breaks, and base editing accurately targets single base changes, prime editing is a more flexible 'genomic word processor' that can perform all possible edit types, including substitutions, insertions and deletions\cite{koeppelPredictionPrimeEditing2023}.
+Prime editing extends the CRISPR-Cas9 nickase strategy in a more general direction, enabling precise, programmable sequence changes across a wide range of species, including humans~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+Whereas CRISPR-Cas9 typically introduces double-strand breaks, and base editors are largely restricted to specific single-nucleotide conversions, prime editing can install substitutions, insertions and deletions without donor DNA or double-strand cleavage~\cite{koeppelPredictionPrimeEditing2023}.
+This versatility depends on two additions to the CRISPR-Cas9 architecture.
+The editor protein fuses a Cas9 nickase to a reverse transcriptase, and the prime editing guide RNA~(pegRNA) extends the conventional spacer and scaffold with a 3$'$ module comprising a primer-binding site~(PBS), which anneals to the nicked DNA strand, and a reverse-transcriptase template~(RTT) that encodes the desired edit~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
 
 \begin{figure}[ht]
     \centering
@@ -62,26 +73,29 @@ Built on the same nicking mechanism as CRISPR-Cas9, prime editing represents a c
 \end{figure}
 
 
-Prime editing installs programmed sequence changes through a nick-and-copy mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
-After the prime editor--pegRNA complex binds the target locus and nicks the PAM-containing strand, the exposed 3$'$ end hybridizes to the pegRNA and primes reverse transcription of the desired edit into the genome (\autoref{fig:pe-process}, steps~1--3).
-The steps that follow are less deterministic.
-Reverse transcription generates a branched intermediate in which the newly synthesized edited 3$'$ flap and the displaced original 5$'$ flap can equilibrate between competing annealing configurations (step~4).
-Cellular flap-processing enzymes such as FEN1 preferentially excise the 5$'$ flap and ligate the edited strand when flap resolution favours the edit (step~5), but this excision step does not always work in the editor's favour: the edited flap may fail to invade the duplex, or 3$'$ exonucleases may degrade it instead, restoring the original sequence and leaving the target available for another round of editing from step~1~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
-Even when the edited strand is ligated in, the resulting heteroduplex still contains mismatches between the edited and unedited strands that must be resolved by mismatch repair (MMR) or replication (step~6).
-Because MMR can copy from either strand, it may reject the edit and rebuild the original allele and reset the locus~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
-These competing repair outcomes are a major reason why raw prime editing efficiencies are often modest, and motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
+Together, these components install programmed sequence changes through a nick-and-copy mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+After the prime editor--pegRNA complex binds the target locus and nicks the PAM-containing strand, the exposed 3$'$ end hybridizes to the PBS and primes reverse transcription of the RTT, copying the desired edit onto a newly synthesized 3$'$ flap (\autoref{fig:pe-process}, steps~1--3).
+The subsequent steps are less deterministic.
+Reverse transcription produces a branched intermediate in which the edited 3$'$ flap and the displaced original 5$'$ flap can equilibrate between competing annealing configurations (step~4).
+Cellular flap-processing enzymes such as FEN1 preferentially excise the 5$'$ flap and ligate the edited strand when flap resolution favours the edit (step~5).
+However, the outcome is not guaranteed: the edited flap may fail to invade the duplex, or 3$'$ exonucleases indigenous to the cell may degrade it, restoring the original sequence and leaving the target available for another round of editing from step~1~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
+Even when the edited strand is ligated, the resulting heteroduplex still contains mismatches between the edited and unedited strands that must be resolved by mismatch repair~(MMR) or replication (step~6).
+Because MMR can use either strand as template, it may reject the edit, restore the original allele and reset the locus~\cite{anzaloneSearchandreplaceGenomeEditing2019,chenEnhancedPrimeEditing2021}.
+These competing repair outcomes help explain why raw prime editing efficiencies are often modest, and they motivate enhanced systems such as PE3~\cite{anzaloneSearchandreplaceGenomeEditing2019}, which nicks the non-edited strand to bias heteroduplex resolution, and PE4/PE5, which transiently suppress MMR with a dominant-negative MLH1 protein~\cite{chenEnhancedPrimeEditing2021}.
 
 On top of the competing repair outcomes, editing efficiency is also heavily shaped by target context and pegRNA design.
-Cis-chromatin position effects and local epigenetic marks can strongly modulate prime editing even for a fixed pegRNA~\cite{liChromatinContextdependentRegulation2024,mathisMachineLearningPrediction2024}.
-Because these locus-level effects are largely separable from pegRNA sequence design and are typically modelled as a separate problem (e.g.\ ePRIDICT), chromatin context is not the focus of this study.
+Cis-chromatin position effects and local epigenetic marks can strongly modulate prime editing even for a fixed pegRNA~\cite{liChromatinContextdependentRegulation2024,mathisMachineLearningPrediction2024}, but because these locus-level effects are largely separable from pegRNA sequence design and are typically modelled as a separate problem (e.g.\ ePRIDICT), chromatin context is not the focus of this study.
 Instead, this work centres on sequence-level determinants of efficiency.
 High-throughput analyses show that position-specific nucleotide composition in the target and pegRNA flanking regions---including PBS and reverse-transcriptase template (RTT) GC content, PAM choice, and the identity of the last templated nucleotide---can shift activity by orders of magnitude~\cite{kimPredictingEfficiencyPrime2021,kimChromatinStructureContextdependent2023}.
 pegRNA architecture adds another layer of control: optimal primer-binding site (PBS) length depends on delivery format and on melting temperature of PBS--target hybridization, because complementarity between the PBS and spacer can auto-inhibit target binding~\cite{ponnienselvanReducingInherentAutoinhibitory2023}, and degradation of the 3$'$ RTT--PBS extension can poison editing unless the pegRNA is stabilized, for example with engineered 3$'$ RNA structures~\cite{nelsonEngineeredPegRNAsImprove2022}.
 Nevertheless, many sequence determinants remain only partly understood.
 For some edit classes, such as insertions, it remains unclear which sequence and repair features govern efficiency even after large-scale profiling~\cite{koeppelPredictionPrimeEditing2023}.
 As a result, efficient prime editing often requires laborious empirical optimization rather than design from first principles~\cite{kimChromatinStructureContextdependent2023,domanDesigningExecutingPrime2022,hsuMechanisticMachineLearning2026}.
-The large number of possible pegRNA designs---varying spacer location, PBS length, and RTT length~\cite{hsuMechanisticMachineLearning2026}, as well as silent edits that can improve efficiency~\cite{chenEnhancedPrimeEditing2021}---further limits the practicality of designing prime editors for real-world applications by hand.
-
+That combinatorial barrier matters because a therapeutic path is already in view.
+Nuclease-based CRISPR-Cas9 has reached the clinic: exagamglogene autotemcel disrupts an enhancer of \textit{BCL11A} to reactivate foetal haemoglobin, with clinical benefit in severe sickle cell disease~\cite{frangoulExagamglogeneAutotemcelSevere2024}.
+This is a compensatory edit, not a correction of the causal \textit{HBB} allele.
+Prime editing can in principle install that correction---and, more broadly, the substitutions, insertions and deletions that gene disruption cannot---without double-strand breaks~\cite{anzaloneSearchandreplaceGenomeEditing2019,everetteExVivoPrime2023}.
+Realising that potential still depends on choosing an efficient pegRNA from a large design space.
 
 This motivates computational tools for in silico pegRNA design given a target sequence and a desired edit.
 Such tools generally operate in two stages.
@@ -116,7 +130,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     
     Kim et al.\cite{kimPredictingEfficiencyPrime2021} conducted one of the first big-data studies on prime editing efficiency, performing a high-throughput evaluation of PE2 activity using 54,836 pairs of pegRNAs and target sequences in HEK293T cells. The study identified factors affecting PE2 efficiency and developed three computational models (including the deep learning model DeepPE) to predict pegRNA efficiency. The data are organized into four datasets in the database.
 
-    The main library \nolinkurl{deeppe-ht} contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus. The data are split into HT-training and HT-test subsets.
+    The main library \nolinkurl{deeppe-ht} contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus.
 
     Library~2 is split into an edit-type subset \nolinkurl{deeppe-type}, which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset \nolinkurl{deeppe-position}, which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2. 
     % TODO: add detailed number of counts for each subset
@@ -285,10 +299,10 @@ We are only considering models with general prime editing efficiency prediction 
 
     \item \textbf{OptiPrime}
     
-    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime as a mechanistic model for prime editing efficiency prediction. OptiPrime is a kinetic model that uses machine learning to predict the kinetic parameters of the prime editing reaction. 
+    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime as a mechanistic model for prime editing efficiency prediction. OptiPrime is a kinetic model that uses deep learning to predict the kinetic parameters of the prime editing reaction. 
 \end{enumerate}
 
-On top of the three deep learning models, a small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
+On top of the four deep learning models, a small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
 
 \subsubsection{Synchronizing PyTorch Versions}
 
