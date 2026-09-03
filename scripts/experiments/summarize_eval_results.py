@@ -21,9 +21,12 @@ SUMMARY_COLUMNS = [
     "weights",
     "experiment_id",
     "cv_run",
+    "pridict2_head",
     "benchmark_name",
     "study",
     "datasets",
+    "cell_line",
+    "original_fold_test_value",
     "status",
     "n_samples",
     "pearson",
@@ -37,9 +40,11 @@ SUMMARY_COLUMNS = [
 AGG_COLUMNS = [
     "model",
     "experiment_id",
+    "pridict2_head",
     "benchmark_name",
     "study",
     "datasets",
+    "cell_line",
     "n_folds",
     "n_ok",
     "pearson_mean",
@@ -48,6 +53,9 @@ AGG_COLUMNS = [
     "spearman_std",
     "n_samples_mean",
 ]
+
+# Longest first so ``__K562MLH1dn`` is not parsed as ``__K562``.
+_PRIDICT2_HEAD_SUFFIXES = ("K562MLH1dn", "K562", "HEK")
 
 
 def _metric(metrics: Any, key: str) -> Optional[float]:
@@ -81,6 +89,94 @@ def _datasets_str(value: Any) -> str:
     return str(value)
 
 
+def pridict2_head_from_weights(weights: Any) -> Optional[str]:
+    text = str(weights or "")
+    for head in _PRIDICT2_HEAD_SUFFIXES:
+        if text.endswith(f"__{head}"):
+            return head
+    return None
+
+
+def _looks_like_eval_payload(obj: dict[str, Any]) -> bool:
+    return (
+        "metrics" in obj
+        or bool(obj.get("error_type"))
+        or bool(obj.get("skipped"))
+        or ("model" in obj and "benchmark_name" in obj)
+    )
+
+
+def extract_json_object(text: str) -> Optional[dict[str, Any]]:
+    """Parse the peen evaluation JSON object from mixed stdout.
+
+    Vendor logs may contain ``{`` earlier (OptiPrime logs ``syn{50}``) and the
+    result object itself is nested, so neither the first nor the last brace is
+    always the payload. Scan backwards and keep the first object that looks
+    like an evaluate record.
+    """
+    if not text:
+        return None
+    decoder = json.JSONDecoder()
+    idx = text.rfind("{")
+    fallback: Optional[dict[str, Any]] = None
+    while idx >= 0:
+        try:
+            obj, _end = decoder.raw_decode(text[idx:])
+        except json.JSONDecodeError:
+            idx = text.rfind("{", 0, idx)
+            continue
+        if isinstance(obj, dict):
+            if _looks_like_eval_payload(obj):
+                return obj
+            fallback = obj
+        idx = text.rfind("{", 0, idx)
+    return fallback
+
+
+def stdout_log_path(
+    log_dir: Path,
+    model: Any,
+    weights: Any,
+    benchmark_name: Any,
+    original_fold_test_value: Any = None,
+) -> Path:
+    fold = ""
+    if original_fold_test_value is not None and original_fold_test_value != "":
+        fold = f"__fold_{int(float(original_fold_test_value))}"
+    safe = f"{model}__{weights}__{benchmark_name}{fold}".replace("/", "_").replace(":", "_")
+    return log_dir / f"{safe}.stdout"
+
+
+def repair_cli_failures_from_logs(
+    records: list[dict[str, Any]], log_dir: Path
+) -> int:
+    """Re-parse stdout for ``cli_failure`` rows whose logs actually succeeded."""
+    repaired = 0
+    for record in records:
+        if record.get("error_type") != "cli_failure":
+            continue
+        path = stdout_log_path(
+            log_dir,
+            record.get("model"),
+            record.get("weights"),
+            record.get("benchmark_name"),
+            record.get("original_fold_test_value"),
+        )
+        if not path.is_file():
+            continue
+        payload = extract_json_object(
+            path.read_text(encoding="utf-8", errors="replace")
+        )
+        if not isinstance(payload, dict) or payload.get("metrics") is None:
+            continue
+        record.update(payload)
+        record["status"] = "ok"
+        record.pop("error_type", None)
+        record.pop("stderr_tail", None)
+        repaired += 1
+    return repaired
+
+
 def load_records(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as handle:
@@ -112,9 +208,12 @@ def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
         "weights": record.get("weights"),
         "experiment_id": record.get("experiment_id") or record.get("weights"),
         "cv_run": record.get("cv_run"),
+        "pridict2_head": pridict2_head_from_weights(record.get("weights")),
         "benchmark_name": record.get("benchmark_name"),
         "study": record.get("study"),
         "datasets": _datasets_str(record.get("datasets")),
+        "cell_line": record.get("cell_line"),
+        "original_fold_test_value": record.get("original_fold_test_value"),
         "status": status,
         "n_samples": record.get("n_samples"),
         "pearson": _metric(metrics, "pearson"),
@@ -138,15 +237,17 @@ def aggregate_cv(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = (
             row.get("model"),
             row.get("experiment_id"),
+            row.get("pridict2_head"),
             row.get("benchmark_name"),
             row.get("study"),
             row.get("datasets"),
+            row.get("cell_line"),
         )
         groups[key].append(row)
 
     out: list[dict[str, Any]] = []
     for key, members in sorted(groups.items(), key=lambda item: item[0]):
-        model, experiment_id, benchmark_name, study, datasets = key
+        model, experiment_id, pridict2_head, benchmark_name, study, datasets, cell_line = key
         ok = [m for m in members if m.get("status") == "ok" and m.get("pearson") is not None]
         pearsons = [float(m["pearson"]) for m in ok]
         spearmans = [float(m["spearman"]) for m in ok if m.get("spearman") is not None]
@@ -162,9 +263,11 @@ def aggregate_cv(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "model": model,
                 "experiment_id": experiment_id,
+                "pridict2_head": pridict2_head,
                 "benchmark_name": benchmark_name,
                 "study": study,
                 "datasets": datasets,
+                "cell_line": cell_line,
                 "n_folds": len(members),
                 "n_ok": len(ok),
                 "pearson_mean": _mean(pearsons),
@@ -194,10 +297,12 @@ def print_console_summary(rows: list[dict[str, Any]], agg: list[dict[str, Any]])
     if leak:
         print(f"data_leak aborts: {leak}")
     if agg:
-        print(f"cv aggregates (experiment × benchmark): {len(agg)}")
+        print(f"cv aggregates (experiment × head × benchmark): {len(agg)}")
         for row in agg[:12]:
+            head = row.get("pridict2_head")
+            head_bit = f"/{head}" if head else ""
             print(
-                f"  {row['model']}/{row['experiment_id']} @ {row['benchmark_name']}: "
+                f"  {row['model']}/{row['experiment_id']}{head_bit} @ {row['benchmark_name']}: "
                 f"pearson={row['pearson_mean']!s}±{row['pearson_std']!s} "
                 f"(n_ok={row['n_ok']}/{row['n_folds']})"
             )
@@ -220,6 +325,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=None,
         help="CV mean/std CSV (default: <jsonl-dir>/summary_cv_mean_std.csv)",
     )
+    parser.add_argument(
+        "--repair-from-logs",
+        action="store_true",
+        help=(
+            "Re-parse sibling logs/*.stdout for cli_failure rows whose vendor "
+            "logs contain a successful peen JSON object (OptiPrime syn{50})."
+        ),
+    )
     args = parser.parse_args(argv)
 
     jsonl_path = args.results_jsonl.resolve()
@@ -232,6 +345,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     agg_path = args.agg_csv or (out_dir / "summary_cv_mean_std.csv")
 
     records = load_records(jsonl_path)
+    if args.repair_from_logs:
+        repaired = repair_cli_failures_from_logs(records, out_dir / "logs")
+        if repaired:
+            jsonl_path.write_text(
+                "".join(json.dumps(record, default=str) + "\n" for record in records),
+                encoding="utf-8",
+            )
+            print(f"Repaired {repaired} cli_failure row(s) from logs")
     rows = [flatten_row(record) for record in records]
     write_csv(summary_path, rows, SUMMARY_COLUMNS)
 

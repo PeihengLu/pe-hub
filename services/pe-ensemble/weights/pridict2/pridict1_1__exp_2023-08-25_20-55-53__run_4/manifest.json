@@ -3,13 +3,54 @@
   "files": [],
   "format": "pridict2_run",
   "id": "pridict1_1__exp_2023-08-25_20-55-53__run_4",
-  "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_4",
+  "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 4",
   "metrics": null,
   "model": "pridict2",
-  "notes": null,
+  "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
   "provenance": {
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/pridict2/trained_models/pridict1_1/exp_2023-08-25_20-55-53/train_val/run_4"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": true,
+      "held_out_library_diverse_fold": 4,
+      "includes_clinvar_train_folds": false,
+      "library1_all_loci_are_train": true,
+      "library1_has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 34421,
+      "target_uid_fingerprint": "sha1:a1bc822aac5089690d9665f579b705c44c8868ff",
+      "vendor_training_lineage": [
+        {
+          "dataset": "library1",
+          "note": "no author test split; all loci are training data",
+          "study": "pridict1"
+        },
+        {
+          "dataset": "library-diverse",
+          "note": "testset_fold==4 held out",
+          "study": "pridict2"
+        }
+      ]
+    },
+    "dataset_name": "library1 + library-diverse",
+    "dataset_source": "vendor",
+    "filters": {
+      "dataset": [
+        "library1",
+        "library-diverse"
+      ],
+      "study": [
+        "pridict1",
+        "pridict2"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": {
+      "original_fold_test_value": 4.0,
+      "use_original_fold": true
+    }
+  }
 }

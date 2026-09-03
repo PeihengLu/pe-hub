@@ -247,9 +247,43 @@ class OPEDModelWrapper(BasePEModel):
             encoded.extend([0] * (padded_len - len(encoded)))
         return encoded
 
+    # 47bp OPED window: 4 bp upstream + 20 bp spacer + 3 bp PAM + 20 bp down.
+    # The nick sits between spacer and PAM (0-based index 21). Genomic PBS is
+    # Target[21 - len(PBS) : 21], matching DeepPE Library 1 / PE-DB format=oped.
+    _OPED_NICK_INDEX = 21
+    # Bump when tokenisation / orientation changes so ``use_cache`` pickles
+    # from an older encoder are not reused.
+    _ENCODING_REVISION = 2
+
+    @staticmethod
+    def _orient_pbs_rt_to_genomic(target: str, pbs: str, rt: str) -> Tuple[str, str]:
+        """Return PBS/RT in the genomic binding-region orientation.
+
+        The merged order-3 decoder was trained on DeepPE Library 1, where the
+        column named ``3' extension sequence of pegRNA`` is already genomic
+        (PBS equals ``Target[nick-len:nick]``) and is encoded without RC.
+
+        PE-DB ``format=oped`` follows that convention. Vendor ClinVar / Perl
+        outputs store pegRNA-sense PBS/RT (RC of the nick window); those are
+        flipped here so inference matches training. PBS nick geometry is the
+        orientation signal for both PBS and RT.
+        """
+        nick = OPEDModelWrapper._OPED_NICK_INDEX
+        if pbs and len(target) >= nick:
+            start = max(0, nick - len(pbs))
+            genomic_pbs = target[start:nick]
+            if genomic_pbs == pbs:
+                return pbs, rt
+            if genomic_pbs == reverse_complement(pbs):
+                return reverse_complement(pbs), reverse_complement(rt)
+        return pbs, rt
+
     @staticmethod
     def _to_oped_numeric_df(df_oped: pd.DataFrame) -> pd.DataFrame:
         """Convert OPED sequences to encoded numeric format.
+
+        PBS/RT are encoded in genomic binding-region orientation (DeepPE HT /
+        PE-DB). PegRNA-sense vendor files are reverse-complemented first.
 
         Args:
             df_oped (pd.DataFrame): OPED sequences data
@@ -293,37 +327,38 @@ class OPEDModelWrapper(BasePEModel):
 
         records = []
         for target, pbs, rt in zip(target_series, pbs_series, rt_series):
-            pbs_rc = sanitize_dna_sequence(reverse_complement(pbs))
-            rt_rc = sanitize_dna_sequence(reverse_complement(rt))
             target = sanitize_dna_sequence(target)
+            pbs, rt = OPEDModelWrapper._orient_pbs_rt_to_genomic(target, pbs, rt)
+            pbs = sanitize_dna_sequence(pbs)
+            rt = sanitize_dna_sequence(rt)
 
             record = {
                 "Target": OPEDModelWrapper._encode_kmers_with_padding(
                     target, 1, char2id, max_target_len
                 ),
                 "PBS": OPEDModelWrapper._encode_kmers_with_padding(
-                    pbs_rc, 1, char2id, max_pbs_len
+                    pbs, 1, char2id, max_pbs_len
                 ),
                 "RT": OPEDModelWrapper._encode_kmers_with_padding(
-                    rt_rc, 1, char2id, max_rt_len
+                    rt, 1, char2id, max_rt_len
                 ),
                 "Target_o2": OPEDModelWrapper._encode_kmers_with_padding(
                     target, 2, char2id_o2, max_target_len - 1
                 ),
                 "PBS_o2": OPEDModelWrapper._encode_kmers_with_padding(
-                    pbs_rc, 2, char2id_o2, max_pbs_len - 1
+                    pbs, 2, char2id_o2, max_pbs_len - 1
                 ),
                 "RT_o2": OPEDModelWrapper._encode_kmers_with_padding(
-                    rt_rc, 2, char2id_o2, max_rt_len - 1
+                    rt, 2, char2id_o2, max_rt_len - 1
                 ),
                 "Target_o3": OPEDModelWrapper._encode_kmers_with_padding(
                     target, 3, char2id_o3, max_target_len - 2
                 ),
                 "PBS_o3": OPEDModelWrapper._encode_kmers_with_padding(
-                    pbs_rc, 3, char2id_o3, max_pbs_len - 2
+                    pbs, 3, char2id_o3, max_pbs_len - 2
                 ),
                 "RT_o3": OPEDModelWrapper._encode_kmers_with_padding(
-                    rt_rc, 3, char2id_o3, max_rt_len - 2
+                    rt, 3, char2id_o3, max_rt_len - 2
                 ),
             }
             records.append(record)
@@ -338,7 +373,9 @@ class OPEDModelWrapper(BasePEModel):
         cache_dir = Path(DATA_ROOT) / "formatted" / "oped"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        params = f"target_len={target_len}"
+        params = (
+            f"target_len={target_len}|encoding_rev={OPEDModelWrapper._ENCODING_REVISION}"
+        )
         df_json = df.to_json(
             orient="split",
             date_format="iso",
@@ -416,12 +453,17 @@ class OPEDModelWrapper(BasePEModel):
             hidden_size_fully = fc_out_sizes[:-1]
             output_size = int(fc_out_sizes[-1])
 
+        # Head count is not stored in the state_dict. The vendored
+        # ``order3_decoder`` checkpoint matches the class default nhead=8
+        # (embedding_size=64). Vendor ``load_model`` hardcodes nhead=64,
+        # which still loads (QKV weight shapes ignore nhead) but splits
+        # each 64-d embedding into 64 heads of dim 1. Do not copy that.
         nhead = 8
-        # Prefer a divisor of embedding_size; fall back to 1.
-        for candidate in (8, 4, 2, 1):
-            if embedding_size % candidate == 0:
-                nhead = candidate
-                break
+        if embedding_size % nhead != 0:
+            for candidate in (8, 4, 2, 1):
+                if embedding_size % candidate == 0:
+                    nhead = candidate
+                    break
 
         return {
             "kind": "encoder_decoder" if is_encoder_decoder else "encoder",

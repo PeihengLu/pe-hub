@@ -23,6 +23,11 @@
 #
 # Dry-run (validate + estimated start):
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
+#
+# Scratch-benchmark matrix (one SLURM job per model×benchmark cell):
+#   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+#   MODEL=oped BENCHMARK=pridict1-library1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+#   SUBMIT_MATRIX_AS_ONE=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh  # all cells in one job
 
 set -euo pipefail
 
@@ -45,8 +50,30 @@ if [[ "${1:-}" == "--" ]]; then
     EXTRA_SBATCH=("$@")
 fi
 
+STAGE_BASENAME="$(basename "${STAGE_SCRIPT}")"
+
+# Matrix stages (01/02/03_*_matrix.sh) run one model×benchmark cell per job.
+# submit.sh 01_tune_matrix.sh  → fans out via submit_arc_matrix.sh (21 jobs)
+# MODEL=oped BENCHMARK=… submit.sh 01_tune_matrix.sh  → single cell
+# SUBMIT_MATRIX_AS_ONE=1 submit.sh 01_tune_matrix.sh  → one job, all cells (legacy)
+if [[ "${STAGE_BASENAME}" == *_matrix.sh \
+    && "${SUBMIT_MATRIX_AS_ONE:-0}" != "1" \
+    && ( -z "${MODEL:-}" || -z "${BENCHMARK:-}" ) ]]; then
+    MATRIX_SUBMIT="${PE_HUB_ROOT}/scripts/experiments/scratch-benchmark/submit_arc_matrix.sh"
+    if [[ -x "${MATRIX_SUBMIT}" ]]; then
+        echo "Matrix stage ${STAGE_BASENAME}: submitting one SLURM job per cell (set SUBMIT_MATRIX_AS_ONE=1 to run all cells in one job)."
+        exec "${MATRIX_SUBMIT}" "${STAGE_BASENAME}"
+    fi
+    echo "Warning: ${MATRIX_SUBMIT} missing; submitting ${STAGE_BASENAME} as a single job." >&2
+fi
+
 SBATCH_SCRIPT="${ARC_DIR}/run_stage.sbatch"
 JOB_NAME="pe-$(basename "${STAGE_SCRIPT}" .sh | tr '_' '-' | cut -c1-40)"
+if [[ -n "${MODEL:-}" && -n "${BENCHMARK:-}" ]]; then
+    JOB_SUFFIX="$(echo "${MODEL}__${BENCHMARK}" | tr '[:upper:]' '[:lower:]' | tr '_/' '-' | tr -cd 'a-z0-9.-')"
+    JOB_NAME="pe-$(basename "${STAGE_SCRIPT}" .sh | tr '_' '-' | cut -c1-24)-${JOB_SUFFIX}"
+    JOB_NAME="${JOB_NAME:0:40}"
+fi
 
 # On cluster, SMOKE=1 means fewer trials — not subsampled data (local default).
 if [[ "${SMOKE:-0}" == "1" && -z "${SMOKE_FULL_DATA:-}" ]]; then
@@ -61,7 +88,7 @@ SBATCH_ARGS=(
     --cpus-per-task="${ARC_CPUS}"
     --mem="${ARC_MEM}"
     --gres="gpu:${ARC_GPUS}"
-    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}"
+    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}",MODEL="${MODEL:-}",BENCHMARK="${BENCHMARK:-}"
     --chdir="${PE_HUB_ROOT}"
 )
 

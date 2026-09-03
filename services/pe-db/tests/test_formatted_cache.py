@@ -8,8 +8,10 @@ import pytest
 
 from app.converter import DataConverter
 from app.formatted_cache import (
+    FORMATTED_CACHE_REVISIONS,
     clear_formatted_cache,
     formatted_cache_path,
+    formatted_cache_revision,
     load_formatted_cache,
     save_formatted_cache,
 )
@@ -82,6 +84,15 @@ def test_save_and_load_formatted_cache(datasets_dir: Path):
     assert loaded is not None
     assert list(loaded.columns) == list(df.columns)
     assert len(loaded) == len(df)
+    sidecar = Path(str(formatted_cache_path(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )) + ".revision")
+    assert sidecar.read_text(encoding="utf-8").strip() == str(formatted_cache_revision("oped"))
 
 
 def test_load_formatted_cache_rejects_row_count_mismatch(datasets_dir: Path):
@@ -107,6 +118,160 @@ def test_load_formatted_cache_rejects_row_count_mismatch(datasets_dir: Path):
         )
         is None
     )
+
+
+def test_load_formatted_cache_skips_stale_revision(datasets_dir: Path):
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df,
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    cache_path = formatted_cache_path(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    sidecar = Path(str(cache_path) + ".revision")
+    sidecar.write_text("1", encoding="utf-8")
+    assert (
+        load_formatted_cache(
+            "oped",
+            "deepprime",
+            "clinvar",
+            "hek293t",
+            "pe2",
+            datasets_dir=datasets_dir,
+            expected_rows=len(df),
+        )
+        is None
+    )
+
+
+def test_load_formatted_cache_skips_pre_revision_when_format_bumped(
+    datasets_dir: Path,
+):
+    """Existing OPED parquet has no sidecar; current revision is 2."""
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df,
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    cache_path = formatted_cache_path(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    Path(str(cache_path) + ".revision").unlink()
+    assert FORMATTED_CACHE_REVISIONS["oped"] > 1
+    assert (
+        load_formatted_cache(
+            "oped",
+            "deepprime",
+            "clinvar",
+            "hek293t",
+            "pe2",
+            datasets_dir=datasets_dir,
+            expected_rows=len(df),
+        )
+        is None
+    )
+
+
+def test_load_formatted_cache_keeps_pre_revision_at_v1(
+    datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setitem(FORMATTED_CACHE_REVISIONS, "oped", 1)
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df,
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    Path(str(formatted_cache_path(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )) + ".revision").unlink()
+    loaded = load_formatted_cache(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+        expected_rows=len(df),
+    )
+    assert loaded is not None
+    assert len(loaded) == len(df)
+
+
+def test_saving_one_oped_sheet_does_not_validate_sibling_stale_parquet(datasets_dir: Path):
+    """Format-level .revision previously made every OPED parquet look current."""
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    stale_path = formatted_cache_path(
+        "oped",
+        "deepprime",
+        "clinvar",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(stale_path, index=False)
+    save_formatted_cache(
+        df,
+        "oped",
+        "minsepie",
+        "library-insert-18nt",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+    )
+    assert (
+        load_formatted_cache(
+            "oped",
+            "deepprime",
+            "clinvar",
+            "hek293t",
+            "pe2",
+            datasets_dir=datasets_dir,
+            expected_rows=len(df),
+        )
+        is None
+    )
+    loaded = load_formatted_cache(
+        "oped",
+        "minsepie",
+        "library-insert-18nt",
+        "hek293t",
+        "pe2",
+        datasets_dir=datasets_dir,
+        expected_rows=len(df),
+    )
+    assert loaded is not None
 
 
 def test_load_or_convert_formatted_restores_source_index(

@@ -14,6 +14,16 @@ from .format_registry import known_model_formats
 
 logger = logging.getLogger(__name__)
 
+# Bump a format when its converter semantics change so stale parquet is skipped.
+# Formats still at revision 1 keep pre-revision caches (no ``.revision`` file).
+FORMATTED_CACHE_REVISIONS: dict[str, int] = {
+    "deepprime": 1,
+    "pridict": 1,
+    "pridict2": 1,
+    "oped": 2,  # PBS from WT, RT from Mut
+    "optiprime": 1,
+}
+
 
 def formatted_model_formats() -> frozenset[str]:
     """Model format names eligible for disk cache (derived from the format registry)."""
@@ -26,6 +36,40 @@ def _normalize_segment(value: str) -> str:
 
 def formatted_root(datasets_dir: Optional[Path] = None) -> Path:
     return (datasets_dir or DATA_ROOT) / "formatted"
+
+
+def formatted_cache_revision(target_format: str) -> int:
+    return FORMATTED_CACHE_REVISIONS.get(target_format, 1)
+
+
+def _entry_revision_path(parquet_path: Path) -> Path:
+    """Per-file sidecar. A format-level ``.revision`` is not used: saving one
+    sheet must not mark sibling parquets as current."""
+    return parquet_path.with_name(parquet_path.name + ".revision")
+
+
+def _read_entry_revision(parquet_path: Path) -> Optional[int]:
+    path = _entry_revision_path(parquet_path)
+    if not path.is_file():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _write_entry_revision(parquet_path: Path, target_format: str) -> None:
+    path = _entry_revision_path(parquet_path)
+    path.write_text(str(formatted_cache_revision(target_format)), encoding="utf-8")
+
+
+def _entry_revision_is_current(parquet_path: Path, target_format: str) -> bool:
+    expected = formatted_cache_revision(target_format)
+    stored = _read_entry_revision(parquet_path)
+    if stored is None:
+        # Pre-revision caches are valid only while the format is still at 1.
+        return expected == 1
+    return stored == expected
 
 
 def formatted_cache_path(
@@ -99,6 +143,14 @@ def load_formatted_cache(
     )
     if not path.is_file():
         return None
+    if not _entry_revision_is_current(path, target_format):
+        logger.warning(
+            "Formatted cache revision mismatch for %s (have %s, want %s); reconverting",
+            path,
+            _read_entry_revision(path),
+            formatted_cache_revision(target_format),
+        )
+        return None
     cached = pd.read_parquet(path)
     if expected_rows is not None and len(cached) != expected_rows:
         logger.warning(
@@ -132,5 +184,6 @@ def save_formatted_cache(
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
+    _write_entry_revision(path, target_format)
     logger.info("Wrote formatted cache: %s", path)
     return path

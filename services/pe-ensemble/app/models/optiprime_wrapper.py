@@ -29,6 +29,77 @@ logger = logging.getLogger(__name__)
 VENDOR_SUBDIR = "optiprime"
 RX_GRAPH_RELPATH = "graphs/pe_model.rx"
 NUM_ENSEMBLE_MODELS = 5
+# Vendor ``process_fname`` only accepts Liu_/Schwank_/Kim_/YKim_ stems and
+# overwrites converter-filled scaffold/motif/cas9/pe_type/time. Eval CSVs
+# can use any name; metadata comes from the pe-db converter.
+_PREDICT_CSV_NAME = "eval.csv"
+
+
+def _preprocess_optiprime_eval_df(p: Path, df: pd.DataFrame) -> pd.DataFrame:
+    """``format_pe_df`` + hash columns, without vendor filename parsing."""
+    from scripts.pe.pe_utils import format_pe_df
+    from scripts.utils import deterministic_hash
+
+    df = format_pe_df(p, df)
+    df["time"] = df["time"] - 1
+    df["spacer_hash"] = df["spacer"].apply(deterministic_hash)
+    df["pegrna_hash"] = df["pegrna"].apply(deterministic_hash)
+    df["edit_hash"] = df["min_edit"].apply(deterministic_hash)
+    return df
+
+
+def _as_float_scalar(value: Any) -> float:
+    """Coerce RuleSet3 / ViennaRNA outputs to a single float.
+
+    Newer ``rs3.seq.predict_seq`` returns an ndarray; vendor
+    ``HashedScalarDiskRxInput`` assigns that into a 1-D float buffer and
+    raises ``ValueError: setting an array element with a sequence``.
+    """
+    arr = np.asarray(value, dtype=np.float64).reshape(-1)
+    if arr.size != 1:
+        raise ValueError(
+            f"OptiPrime scalar feature expected one value, got shape {np.shape(value)}"
+        )
+    return float(arr[0])
+
+
+def _patch_optiprime_scalar_features() -> None:
+    """Make vendor scalar disk features accept ndarray scores."""
+    from collections import defaultdict
+    import pickle as pkl
+
+    from reaction.rx_input import HashedDiskRxInput, HashedScalarDiskRxInput
+    import scripts.pe.pe_inputs as pe_inputs
+
+    orig_rs3 = pe_inputs.rs3_predict
+    if not getattr(orig_rs3, "_pehub_scalar", False):
+
+        def _rs3_scalar(seqs, *args, **kwargs):
+            return _as_float_scalar(orig_rs3(seqs, *args, **kwargs))
+
+        _rs3_scalar._pehub_scalar = True  # type: ignore[attr-defined]
+        pe_inputs.rs3_predict = _rs3_scalar
+
+    if getattr(HashedScalarDiskRxInput.process, "_pehub_squeezed", False):
+        return
+
+    def _squeezed_process(self, df, cache, verbose=False):
+        HashedDiskRxInput.process(self, df, cache, verbose=verbose)
+        full_data = np.zeros(len(df), dtype=np.float32)
+        hashes = df[self.hash_column].tolist()
+        groups: dict[str, list[tuple[int, str]]] = defaultdict(list)
+        for i, hash_ in enumerate(hashes):
+            groups[hash_[0:2]].append((i, hash_))
+        disk_path = cache["_META"]["disk_cache"]
+        for hash2, entries in groups.items():
+            with self.dpath(disk_path, hash2).open("rb") as f:
+                data2 = pkl.load(f)
+            for i, hash_ in entries:
+                full_data[i] = _as_float_scalar(data2[hash_])
+        cache[self.name] = full_data
+
+    _squeezed_process._pehub_squeezed = True  # type: ignore[attr-defined]
+    HashedScalarDiskRxInput.process = _squeezed_process
 
 
 def _ensure_optiprime_on_path() -> Path:
@@ -129,6 +200,8 @@ class OptiPrimeModelWrapper(BasePEModel):
         self._init_vendor()
         import tempfile
 
+        _patch_optiprime_scalar_features()
+
         from reaction.rx_dataset import RxDataset
         from reaction.rx_graph import read_rxfile
         from reaction.rx_model import RxModel
@@ -137,9 +210,7 @@ class OptiPrimeModelWrapper(BasePEModel):
         from reaction.utils import get_param_idxs, get_param_sizes, make_loader, prep_loader
 
         from scripts.pe.models import EditModel, PegRNAMLP, SynModel
-        from scripts.pe.pe_datasets import process_fname
         from scripts.pe.pe_inputs import PE_ON_INPUTS, SYN_INPUTS, EDIT_INPUTS, MMR_INPUTS
-        from scripts.pe.pe_utils import format_pe_df
 
         from jax import jit, vmap
         import jax.numpy as jnp
@@ -169,7 +240,7 @@ class OptiPrimeModelWrapper(BasePEModel):
         # Write data to a temp directory as CSV (OptiPrime's RxDataset loads from dir)
         with tempfile.TemporaryDirectory(prefix="optiprime_pred_") as tmpdir:
             tmp_path = Path(tmpdir)
-            csv_path = tmp_path / "OptiPrime_HEK293T_data_PE2.csv"
+            csv_path = tmp_path / _PREDICT_CSV_NAME
 
             prep_df = data.copy()
             if "edited_frac" not in prep_df.columns:
@@ -194,24 +265,11 @@ class OptiPrimeModelWrapper(BasePEModel):
 
             prep_df.to_csv(csv_path, index=False)
 
-            def preprocess_fn(p: Path, df: pd.DataFrame) -> pd.DataFrame:
-                from scripts.utils import deterministic_hash
-                name_parts = p.stem.split("_")
-                lab_name, cell_type = name_parts[0], name_parts[1]
-                df["group"] = f"{lab_name}_{cell_type}"
-                process_fname(p, df)
-                df = format_pe_df(p, df)
-                df["time"] = df["time"] - 1
-                df["spacer_hash"] = df["spacer"].apply(deterministic_hash)
-                df["pegrna_hash"] = df["pegrna"].apply(deterministic_hash)
-                df["edit_hash"] = df["min_edit"].apply(deterministic_hash)
-                return df
-
             dataset = RxDataset.load_dir(
                 path=tmp_path,
                 rx_graph=rx_graph,
                 rx_inputs=ALL_INPUTS,
-                preprocess_fn=preprocess_fn,
+                preprocess_fn=_preprocess_optiprime_eval_df,
             )
 
             key0 = PRNGKey(0)

@@ -677,9 +677,13 @@ class CatalogRepository:
             stmt = stmt.where(Dataset.name.in_([value.lower() for value in datasets]))
         cell_lines = _normalize_filter_values(cell_line)
         if cell_lines is not None:
+            from pe_common.cell_lines import expand_cell_line_filter_values
+
             stmt = stmt.where(
                 Datasheet.cell_line.in_(
-                    [value.lower().replace("-", "_") for value in cell_lines]
+                    expand_cell_line_filter_values(
+                        value.lower().replace("-", "_") for value in cell_lines
+                    )
                 )
             )
         pe_systems = _normalize_filter_values(pe_system)

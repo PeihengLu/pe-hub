@@ -7,7 +7,7 @@
 #   SMOKE=1 DEVICE=cuda:0 ./scripts/experiments/scratch-benchmark/01_tune_matrix.sh
 #
 # ARC:
-#   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+#   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh   # one job per cell (via submit_arc_matrix)
 #   MODEL=oped BENCHMARK=deepprime-clinvar ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
 set -euo pipefail

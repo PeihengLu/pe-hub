@@ -8,7 +8,9 @@
 # 3. Fine-tune both bases on **library-diverse** HEK and K562 → four models
 # 4. **Mean-ensemble** the two fine-tunes per cell line
 #
-# Library1 uses a random holdout (author PRIDICT1 folds were unavailable).
+# Library1 uses a random holdout for *this* reproduction (author PRIDICT1 folds
+# were never published). Vendor PRIDICT2/OptiPrime training used the full
+# library1 sheet — every locus is training data for those checkpoints.
 # Other PRIDICT2 sheets use random CV + outer test for HPO (not author
 # `testset_fold`), except the merged L1+ClinVar base which aligns to DeepPrime folds.
 #

@@ -22,6 +22,16 @@ from .weights_registry import (
 )
 
 
+# Incomplete MLH1dn fine-tunes: config expects K562MLH1dn heads that were never
+# packaged. Keep them out of WEIGHTS_ROOT even if vendor trees are remounted.
+_SKIP_PRIDICT2_EXPERIMENTS = frozenset(
+    {
+        "exp_2023-12-22_14-22-03",
+        "exp_2023-12-22_16-24-32",
+    }
+)
+
+
 def _pridict2_compact_id(run_dir: Path, trained_root: Path) -> str:
     parts = [p for p in run_dir.relative_to(trained_root).parts if p != "train_val"]
     return "__".join(parts)
@@ -125,6 +135,9 @@ def _migrate_pridict2(*, dry_run: bool) -> List[str]:
             continue
 
         weight_id = _pridict2_compact_id(run_dir, trained_root)
+        if any(token in weight_id for token in _SKIP_PRIDICT2_EXPERIMENTS):
+            print(f"[skip] pridict2/{weight_id} (incomplete December MLH1dn FT)")
+            continue
         if _entry_registered("pridict2", weight_id):
             print(f"[skip] pridict2/{weight_id} already registered")
             continue

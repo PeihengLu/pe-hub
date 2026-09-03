@@ -95,6 +95,34 @@ def test_oped_vendor_weights_load_into_model():
     assert type(wrapper.model).__name__ == "TransformerEncoderDecoderModelOrder3"
 
 
+def test_oped_infer_architecture_pins_nhead_8():
+    """Vendor load_model used nhead=64; weight shapes ignore nhead — pin 8."""
+    from app.models.oped_wrapper import OPEDModelWrapper
+
+    state = {
+        "embedding.0.weight": torch.zeros(5, 64),
+        "embedding.1.weight": torch.zeros(17, 64),
+        "embedding.2.weight": torch.zeros(65, 64),
+        "fully_connected_layers.0.weight": torch.zeros(1, 64),
+    }
+    arch = OPEDModelWrapper._infer_architecture_from_state_dict(state)
+    assert arch["kwargs"]["nhead"] == 8
+    assert arch["kwargs"]["embedding_size"] == 64
+
+
+def test_oped_infer_architecture_falls_back_when_nhead_8_incompatible():
+    from app.models.oped_wrapper import OPEDModelWrapper
+
+    state = {
+        "embedding.0.weight": torch.zeros(5, 12),
+        "embedding.1.weight": torch.zeros(17, 12),
+        "embedding.2.weight": torch.zeros(65, 12),
+        "fully_connected_layers.0.weight": torch.zeros(1, 12),
+    }
+    arch = OPEDModelWrapper._infer_architecture_from_state_dict(state)
+    assert arch["kwargs"]["nhead"] == 4
+
+
 def test_oped_legacy_full_pickle_is_rejected():
     """The legacy full-pickle must not be silently loadable as weights."""
     legacy = VENDOR_MODELS.joinpath(

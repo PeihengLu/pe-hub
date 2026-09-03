@@ -273,6 +273,62 @@ def test_oped_schema_and_target_length():
     assert out["Target(47bp)"].str.len().eq(47).all()
 
 
+def test_oped_pbs_from_wt_and_rt_from_mut():
+    """PBS anneals to WT; the RT template is the edited Mut sequence."""
+    wt = "A" * 20 + "GGGGGG" + "CCCCCCCC" + "A" * 46
+    mut = "A" * 20 + "TTTTTT" + "AAAAAAAA" + "A" * 46
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [20],
+            "pbs_location_r": [26],
+            "rtt_location_l": [26],
+            "rtt_location_r": [34],
+            "lha_location_r": [30],
+            "rha_location_l": [30],
+            "rha_location_r": [34],
+            "editing_efficiency": [0.5],
+        }
+    )
+    out = standardized_to_oped_dataframe(df)
+    assert out["PBS"].iloc[0] == "GGGGGG"
+    assert out["RT"].iloc[0] == "AAAAAAAA"
+
+
+def test_oped_rt_drops_alignment_pads():
+    wt = "A" * 80
+    mut = "A" * 26 + "CCNNCC" + "A" * 48
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [20],
+            "pbs_location_r": [26],
+            "rtt_location_l": [26],
+            "rtt_location_r": [32],
+            "lha_location_r": [30],
+            "rha_location_l": [30],
+            "rha_location_r": [32],
+            "editing_efficiency": [0.5],
+        }
+    )
+    out = standardized_to_oped_dataframe(df)
+    assert out["RT"].iloc[0] == "CCCC"
+
+
 def test_legacy_edit_length_column_still_supported():
     df = _standardized_df("edit_length")
     out = standardized_to_deepprime_dataframe(df)

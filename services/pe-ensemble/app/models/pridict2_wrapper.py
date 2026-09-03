@@ -908,7 +908,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
             name: A weight set name from :meth:`list_available_weights`, or a
                 path to a trained run directory.
         """
-        self.load_model(str(self._resolve_weights_dir(name)))
+        run_dir, cell_type = self.resolve_weight_selection(name)
+        self.load_model(str(run_dir))
+        # ``load_model`` resets the head so a bare run directory stays
+        # multi-head. Restore the suffix parsed from ``name`` (e.g. ``__HEK``).
+        self.selected_cell_type = cell_type
 
     def load_model(self, model_path: str) -> None:
         """

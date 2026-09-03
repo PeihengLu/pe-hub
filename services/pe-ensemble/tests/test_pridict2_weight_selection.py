@@ -100,3 +100,27 @@ def test_resolve_weight_selection_rejects_cell_suffix_on_single_head(
     with pytest.raises(ValueError, match="single-head"):
         PRIDICT2ModelWrapper.resolve_weight_selection(f"{run_dir}__HEK")
 
+
+def test_load_weights_by_name_restores_cell_type_after_load_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """``load_model`` clears the head; named HEK/K562 suffixes must survive."""
+    run_dir = tmp_path / "train_val" / "pridict1_1"
+    wrapper = object.__new__(PRIDICT2ModelWrapper)
+    wrapper.selected_cell_type = "STALE"
+
+    monkeypatch.setattr(
+        PRIDICT2ModelWrapper,
+        "resolve_weight_selection",
+        staticmethod(lambda name: (run_dir, "HEK")),
+    )
+
+    def fake_load(self, model_path: str) -> None:
+        self.loaded_model_dir = model_path
+        self.selected_cell_type = None
+
+    monkeypatch.setattr(PRIDICT2ModelWrapper, "load_model", fake_load)
+    wrapper.load_weights_by_name("pridict1_1__HEK")
+    assert wrapper.selected_cell_type == "HEK"
+    assert wrapper.loaded_model_dir == str(run_dir)
+

@@ -1,5 +1,5 @@
 {
-  "count": 43,
+  "count": 33,
   "entries": [
     {
       "created_at": "2026-06-08T15:10:18Z",
@@ -235,203 +235,103 @@
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_1__exp_2023-08-25_20-55-53__run_0",
-      "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_0",
+      "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 0",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_1__exp_2023-08-25_20-55-53__run_1",
-      "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_1",
+      "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 1",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_1__exp_2023-08-25_20-55-53__run_2",
-      "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_2",
+      "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 2",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_1__exp_2023-08-25_20-55-53__run_3",
-      "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_3",
+      "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 3",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_1__exp_2023-08-25_20-55-53__run_4",
-      "label": "pridict1_1 / exp_2023-08-25_20-55-53 / run_4",
+      "label": "PRIDICT2 Model A (library1 \u2192 library-diverse) / fold 4",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_1__exp_2023-12-22_14-22-03__run_0",
-      "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_0",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_1__exp_2023-12-22_14-22-03__run_1",
-      "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_1",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_1__exp_2023-12-22_14-22-03__run_2",
-      "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_2",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_1__exp_2023-12-22_14-22-03__run_3",
-      "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_3",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_1__exp_2023-12-22_14-22-03__run_4",
-      "label": "pridict1_1 / exp_2023-12-22_14-22-03 / run_4",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model A: base-trained on PRIDICT library1 (90k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=None (loads unsuffixed decoder.pkl). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_2__exp_2023-08-28_22-22-26__run_0",
-      "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_0",
+      "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 0",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_2__exp_2023-08-28_22-22-26__run_1",
-      "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_1",
+      "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 1",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_2__exp_2023-08-28_22-22-26__run_2",
-      "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_2",
+      "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 2",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_2__exp_2023-08-28_22-22-26__run_3",
-      "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_3",
+      "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 3",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     },
     {
       "created_at": "2026-06-08T15:15:50Z",
       "format": "pridict2_run",
       "id": "pridict1_2__exp_2023-08-28_22-22-26__run_4",
-      "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_4",
+      "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 4",
       "metrics": null,
       "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_2__exp_2023-12-22_16-24-32__run_0",
-      "label": "pridict1_2 / exp_2023-12-22_16-24-32 / run_0",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_2__exp_2023-12-22_16-24-32__run_1",
-      "label": "pridict1_2 / exp_2023-12-22_16-24-32 / run_1",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_2__exp_2023-12-22_16-24-32__run_2",
-      "label": "pridict1_2 / exp_2023-12-22_16-24-32 / run_2",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_2__exp_2023-12-22_16-24-32__run_3",
-      "label": "pridict1_2 / exp_2023-12-22_16-24-32 / run_3",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
-      "source": "vendor"
-    },
-    {
-      "created_at": "2026-06-08T15:15:50Z",
-      "format": "pridict2_run",
-      "id": "pridict1_2__exp_2023-12-22_16-24-32__run_4",
-      "label": "pridict1_2 / exp_2023-12-22_16-24-32 / run_4",
-      "metrics": null,
-      "model": "pridict2",
-      "notes": null,
+      "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
       "source": "vendor"
     }
   ],
-  "updated_at": "2026-09-01T13:12:07Z",
+  "updated_at": "2026-09-03T10:34:10Z",
   "version": 1
 }

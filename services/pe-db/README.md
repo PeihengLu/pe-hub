@@ -167,7 +167,10 @@ CLI mirrors the same flags (`pedb filter --merge --use-original-fold …`).
 | `--use-original-fold` | Prefer author `original_fold` where present (`-1` = permanent test by default via `--original-fold-test-value`) |
 | `--merge` | Concatenate matching datasheets, then reassign groups by shared protospacer before splitting |
 
-**Merged DeepPrime ClinVar + PRIDICT library1:** with `--merge --use-original-fold`, PE-DB runs `propagate_original_fold_by_target_uid` after concatenation so library1 rows that share a protospacer/`target_uid` with ClinVar inherit DeepPrime’s `original_fold`. Non-overlapping library1 loci keep random CV / holdout groups. This is what the PRIDICT 2.0 reproduction base uses (see below).
+**PRIDICT library1 has no author `testset_fold` / `original_fold`.** Vendor
+training on that sheet uses every locus. PE-DB will still synthesize a random
+holdout when you ask for a split; that is an evaluation/HPO convenience, not
+an author partition. Merged DeepPrime ClinVar + PRIDICT library1: with `--merge --use-original-fold`, PE-DB runs `propagate_original_fold_by_target_uid` after concatenation so library1 rows that share a protospacer/`target_uid` with ClinVar inherit DeepPrime’s `original_fold`. Non-overlapping library1 loci keep random CV / holdout groups. This is what the PRIDICT 2.0 reproduction base uses (see below).
 
 Example (merged export for training clients):
 

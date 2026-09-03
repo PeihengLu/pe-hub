@@ -3,13 +3,61 @@
   "files": [],
   "format": "pridict2_run",
   "id": "pridict1_2__exp_2023-08-28_22-22-26__run_1",
-  "label": "pridict1_2 / exp_2023-08-28_22-22-26 / run_1",
+  "label": "PRIDICT2 Model B (library1+ClinVar \u2192 library-diverse) / fold 1",
   "metrics": null,
   "model": "pridict2",
-  "notes": null,
+  "notes": "Paper Model B: base-trained on library1 + DeepPrime ClinVar (390k), then fine-tuned on library-diverse with HEK+K562 heads. Inferred from base_model_suffix=HEKschwank (loads decoder_HEKschwank.pkl from the 390k base). Vendor id unchanged so --weights still uses this directory name.",
   "provenance": {
     "vendor_origin": "/Users/peiheng/development/pe-db/vendor/models/pridict2/trained_models/pridict1_2/exp_2023-08-28_22-22-26/train_val/run_1"
   },
   "source": "vendor",
-  "training": null
+  "training": {
+    "data_provenance": {
+      "has_original_test_split": true,
+      "held_out_library_diverse_fold": 1,
+      "includes_clinvar_train_folds": true,
+      "library1_all_loci_are_train": true,
+      "library1_has_original_test_split": false,
+      "loci_recorded": true,
+      "n_target_loci": 79953,
+      "target_uid_fingerprint": "sha1:360f1328422459ae05e3619c9aa57a6d140e67b5",
+      "vendor_training_lineage": [
+        {
+          "dataset": "library1",
+          "note": "no author test split; all loci are training data",
+          "study": "pridict1"
+        },
+        {
+          "dataset": "deepprime-clinvar",
+          "note": "author original_fold=-1 excluded",
+          "study": "deepprime"
+        },
+        {
+          "dataset": "library-diverse",
+          "note": "testset_fold==1 held out",
+          "study": "pridict2"
+        }
+      ]
+    },
+    "dataset_name": "library1 + deepprime-clinvar + library-diverse",
+    "dataset_source": "vendor",
+    "filters": {
+      "dataset": [
+        "library1",
+        "deepprime-clinvar",
+        "library-diverse"
+      ],
+      "study": [
+        "deepprime",
+        "pridict1",
+        "pridict2"
+      ]
+    },
+    "hyperparameters": {},
+    "model_kwargs": {},
+    "split": {
+      "original_fold_test_value": 1.0,
+      "use_original_fold": true
+    }
+  }
 }

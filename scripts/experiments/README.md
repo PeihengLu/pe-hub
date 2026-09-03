@@ -13,7 +13,7 @@ Data loading goes through **`peen` → `pe_db.library`** (same filter/merge/spli
    - outer test holdout (`TEST_PCT`, default `0.15`)
    - 5-fold CV on the remainder (`CV_FOLDS=5`)
    - Optuna maximizes the mean fold validation metric
-   - PRIDICT author `testset_fold` is **not** used
+   - PRIDICT author `testset_fold` is **not** used (library1 has none)
 2. **DeepPrime only** — author folds via `--use-original-fold`:
 
    - `original_fold = -1` → permanent test
@@ -43,47 +43,80 @@ See [`pridict2-reproduction/README.md`](pridict2-reproduction/README.md).
 Cross-benchmark evaluation of base vendor weights with leak prevention on:
 
 - **Weights:** `DeepPrime_base`, OPED merged, OptiPrime `base`, and August 2023
-  PRIDICT2 CV folds with the HEK head
-  (`pridict1_{1,2}__exp_2023-08-*__run_{0..4}__HEK`). December 2023 PRIDICT2
-  experiments are excluded (incomplete bundles; see notes).
-- **Benchmarks:** MinSePIE insert (pooled), DeepPE (pooled), DeepPrime ClinVar,
-  PRIDICT library1, PRIDICT library-diverse, OptiPrime lib-mmr, OptiPrime lib-cv
+  PRIDICT2 CV folds (`pridict1_{1,2}__exp_2023-08-*__run_{0..4}`). **Model A**
+  (`pridict1_1`) is library1-base fine-tuned on library-diverse; **Model B**
+  (`pridict1_2`) is library1+ClinVar-base fine-tuned on library-diverse. Each
+  run has both `__HEK` and `__K562` heads. `hek` and `hek293t` are the same
+  line. Override with `PRIDICT2_HEADS=HEK` (or `K562`) to score one head.
+- **Benchmarks:** MinSePIE insert (pooled libraries), DeepPE (pooled assays), DeepPrime ClinVar,
+  PRIDICT library1, PRIDICT library-diverse, OptiPrime lib-mmr, OptiPrime lib-cv.
+  Each **cell line** is scored separately (library-diverse HEK293T / K562 / K562MLH1dn,
+  DeepPE HEK293T vs HCT116 vs MDA-MB-231, OptiPrime HEK293T vs HeLa, …).
+- **Splits:** DeepPrime ClinVar uses the author `original_fold=-1` test set.
+  PRIDICT2 **`run_x` tests library-diverse `testset_fold==x`** (the fold that
+  checkpoint held out). Other benches use a random group holdout.
+  **PRIDICT library1 has no author test split** (`original_fold` is unset).
+  Vendor models trained on that sheet (PRIDICT2 A/B, OptiPrime) record **all**
+  library1 loci as training data, so in-domain library1 eval is `data_leak`.
+  DeepPrime / OPED were not trained on library1 and can still be scored there.
 
 ```bash
 conda activate pedb
-# Optional: backfill vendor train_target_loci (train folds only for DeepPrime/OPED)
+# Optional: backfill vendor train_target_loci
+# DeepPrime/OPED: author train folds only. PRIDICT2: all library1 (+ ClinVar
+# train folds for Model B) and library-diverse minus the held-out fold.
+# OptiPrime: all library1 + ClinVar train folds + library-diverse + lib-*.
 cd services/pe-ensemble
 python -m app.models.deepprime_vendor_provenance
 python -m app.models.oped_vendor_provenance
 python -m app.models.optiprime_vendor_provenance
+python -m app.models.pridict2_vendor_provenance
 cd ../..
 
 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # Script invokes ``python -m pe_ensemble.cli`` (more reliable than the peen entrypoint).
 python scripts/experiments/summarize_eval_results.py results/base_model_eval/<RUN_ID>/results.jsonl
+
+# Partial rerun: reuse RUN_ID so new cells replace matching rows, then summary.csv
+# is rewritten. Skip DeepPrime (already good); OptiPrime lib-* data_leak rows stay.
+DEVICE=cuda:0 MODELS=oped,pridict2,optiprime RUN_ID=<RUN_ID> \
+  ./scripts/experiments/evaluate_base_model_benchmarks.sh
+# Both PRIDICT2 heads on every sheet (default). HEK-only:
+DEVICE=cuda:0 MODELS=pridict2 PRIDICT2_HEADS=HEK RUN_ID=<RUN_ID> \
+  ./scripts/experiments/evaluate_base_model_benchmarks.sh
+# Re-score library-diverse with fold-matched splits (SKIP_EXISTING will not
+# skip older random-holdout rows of the same weight):
+DEVICE=cuda:0 MODELS=pridict2 BENCHMARKS=pridict2-library-diverse RUN_ID=<RUN_ID> \
+  SKIP_EXISTING=1 ./scripts/experiments/evaluate_base_model_benchmarks.sh
+# OptiPrime-only, non-leak benches. If a prior run marked OptiPrime
+# ``cli_failure`` but logs show success (vendor ``syn{50}`` in stdout), repair:
+python scripts/experiments/summarize_eval_results.py \
+  results/base_model_eval/<RUN_ID>/results.jsonl --repair-from-logs
 ```
 
 Outputs under `results/base_model_eval/<RUN_ID>/`:
 
 - `results.jsonl` — one record per evaluation (including `data_leak` aborts)
 - `summary.csv` — flat table for plotting
-- `summary_cv_mean_std.csv` — PRIDICT2 experiment × benchmark mean±std across folds
+- `summary_cv_mean_std.csv` — PRIDICT2 experiment × head × benchmark mean±std across folds
 
 Latest completed run id is also written to `results/base_model_eval/LATEST_RUN_ID`.
 The `results/` tree is gitignored and tracked with DVC (`results.dvc`); push/pull
 via the ARC remote (see the Oxford ARC README).
 
 **Notes from the reference run:**
-- PRIDICT2 December 2023 experiments are dropped from the eval matrix: config
-  expects `K562MLH1dn` heads that were never packaged, and vendor sources cannot
-  be remigrated. They remain in the weights registry as known-broken.
 - Vendor provenance for DeepPrime / OPED records **train folds only** (author
-  `Test` / `original_fold=-1` excluded). Sync with
-  `python -m app.models.deepprime_vendor_provenance` and
-  `python -m app.models.oped_vendor_provenance` from `services/pe-ensemble`.
+  `Test` / `original_fold=-1` excluded). PRIDICT2 records **all library1
+  loci** (no author split) plus library-diverse minus `run_x`, and Model B
+  also includes ClinVar train folds. Sync with
+  `python -m app.models.deepprime_vendor_provenance`,
+  `python -m app.models.oped_vendor_provenance`,
+  `python -m app.models.optiprime_vendor_provenance`, and
+  `python -m app.models.pridict2_vendor_provenance` from `services/pe-ensemble`.
 - Partial train/test locus overlap excludes overlapping `target_uid`s from the
-  test partition and continues; full overlap (e.g. OptiPrime ensemble ×
-  lib-mmr/lib-cv) still aborts as `data_leak` unless `--allow-data-leak`.
+  test partition and continues; full overlap (e.g. OptiPrime × lib-mmr/lib-cv,
+  or PRIDICT2/OptiPrime × library1) still aborts as `data_leak` unless
+  `--allow-data-leak`.
 - OptiPrime needs the JAX stack (`jax`, `flax`, `chex`, …). Installed automatically by `./scripts/install-clis.sh` on Python 3.11.
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`

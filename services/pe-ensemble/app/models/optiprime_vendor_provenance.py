@@ -13,10 +13,11 @@ This module records that knowledge as:
 1. a ``training`` block on ``weights/optiprime/base/manifest.json``
 2. a ``train_target_loci.json`` sidecar for evaluation-time leak checks
 
-Loci are derived from standardized PE-DB parquet sheets.  DeepPrime ClinVar
-rows with author ``original_fold == -1`` are excluded; all other sources use
-every available row because PE-DB does not expose a vendor hold-out split for
-PRIDICT1 library~1.
+Loci are derived from standardized PE-DB parquet sheets. DeepPrime ClinVar
+rows with author ``original_fold == -1`` are excluded. PRIDICT library1 has
+**no author test split**, so every library1 locus is recorded as training data
+(the same rule as any other vendor model trained on that sheet). Library-diverse
+is included in full because OptiPrime does not ship per-fold checkpoints.
 """
 from __future__ import annotations
 

@@ -835,7 +835,11 @@ def standardized_to_oped_dataframe(
     protospacer_upstream_bases: int = 4,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
-    """Convert standardized schema into OPED sequence dataframe."""
+    """Convert standardized schema into OPED sequence dataframe.
+
+    ``Target(47bp)`` is the unedited reporter window (WT, with Mut filling
+    alignment pads). PBS is sliced from WT; the RT template is sliced from Mut.
+    """
     efficiency = _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0).to_numpy()
     wt_series = _col_as_series(df, "wt_sequence", "").astype(str).str.upper().to_numpy()
     mut_series = _col_as_series(df, "mut_sequence", "").astype(str).str.upper().to_numpy()
@@ -851,6 +855,8 @@ def standardized_to_oped_dataframe(
     for row_pos, (wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i) in enumerate(
         zip(wt_series, mut_series, pbs_l, pbs_r, rtt_l, rtt_r, prot_l)
     ):
+        # Target window is the unedited reporter (WT), with Mut filling
+        # alignment pads (N/X) so the 47bp string stays contiguous DNA.
         ref_chars = []
         for i in range(min(len(wt), len(mut))):
             wt_base = wt[i]
@@ -874,12 +880,14 @@ def standardized_to_oped_dataframe(
             target_end = len(ref_seq)
 
         target = sanitize_dna_sequence(ref_seq[target_start:target_end])
+        # PBS anneals to WT; the RT template is the edited (Mut) sequence.
+        # Drop alignment pads rather than replacing them with A.
         pbs_l_i = max(0, int(pbs_l_i))
-        pbs_r_i = min(len(ref_seq), int(pbs_r_i))
+        pbs_r_i = min(len(wt), int(pbs_r_i))
         rtt_l_i = max(0, int(rtt_l_i))
-        rtt_r_i = min(len(ref_seq), int(rtt_r_i))
-        pbs_seq = sanitize_dna_sequence(ref_seq[pbs_l_i:pbs_r_i])
-        rt_seq = sanitize_dna_sequence(ref_seq[rtt_l_i:rtt_r_i])
+        rtt_r_i = min(len(mut), int(rtt_r_i))
+        pbs_seq = sanitize_dna_sequence(wt[pbs_l_i:pbs_r_i], drop=True)
+        rt_seq = sanitize_dna_sequence(mut[rtt_l_i:rtt_r_i], drop=True)
         if len(target) < target_len:
             target = target + ("A" * (target_len - len(target)))
 
