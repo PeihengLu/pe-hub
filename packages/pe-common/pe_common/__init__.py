@@ -16,7 +16,13 @@ from .devices import (
     resolve_device,
     resolve_device_id,
 )
-from .sequence_utils import align_wt_mut_sequences, remove_padding
+from .sequence_utils import (
+    align_wt_mut_sequences,
+    normalize_target_dna,
+    remove_padding,
+    shift_coords_after_indel_pad,
+    unpadded_coordinate,
+)
 from .data_utils import (
     TARGET_UID_COLUMN,
     add_target_uid,
@@ -51,7 +57,10 @@ __all__ = [
     "resolve_device_id",
     # Sequence utilities
     "align_wt_mut_sequences",
+    "normalize_target_dna",
     "remove_padding",
+    "shift_coords_after_indel_pad",
+    "unpadded_coordinate",
     "build_test_mask_from_group_id",
     "propagate_original_fold_by_target_uid",
     "reassign_group_ids_by_target_location",

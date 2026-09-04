@@ -99,13 +99,36 @@ def pridict2_head_from_weights(weights: Any) -> Optional[str]:
     return None
 
 
+_ENSEMBLE_META_KEYS = {
+    "model",
+    "weights",
+    "experiment_id",
+    "cv_run",
+    "study",
+    "datasets",
+    "cell_line",
+    "benchmark_name",
+    "use_original_fold",
+    "original_fold_test_value",
+    "ensemble",
+    "ensemble_members",
+}
+
+
 def _looks_like_eval_payload(obj: dict[str, Any]) -> bool:
-    return (
-        "metrics" in obj
-        or bool(obj.get("error_type"))
-        or bool(obj.get("skipped"))
-        or ("model" in obj and "benchmark_name" in obj)
-    )
+    """True for a peen evaluate/ensemble result, not a nested fragment.
+
+    Ensemble stdout embeds ``member_metrics`` entries that also contain a
+    ``metrics`` dict. Scanning backwards would otherwise keep the last member
+    (Model B) instead of the combined score.
+    """
+    if obj.get("ensemble_name") or "member_metrics" in obj:
+        return True
+    if obj.get("benchmark_name"):
+        return True
+    if obj.get("error_type") or obj.get("skipped"):
+        return True
+    return "metrics" in obj and "model" in obj and "n_samples" in obj
 
 
 def extract_json_object(text: str) -> Optional[dict[str, Any]]:
@@ -179,6 +202,43 @@ def repair_cli_failures_from_logs(
     return repaired
 
 
+def repair_ensemble_payloads_from_logs(
+    records: list[dict[str, Any]], log_dir: Path
+) -> int:
+    """Replace member-fragment metrics with the combined ensemble JSON from logs."""
+    repaired = 0
+    for record in records:
+        if not record.get("ensemble"):
+            continue
+        path = stdout_log_path(
+            log_dir,
+            record.get("model"),
+            record.get("weights"),
+            record.get("benchmark_name"),
+            record.get("original_fold_test_value"),
+        )
+        if not path.is_file():
+            continue
+        payload = extract_json_object(
+            path.read_text(encoding="utf-8", errors="replace")
+        )
+        if not isinstance(payload, dict) or "ensemble_name" not in payload:
+            continue
+        already_combined = (
+            record.get("n_samples") == payload.get("n_samples")
+            and record.get("metrics") == payload.get("metrics")
+            and "member_metrics" in record
+        )
+        if already_combined:
+            continue
+        for key, value in payload.items():
+            if key in _ENSEMBLE_META_KEYS:
+                continue
+            record[key] = value
+        repaired += 1
+    return repaired
+
+
 def load_records(path: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as handle:
@@ -195,6 +255,9 @@ def load_records(path: Path) -> list[dict[str, Any]]:
 
 def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
     metrics = record.get("metrics")
+    n_samples = record.get("n_samples")
+    if n_samples is None and isinstance(metrics, dict):
+        n_samples = metrics.get("n_samples")
     status = record.get("status")
     if status is None:
         if record.get("skipped"):
@@ -217,7 +280,7 @@ def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
         "cell_line": record.get("cell_line"),
         "original_fold_test_value": record.get("original_fold_test_value"),
         "status": status,
-        "n_samples": record.get("n_samples"),
+        "n_samples": n_samples,
         "pearson": _metric(metrics, "pearson"),
         "spearman": _metric(metrics, "spearman"),
         "leak_reason": record.get("leak_reason"),
@@ -335,7 +398,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help=(
             "Re-parse sibling logs/*.stdout for cli_failure rows whose vendor "
-            "logs contain a successful peen JSON object (OptiPrime syn{50})."
+            "logs contain a successful peen JSON object (OptiPrime syn{50}), "
+            "and for ensemble rows whose stored metrics are a member fragment."
         ),
     )
     args = parser.parse_args(argv)
@@ -351,13 +415,19 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     records = load_records(jsonl_path)
     if args.repair_from_logs:
-        repaired = repair_cli_failures_from_logs(records, out_dir / "logs")
+        log_dir = out_dir / "logs"
+        repaired_cli = repair_cli_failures_from_logs(records, log_dir)
+        repaired_ens = repair_ensemble_payloads_from_logs(records, log_dir)
+        repaired = repaired_cli + repaired_ens
         if repaired:
             jsonl_path.write_text(
                 "".join(json.dumps(record, default=str) + "\n" for record in records),
                 encoding="utf-8",
             )
-            print(f"Repaired {repaired} cli_failure row(s) from logs")
+            print(
+                f"Repaired {repaired_cli} cli_failure and "
+                f"{repaired_ens} ensemble row(s) from logs"
+            )
     rows = [flatten_row(record) for record in records]
     write_csv(summary_path, rows, SUMMARY_COLUMNS)
 

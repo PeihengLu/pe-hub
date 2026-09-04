@@ -1,6 +1,8 @@
 """Tests for formatted model-format disk cache."""
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -9,6 +11,7 @@ import pytest
 from app.converter import DataConverter
 from app.formatted_cache import (
     FORMATTED_CACHE_REVISIONS,
+    clear_cached_data,
     clear_formatted_cache,
     formatted_cache_path,
     formatted_cache_revision,
@@ -496,3 +499,91 @@ def test_clear_formatted_cache_on_force_reexport(datasets_dir: Path):
 
     clear_formatted_cache(datasets_dir=datasets_dir)
     assert not cache_path.exists()
+
+
+def test_clear_cached_data_dry_run_leaves_files(datasets_dir: Path):
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df, "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+    std_dir = datasets_dir / "standardized" / "deepprime" / "clinvar"
+    std_dir.mkdir(parents=True)
+    (std_dir / "hek293t-pe2.parquet").write_bytes(b"std")
+    cache_path = formatted_cache_path(
+        "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+
+    report = clear_cached_data(
+        formatted=True,
+        standardized=True,
+        datasets_dir=datasets_dir,
+        dry_run=True,
+    )
+    assert report["dry_run"] is True
+    assert cache_path.is_file()
+    assert (std_dir / "hek293t-pe2.parquet").is_file()
+    assert any("formatted" in row["path"] for row in report["targets"])
+    assert any("standardized" in row["path"] for row in report["targets"])
+
+
+def test_clear_cached_data_study_and_format_scope(datasets_dir: Path):
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df, "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+    save_formatted_cache(
+        df, "oped", "pridict2", "library_diverse", "hek", "pe2", datasets_dir=datasets_dir
+    )
+    keep = formatted_cache_path(
+        "oped", "pridict2", "library_diverse", "hek", "pe2", datasets_dir=datasets_dir
+    )
+    gone = formatted_cache_path(
+        "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+    clear_cached_data(
+        formatted=True,
+        study="deepprime",
+        target_format="oped",
+        datasets_dir=datasets_dir,
+    )
+    assert keep.is_file()
+    assert not gone.exists()
+
+
+def test_clear_cached_data_standardized_only(datasets_dir: Path):
+    df = standardized_to_oped_dataframe(_sample_standardized())
+    save_formatted_cache(
+        df, "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+    std_keep = datasets_dir / "standardized" / "pridict2" / "library_diverse"
+    std_keep.mkdir(parents=True)
+    (std_keep / "hek-pe2.parquet").write_bytes(b"keep")
+    std_drop = datasets_dir / "standardized" / "deepprime" / "clinvar"
+    std_drop.mkdir(parents=True)
+    (std_drop / "hek293t-pe2.parquet").write_bytes(b"drop")
+    formatted_path = formatted_cache_path(
+        "oped", "deepprime", "clinvar", "hek293t", "pe2", datasets_dir=datasets_dir
+    )
+
+    clear_cached_data(
+        formatted=False,
+        standardized=True,
+        study="deepprime",
+        datasets_dir=datasets_dir,
+    )
+    assert formatted_path.is_file()
+    assert (std_keep / "hek-pe2.parquet").is_file()
+    assert not std_drop.exists()
+
+
+def test_clear_cached_data_script_help():
+    script = Path(__file__).resolve().parents[3] / "scripts" / "clear_cached_data.py"
+    result = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "standardized" in result.stdout
+    assert "--dry-run" in result.stdout

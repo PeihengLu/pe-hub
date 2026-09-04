@@ -10,7 +10,12 @@ import pandas as pd
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as mt
 
-from pe_common.sequence_utils import sanitize_dna_sequence
+from pe_common.sequence_utils import (
+    normalize_target_dna,
+    remove_padding,
+    sanitize_dna_sequence,
+    unpadded_coordinate,
+)
 
 
 STANDARDIZED_REQUIRED_COLUMNS = {
@@ -91,6 +96,49 @@ def _rtt_wt_right_bounds(df: pd.DataFrame) -> pd.Series:
     rtt_wt_r = rtt_wt_r.where(~type_ins, rtt_mut_r - edit_len)
     rtt_wt_r = rtt_wt_r.where(~type_del, rtt_mut_r + edit_len)
     return rtt_wt_r
+
+
+_WT_INDEXED_COORD_COLUMNS = (
+    "protospacer_location_l",
+    "protospacer_location_r",
+    "pbs_location_l",
+    "pbs_location_r",
+    "rtt_location_l",
+    "lha_location_l",
+    "lha_location_r",
+    "rha_location_l",
+)
+_MUT_INDEXED_COORD_COLUMNS = (
+    "rtt_location_r",
+    "rha_location_r",
+)
+
+
+def _pridict_author_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop alignment pads and map coordinates onto the unpadded author frame.
+
+    PRIDICT's vendor preprocessor aligns WT/Mut itself. Feeding already-padded
+    (and previously truncated) sequences would double-pad and replace N with A.
+    """
+    out = df.copy()
+    wt = _col_as_series(out, "wt_sequence", "").astype(str)
+    mut = _col_as_series(out, "mut_sequence", "").astype(str)
+    out["wt_sequence"] = wt.map(remove_padding)
+    out["mut_sequence"] = mut.map(remove_padding)
+
+    def _map_coords(seq_series: pd.Series, columns: tuple[str, ...]) -> None:
+        for column in columns:
+            if column not in out.columns:
+                continue
+            coords = _safe_int_series(_col_as_series(out, column, 0))
+            out[column] = [
+                unpadded_coordinate(seq, int(index))
+                for seq, index in zip(seq_series, coords)
+            ]
+
+    _map_coords(wt, _WT_INDEXED_COORD_COLUMNS)
+    _map_coords(mut, _MUT_INDEXED_COORD_COLUMNS)
+    return out
 
 
 # Continuous columns normalized by PRIDICT2's MinMaxNormalizer (dataset.py).
@@ -496,8 +544,8 @@ def _enrich_pridict2_features(
     out["RTlength"] = (rtt_r - rtt_l).clip(lower=0).astype(float)
     out["RToverhanglength"] = (rha_r - rha_l).clip(lower=0).astype(float)
 
-    wt_series = _col_as_series(source, "wt_sequence", "").astype(str).map(sanitize_dna_sequence)
-    mut_series = _col_as_series(source, "mut_sequence", "").astype(str).map(sanitize_dna_sequence)
+    wt_series = _col_as_series(source, "wt_sequence", "").astype(str).map(normalize_target_dna)
+    mut_series = _col_as_series(source, "mut_sequence", "").astype(str).map(normalize_target_dna)
 
     row_indices = list(source.index)
     mfe_payloads: list[tuple[str, str, dict[str, int]]] = []
@@ -507,8 +555,8 @@ def _enrich_pridict2_features(
     for row_number, row_idx in enumerate(row_indices, start=1):
         wt = wt_series.loc[row_idx]
         mut = mut_series.loc[row_idx]
-        pbs_seq = mut[pbs_l.loc[row_idx]:pbs_r.loc[row_idx]]
-        rt_seq = mut[rtt_l.loc[row_idx]:rtt_r.loc[row_idx]]
+        pbs_seq = sanitize_dna_sequence(mut[pbs_l.loc[row_idx]:pbs_r.loc[row_idx]], drop=True)
+        rt_seq = sanitize_dna_sequence(mut[rtt_l.loc[row_idx]:rtt_r.loc[row_idx]], drop=True)
         seq_kwargs = dict(
             protospacer_l=int(prot_l.loc[row_idx]),
             protospacer_r=int(prot_r.loc[row_idx]),
@@ -590,10 +638,11 @@ def standardized_to_pridict_dataframe(
     progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
     """Convert standardized schema into PRIDICT/PRIDICT2-compatible dataframe."""
+    df = _pridict_author_frame(df)
     out = pd.DataFrame(index=df.index)
     out["seq_id"] = [f"{sequence_id_prefix}{i}" for i in range(len(df))]
-    out["wide_initial_target"] = _col_as_series(df, "wt_sequence", "").astype(str).map(sanitize_dna_sequence)
-    out["wide_mutated_target"] = _col_as_series(df, "mut_sequence", "").astype(str).map(sanitize_dna_sequence)
+    out["wide_initial_target"] = _col_as_series(df, "wt_sequence", "").astype(str).map(normalize_target_dna)
+    out["wide_mutated_target"] = _col_as_series(df, "mut_sequence", "").astype(str).map(normalize_target_dna)
     out["deepeditposition"] = _safe_int_series(_col_as_series(df, "lha_location_r", 0), default=0)
     out["deepeditposition_lst"] = out["deepeditposition"].map(lambda x: f"[{x}]")
     out["Correction_Type"] = [
@@ -646,8 +695,8 @@ def standardized_to_deepprime_dataframe(
     progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
     """Convert standardized schema into DeepPrime feature dataframe."""
-    wt_series = _col_as_series(df, "wt_sequence", "").astype(str).map(sanitize_dna_sequence).to_numpy()
-    mut_series = _col_as_series(df, "mut_sequence", "").astype(str).map(sanitize_dna_sequence).to_numpy()
+    wt_series = _col_as_series(df, "wt_sequence", "").astype(str).map(normalize_target_dna).to_numpy()
+    mut_series = _col_as_series(df, "mut_sequence", "").astype(str).map(normalize_target_dna).to_numpy()
     protospacer_l_series = _safe_int_series(_col_as_series(df, "protospacer_location_l", 0)).to_numpy()
     protospacer_r_series = _safe_int_series(_col_as_series(df, "protospacer_location_r", 0)).to_numpy()
     pbs_l_series = _safe_int_series(_col_as_series(df, "pbs_location_l", 0)).to_numpy()
@@ -691,7 +740,9 @@ def standardized_to_deepprime_dataframe(
         rt_len = max(1, len(rtt_seq))
         rt_pbs_len = pbs_len + rt_len
 
-        wt74 = wt[max(0, protospacer_l - 4): max(0, protospacer_l - 4) + 74]
+        wt_unpadded = remove_padding(wt)
+        wt74_start = max(0, unpadded_coordinate(wt, protospacer_l) - 4)
+        wt74 = wt_unpadded[wt74_start: wt74_start + 74]
         if len(wt74) < 74:
             wt74 = wt74 + ("N" * (74 - len(wt74)))
         edited74 = ("X" * max(0, 21 - pbs_len)) + (pbs_seq + rtt_seq) + ("X" * max(0, 53 - rt_len))
@@ -701,13 +752,15 @@ def standardized_to_deepprime_dataframe(
 
         edit_pos = int(max(1, min(rt_len, (lha_r - rtt_l + 1))))
         rha_len = int(max(1, rha_r - rha_l))
+        protospacer_l_unpadded = unpadded_coordinate(wt, protospacer_l)
+        protospacer_r_unpadded = unpadded_coordinate(wt, protospacer_r)
 
         thermo = _compute_deepprime_thermo_features(
-            wt,
+            wt_unpadded,
             pbs_seq,
             rtt_seq,
-            protospacer_l=protospacer_l,
-            protospacer_r=protospacer_r,
+            protospacer_l=protospacer_l_unpadded,
+            protospacer_r=protospacer_r_unpadded,
             edit_len=edit_len,
             type_sub=bool(type_sub_series[i]),
             type_ins=bool(type_ins_series[i]),
@@ -754,8 +807,8 @@ def standardized_to_optiprime_dataframe(
     """
     from Bio.Seq import Seq as _Seq
 
-    wt_series = _col_as_series(df, "wt_sequence", "").astype(str).map(sanitize_dna_sequence)
-    mut_series = _col_as_series(df, "mut_sequence", "").astype(str).map(sanitize_dna_sequence)
+    wt_series = _col_as_series(df, "wt_sequence", "").astype(str).map(normalize_target_dna)
+    mut_series = _col_as_series(df, "mut_sequence", "").astype(str).map(normalize_target_dna)
     prot_l = _safe_int_series(_col_as_series(df, "protospacer_location_l", 0))
     prot_r = _safe_int_series(_col_as_series(df, "protospacer_location_r", 0))
     pbs_l = _safe_int_series(_col_as_series(df, "pbs_location_l", 0))
@@ -780,25 +833,25 @@ def standardized_to_optiprime_dataframe(
         rl = int(rtt_l.iloc[i])
         rr = int(rtt_r.iloc[i])
 
-        protospacer = wt[pl:pr]
+        protospacer = sanitize_dna_sequence(wt[pl:pr], drop=True)
         spacer_dna = protospacer
         if spacer_dna and spacer_dna[0] != "G":
             spacer_dna = "G" + spacer_dna
 
-        pbs_dna = str(_Seq(wt[bl:br]).reverse_complement())
-        rtt_dna = str(_Seq(mut[rl:rr]).reverse_complement())
+        pbs_dna = str(_Seq(sanitize_dna_sequence(wt[bl:br], drop=True)).reverse_complement())
+        rtt_dna = str(_Seq(sanitize_dna_sequence(mut[rl:rr], drop=True)).reverse_complement())
 
         # OptiPrime uses RNA alphabet internally but the CSV input uses DNA
         spacer_rna = spacer_dna.replace("T", "U")
         pbs_rna = pbs_dna.replace("T", "U")
         rtt_rna = rtt_dna.replace("T", "U")
 
-        # full_unedited / full_edited: OptiPrime uses the region from
-        # 4bp upstream of protospacer through post-homology end
+        # full_unedited / full_edited: region from 4bp upstream of protospacer
+        # through the post-homology end, with alignment pads dropped.
         PS20_OFFSET = 4
         full_start = max(0, pl - PS20_OFFSET)
-        full_u = wt[full_start:]
-        full_e = mut[full_start:]
+        full_u = remove_padding(wt[full_start:])
+        full_e = remove_padding(mut[full_start:])
 
         records.append({
             "spacer": spacer_rna,

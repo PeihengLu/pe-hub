@@ -11,7 +11,11 @@ import numpy as np
 import pandas as pd
 
 from pe_common.constants import DATA_ROOT
-from pe_common.sequence_utils import align_wt_mut_sequences, reverse_complement
+from pe_common.sequence_utils import (
+    align_wt_mut_sequences,
+    reverse_complement,
+    shift_coords_after_indel_pad,
+)
 
 from .deepspcas9 import fill_missing_spcas9_scores
 from ..catalog.scaffolds import SCAFFOLD_MINSEPIE_CODON_VARIANT
@@ -1395,6 +1399,64 @@ def _attach_pridict_outcome_distribution(
     return out
 
 
+def _as_coord_series(value, index: pd.Index) -> pd.Series:
+    if np.isscalar(value) or isinstance(value, (int, np.integer)):
+        return pd.Series(int(value), index=index, dtype=int)
+    return pd.Series(value, index=index)
+
+
+def _shift_coords_after_wt_mut_align(
+    *,
+    index: pd.Index,
+    type_ins: pd.Series | np.ndarray,
+    type_del: pd.Series | np.ndarray,
+    edit_len: pd.Series | np.ndarray,
+    lha_r: pd.Series | np.ndarray,
+    protospacer_l,
+    protospacer_r,
+    pbs_l,
+    pbs_r,
+    rtt_l,
+    rtt_r,
+    lha_l,
+    rha_l,
+    rha_r,
+) -> dict[str, pd.Series]:
+    """Shift coordinates 3' of the indel pad onto grown aligned WT/Mut sequences.
+
+    Insertions pad WT, so WT-indexed intervals (spacer, PBS, nick/RTT start, LHA,
+    RHA start) move. Deletions pad Mut, so Mut-indexed ends (RTT/RHA right) move.
+    ``lha_r`` is the pad origin and is left unchanged.
+    """
+    type_ins = pd.Series(type_ins, index=index).astype(bool)
+    type_del = pd.Series(type_del, index=index).astype(bool)
+    edit_len = pd.Series(edit_len, index=index)
+    lha_r = pd.Series(lha_r, index=index)
+
+    def shift_wt(coords) -> pd.Series:
+        return shift_coords_after_indel_pad(
+            _as_coord_series(coords, index), lha_r, edit_len, type_ins
+        )
+
+    def shift_mut(coords) -> pd.Series:
+        return shift_coords_after_indel_pad(
+            _as_coord_series(coords, index), lha_r, edit_len, type_del
+        )
+
+    return {
+        "protospacer_l": shift_wt(protospacer_l),
+        "protospacer_r": shift_wt(protospacer_r),
+        "pbs_l": shift_wt(pbs_l),
+        "pbs_r": shift_wt(pbs_r),
+        "rtt_l": shift_wt(rtt_l),
+        "rtt_r": shift_mut(rtt_r),
+        "lha_l": shift_wt(lha_l),
+        "lha_r": lha_r.astype(int),
+        "rha_l": shift_wt(rha_l),
+        "rha_r": shift_mut(rha_r),
+    }
+
+
 def _build_standardized_output_df(
     group_id: pd.Series | np.ndarray, 
     type_sub: pd.Series | np.ndarray, type_ins: pd.Series | np.ndarray, type_del: pd.Series | np.ndarray, edit_len: pd.Series | np.ndarray, 
@@ -1833,6 +1895,23 @@ def _standardize_deepprime_ontarget(
     aligned = df.apply(_reconstruct_and_align, axis=1, result_type='expand')
     aligned.columns = ['wt_aligned', 'mut_aligned']
 
+    coords = _shift_coords_after_wt_mut_align(
+        index=df.index,
+        type_ins=df['type_ins'],
+        type_del=df['type_del'],
+        edit_len=df['edit_len'],
+        lha_r=df['lha_r'],
+        protospacer_l=PROTOSPACER_L,
+        protospacer_r=PROTOSPACER_R,
+        pbs_l=df['pbs_l'],
+        pbs_r=df['pbs_r'],
+        rtt_l=df['rtt_l'],
+        rtt_r=df['rtt_r'],
+        lha_l=df['lha_l'],
+        rha_l=df['rha_l'],
+        rha_r=df['rha_r'],
+    )
+
     # ---- Step 6: Build output DataFrame ----
     if "fold" in df.columns:
         original_fold = pd.to_numeric(
@@ -1842,9 +1921,11 @@ def _standardize_deepprime_ontarget(
     else:
         original_fold = None
     output_df = _build_standardized_output_df(
-        df['group_id'], df['type_sub'], df['type_ins'], df['type_del'], df['edit_len'], 
-        aligned['wt_aligned'], aligned['mut_aligned'], PROTOSPACER_L, PROTOSPACER_R, 
-        df['pbs_l'], df['pbs_r'], df['rtt_l'], df['rtt_r'], df['lha_l'], df['lha_r'], df['rha_l'], df['rha_r'], 
+        df['group_id'], df['type_sub'], df['type_ins'], df['type_del'], df['edit_len'],
+        aligned['wt_aligned'], aligned['mut_aligned'],
+        coords['protospacer_l'], coords['protospacer_r'],
+        coords['pbs_l'], coords['pbs_r'], coords['rtt_l'], coords['rtt_r'],
+        coords['lha_l'], coords['lha_r'], coords['rha_l'], coords['rha_r'],
         df['deepspcas9_score'], df['measured_pe_efficiency'], original_fold)
 
     # export the data to a parquet file
@@ -1989,6 +2070,22 @@ def _standardize_pridict2_library_diverse(
     aligned.columns = ['wt_sequence', 'mut_sequence']
     wt_aligned = pd.Series(aligned['wt_sequence'], index=df.index)
     mut_aligned = pd.Series(aligned['mut_sequence'], index=df.index)
+    coords = _shift_coords_after_wt_mut_align(
+        index=df.index,
+        type_ins=type_ins,
+        type_del=type_del,
+        edit_len=edit_len,
+        lha_r=lha_r,
+        protospacer_l=protospacer_l,
+        protospacer_r=protospacer_r,
+        pbs_l=pbs_l,
+        pbs_r=pbs_r,
+        rtt_l=rtt_wt_l,
+        rtt_r=rtt_mut_r,
+        lha_l=lha_l,
+        rha_l=rha_wt_l,
+        rha_r=rha_mut_r,
+    )
 
     # ---- Step 5: assemble score/efficiency/fold fields ----
     spcas9_score = pd.Series(pd.to_numeric(df['deepcas9'], errors='coerce'), index=df.index)
@@ -2007,8 +2104,9 @@ def _standardize_pridict2_library_diverse(
     # ---- Step 6: build and save standardized output ----
     output_df = _build_standardized_output_df(
         pd.Series(df['group_id'], index=df.index), type_sub, type_ins, type_del, edit_len,
-        wt_aligned, mut_aligned, protospacer_l, protospacer_r,
-        pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r,
+        wt_aligned, mut_aligned, coords['protospacer_l'], coords['protospacer_r'],
+        coords['pbs_l'], coords['pbs_r'], coords['rtt_l'], coords['rtt_r'],
+        coords['lha_l'], coords['lha_r'], coords['rha_l'], coords['rha_r'],
         spcas9_score, editing_efficiency, original_fold)
 
     output_df = _attach_pridict_outcome_distribution(
@@ -2132,6 +2230,24 @@ def _standardize_pridict1(
         result_type='expand',
     )
     aligned.columns = ['wt_sequence', 'mut_sequence']
+    wt_aligned = pd.Series(aligned['wt_sequence'], index=df.index)
+    mut_aligned = pd.Series(aligned['mut_sequence'], index=df.index)
+    coords = _shift_coords_after_wt_mut_align(
+        index=df.index,
+        type_ins=type_ins,
+        type_del=type_del,
+        edit_len=edit_len,
+        lha_r=lha_r,
+        protospacer_l=protospacer_l,
+        protospacer_r=protospacer_r,
+        pbs_l=pbs_l,
+        pbs_r=pbs_r,
+        rtt_l=rtt_wt_l,
+        rtt_r=rtt_mut_r,
+        lha_l=lha_l,
+        rha_l=rha_wt_l,
+        rha_r=rha_mut_r,
+    )
 
     # ---- Step 5: Concatenate spcas9 score and editing efficiency ----
     spcas9_score = pd.Series(pd.to_numeric(df['deepcas9'], errors='coerce'), index=df.index)
@@ -2144,9 +2260,10 @@ def _standardize_pridict1(
 
     # ---- Step 6: Build output DataFrame ----
     output_df = _build_standardized_output_df(
-        pd.Series(df['group_id'], index=df.index), type_sub, type_ins, type_del, edit_len, 
-        wt_sequence, mut_sequence, protospacer_l, protospacer_r, 
-        pbs_l, pbs_r, rtt_wt_l, rtt_mut_r, lha_l, lha_r, rha_wt_l, rha_mut_r, 
+        pd.Series(df['group_id'], index=df.index), type_sub, type_ins, type_del, edit_len,
+        wt_aligned, mut_aligned, coords['protospacer_l'], coords['protospacer_r'],
+        coords['pbs_l'], coords['pbs_r'], coords['rtt_l'], coords['rtt_r'],
+        coords['lha_l'], coords['lha_r'], coords['rha_l'], coords['rha_r'],
         spcas9_score, editing_efficiency)
 
     output_df = _attach_pridict_outcome_distribution(output_df, df)
@@ -2270,12 +2387,11 @@ def _standardize_minsepie(
     df["group_id"] = spacer_upper.groupby(spacer_upper).ngroup()
 
     # ---- Step 4: compute positional fields in the wide sequence ----
+    # Store the 20 bp protospacer, not spacer+PAM. Nick is protospacer_l+17
+    # (SpCas9, 3 bp upstream of PAM), independent of indel pads that may sit
+    # inside the last 3 bp of the spacer.
     protospacer_l = pd.Series(_MINSEPIE_WIDE_FLANK_BP, index=df.index, dtype=int)
-    within_protospacer = edit_position < (protospacer_l + 20)
-    protospacer_r = pd.Series(
-        np.where(within_protospacer, protospacer_l + 20 + edit_len, protospacer_l + 20),
-        index=df.index,
-    ).astype(int)
+    protospacer_r = (protospacer_l + 20).astype(int)
 
     pbs_l = (protospacer_l + 17 - pbs_len).clip(lower=0).astype(int)
     pbs_r = protospacer_l + 17
@@ -2850,6 +2966,32 @@ def _export_optiprime_datasheets() -> None:
     )
 
 
+def _locate_optiprime_protospacer(wt_sequence: str, spacer: str) -> tuple[int, int]:
+    """Return 20 bp protospacer bounds on an OptiPrime ``ps-pam-edit`` (or lib-cv) WT.
+
+    Author targets start at the spacer — there is no DeepPrime 4 bp upstream pad.
+    Designed 5G spacers may carry an extra leading G; match the genomic 20-mer.
+    """
+    wt = str(wt_sequence).upper().replace("U", "T")
+    spacer = str(spacer).upper().replace("U", "T")
+    probes: list[str] = []
+    if spacer:
+        probes.append(spacer)
+        if spacer.startswith("G") and len(spacer) in (20, 21):
+            probes.append(spacer[1:])
+        if len(spacer) > 20:
+            probes.append(spacer[-20:])
+            probes.append(spacer[:20])
+    for probe in probes:
+        if len(probe) < 15:
+            continue
+        window = probe[:20] if len(probe) >= 20 else probe
+        idx = wt.find(window)
+        if idx >= 0:
+            return idx, idx + len(window)
+    return 0, min(20, len(wt))
+
+
 def _standardize_optiprime(
     data: pd.DataFrame,
     cell_line: str,
@@ -2880,49 +3022,48 @@ def _standardize_optiprime(
         [0, 1, 2], default=-1,
     )
 
-    # OptiPrime target sequences use the same layout as DeepPrime:
-    # 4 bp pad + 20 bp protospacer + PAM + downstream
-    PROTOSPACER_L, PROTOSPACER_R = 4, 24
+    # ps-pam-edit starts at the 20 bp spacer (no DeepPrime 4 bp pad).
     wt_sequence = df["wt_sequence"].astype(str).str.upper()
-    protospacer = wt_sequence.str.slice(PROTOSPACER_L, PROTOSPACER_R)
+    mut_sequence = df["mut_sequence"].astype(str).str.upper()
+    spacer_col = df["spacer"].astype(str) if "spacer" in df.columns else pd.Series("", index=df.index)
+    prot_bounds = [
+        _locate_optiprime_protospacer(wt, spacer)
+        for wt, spacer in zip(wt_sequence, spacer_col)
+    ]
+    protospacer_l = pd.Series([left for left, _ in prot_bounds], index=df.index, dtype=int)
+    protospacer_r = pd.Series([right for _, right in prot_bounds], index=df.index, dtype=int)
+    protospacer = pd.Series(
+        [wt[int(left):int(right)] for wt, left, right in zip(wt_sequence, protospacer_l, protospacer_r)],
+        index=df.index,
+    )
     df["group_id"] = protospacer.map(hash).groupby(protospacer).ngroup()
 
-    # Compute PBS location from spacer and PBS columns
-    pbs_seq = df["pbs"].astype(str).str.upper()
-    pbs_len = pbs_seq.str.len()
-    nick_pos = PROTOSPACER_R - 3  # nick between positions 17-18 of protospacer
+    pbs_len = df["pbs"].astype(str).str.upper().str.len()
+    nick_pos = protospacer_r - 3
     df["pbs_l"] = nick_pos - pbs_len
     df["pbs_r"] = nick_pos
 
-    # RTT: from nick to end of edited sequence (homology arm end)
-    hom_seq = df["homology_arm"].astype(str).str.upper()
-    hom_len = hom_seq.str.len()
     df["rtt_l"] = nick_pos
-    # RTT right = nick + (mut_len - nick) for the full extension length
-    # More precisely, the RT covers from nick to the end of homology in mut
-    wt_len = wt_sequence.str.len()
-    mut_sequence = df["mut_sequence"].astype(str).str.upper()
-    mut_len = mut_sequence.str.len()
-    df["rtt_r"] = mut_len - PROTOSPACER_L  # approximate: RTT extends to near end of edited target
+    df["rtt_r"] = mut_sequence.str.len().astype(int)
 
-    # LHA: from PBS right to edit position
-    # Find edit position by comparing wt and mut sequences
     def _find_edit_pos(wt, mut):
         for i, (a, b) in enumerate(zip(wt, mut)):
             if a != b:
                 return i
         return min(len(wt), len(mut))
 
-    edit_positions = [_find_edit_pos(w, m) for w, m in zip(wt_sequence, mut_sequence)]
+    edit_positions = pd.Series(
+        [_find_edit_pos(w, m) for w, m in zip(wt_sequence, mut_sequence)],
+        index=df.index,
+        dtype=int,
+    )
     df["lha_l"] = nick_pos
     df["lha_r"] = edit_positions
 
-    # RHA: from edit end to RTT right
     edit_len = df["edit_len"].astype(int)
-    df["rha_l"] = pd.Series(edit_positions) + np.where(df["type_del"], 0, edit_len)
+    df["rha_l"] = edit_positions + np.where(df["type_del"], 0, edit_len)
     df["rha_r"] = df["rtt_r"]
 
-    # Align wt/mut sequences
     def _align_row(row):
         return align_wt_mut_sequences(
             str(row["wt_sequence"]),
@@ -2934,13 +3075,29 @@ def _standardize_optiprime(
 
     aligned = df.apply(_align_row, axis=1, result_type="expand")
     aligned.columns = ["wt_aligned", "mut_aligned"]
+    coords = _shift_coords_after_wt_mut_align(
+        index=df.index,
+        type_ins=df["type_ins"],
+        type_del=df["type_del"],
+        edit_len=edit_len,
+        lha_r=df["lha_r"],
+        protospacer_l=protospacer_l,
+        protospacer_r=protospacer_r,
+        pbs_l=df["pbs_l"],
+        pbs_r=df["pbs_r"],
+        rtt_l=df["rtt_l"],
+        rtt_r=df["rtt_r"],
+        lha_l=df["lha_l"],
+        rha_l=df["rha_l"],
+        rha_r=df["rha_r"],
+    )
 
     output_df = _build_standardized_output_df(
         df["group_id"], df["type_sub"], df["type_ins"], df["type_del"], df["edit_len"],
         aligned["wt_aligned"], aligned["mut_aligned"],
-        PROTOSPACER_L, PROTOSPACER_R,
-        df["pbs_l"], df["pbs_r"], df["rtt_l"], df["rtt_r"],
-        df["lha_l"], df["lha_r"], df["rha_l"], df["rha_r"],
+        coords["protospacer_l"], coords["protospacer_r"],
+        coords["pbs_l"], coords["pbs_r"], coords["rtt_l"], coords["rtt_r"],
+        coords["lha_l"], coords["lha_r"], coords["rha_l"], coords["rha_r"],
         df["deepspcas9_score"], df["measured_pe_efficiency"],
         original_fold=None,
     )

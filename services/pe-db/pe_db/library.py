@@ -23,6 +23,7 @@ run_export = _lib.run_export
 run_init = _lib.run_init
 run_seed = _lib.run_seed
 run_standardize = _lib.run_standardize
+run_clear_cached_data = _lib.run_clear_cached_data
 
 __all__ = [
     "PeDbLibraryError",
@@ -43,4 +44,5 @@ __all__ = [
     "run_init",
     "run_seed",
     "run_standardize",
+    "run_clear_cached_data",
 ]

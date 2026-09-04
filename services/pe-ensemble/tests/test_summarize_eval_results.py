@@ -14,6 +14,7 @@ from summarize_eval_results import (  # noqa: E402
     flatten_row,
     pridict2_head_from_weights,
     repair_cli_failures_from_logs,
+    repair_ensemble_payloads_from_logs,
 )
 
 
@@ -40,6 +41,75 @@ def test_extract_json_skips_optiprime_syn_brace():
 def test_extract_json_empty():
     assert extract_json_object("") is None
     assert extract_json_object("syn{50} only") is None
+
+
+def test_extract_json_prefers_combined_ensemble_over_member_metrics():
+    stdout = json.dumps(
+        {
+            "ensemble_name": "pridict2-ensemble-HEK-run0",
+            "combine": "mean",
+            "n_samples": 4445,
+            "metrics": {"pearson": 0.866, "spearman": 0.848, "n_samples": 4445},
+            "member_metrics": [
+                {
+                    "model_name": "pridict2",
+                    "weights": "pridict1_1__run_0__HEK",
+                    "metrics": {"pearson": 0.846, "spearman": 0.821, "n_samples": 4445},
+                },
+                {
+                    "model_name": "pridict2",
+                    "weights": "pridict1_2__run_0__HEK",
+                    "metrics": {"pearson": 0.864, "spearman": 0.857, "n_samples": 4445},
+                },
+            ],
+        },
+        indent=2,
+    )
+    payload = extract_json_object("INFO:app.ensemble.runner:starting\n" + stdout)
+    assert payload is not None
+    assert payload["ensemble_name"] == "pridict2-ensemble-HEK-run0"
+    assert payload["metrics"]["pearson"] == 0.866
+    assert payload["n_samples"] == 4445
+    assert len(payload["member_metrics"]) == 2
+
+
+def test_repair_ensemble_payloads_replaces_member_fragment(tmp_path: Path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    stdout = json.dumps(
+        {
+            "ensemble_name": "pridict2-ensemble-HEK-run0",
+            "combine": "mean",
+            "n_samples": 4445,
+            "metrics": {"pearson": 0.866, "spearman": 0.848, "n_samples": 4445},
+            "member_metrics": [
+                {
+                    "model_name": "pridict2",
+                    "weights": "pridict1_2__run_0__HEK",
+                    "metrics": {"pearson": 0.864, "spearman": 0.857, "n_samples": 4445},
+                }
+            ],
+        }
+    )
+    (
+        log_dir
+        / "pridict2__ensemble__run_0__HEK__pridict2-library-diverse__hek293t__fold_0.stdout"
+    ).write_text(stdout)
+    records = [
+        {
+            "model": "pridict2",
+            "weights": "ensemble__run_0__HEK",
+            "benchmark_name": "pridict2-library-diverse__hek293t",
+            "original_fold_test_value": 0,
+            "ensemble": True,
+            "n_samples": None,
+            "metrics": {"pearson": 0.864, "spearman": 0.857, "n_samples": 4445},
+        }
+    ]
+    assert repair_ensemble_payloads_from_logs(records, log_dir) == 1
+    assert records[0]["metrics"]["pearson"] == 0.866
+    assert records[0]["n_samples"] == 4445
+    assert records[0]["weights"] == "ensemble__run_0__HEK"
 
 
 def test_pridict2_head_from_weights():

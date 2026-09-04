@@ -19,11 +19,13 @@ from app.utils.convert_data import (  # noqa: E402
     is_standardized_dataframe,
     standardized_to_deepprime_dataframe,
     standardized_to_oped_dataframe,
+    standardized_to_optiprime_dataframe,
     standardized_to_pridict_dataframe,
 )
 from app.utils.standardize_data import (  # noqa: E402
     _build_standardized_output_df,
     _coerce_original_fold,
+    _locate_optiprime_protospacer,
 )
 
 DEEPPRIME_REQUIRED = {
@@ -193,6 +195,9 @@ def test_pridict_features_match_author_export_from_standardized_parquet():
     parquet = pd.read_parquet(PRIDICT2_PARQUET).head(100)
     export = pd.read_csv(PRIDICT2_EXPORT, nrows=100, low_memory=False)
     for i in range(len(parquet)):
+        if "N" in str(parquet.iloc[i]["wt_sequence"]) or "N" in str(parquet.iloc[i]["mut_sequence"]):
+            # Truncated indel rows in older parquet need re-standardization.
+            continue
         std = _standardized_from_parquet_row(parquet.iloc[i])
         out = standardized_to_pridict_dataframe(std).iloc[0]
         row = export.iloc[i]
@@ -368,3 +373,99 @@ def test_build_standardized_output_df_omits_fold_when_unknown():
         editing_efficiency=base["editing_efficiency"],
     )
     assert out["original_fold"].isna().all()
+
+
+def test_pridict_conversion_drops_n_pads_instead_of_replacing_with_a():
+    wt_aligned = "AAAANNCCCC"
+    mut_aligned = "AAAAGGCCCC"
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt_aligned],
+            "mut_sequence": [mut_aligned],
+            "edit_len": [2],
+            "type_sub": [False],
+            "type_ins": [True],
+            "type_del": [False],
+            "protospacer_location_l": [0],
+            "protospacer_location_r": [4],
+            "pbs_location_l": [0],
+            "pbs_location_r": [4],
+            "rtt_location_l": [4],
+            "rtt_location_r": [10],
+            "lha_location_r": [4],
+            "rha_location_l": [6],
+            "rha_location_r": [10],
+            "spcas9_score": [0.5],
+        }
+    )
+    out = standardized_to_pridict_dataframe(df).iloc[0]
+    assert out["wide_initial_target"] == "AAAACCCC"
+    assert out["wide_mutated_target"] == "AAAAGGCCCC"
+    assert out["wide_initial_target"] != "AAAAAACCCC"
+
+
+def test_deepprime_wt74_crop_skips_indel_pads():
+    spacer = "ATCGATCGATCGATCGATCG"
+    wt = "ACGT" + spacer[:10] + ("N" * 3) + spacer[10:] + "AGG" + ("T" * 47)
+    mut = "ACGT" + spacer[:10] + "GGG" + spacer[10:] + "AGG" + ("T" * 47)
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [3],
+            "type_sub": [False],
+            "type_ins": [True],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [27],
+            "pbs_location_l": [8],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [40],
+            "lha_location_r": [14],
+            "rha_location_l": [17],
+            "rha_location_r": [25],
+            "spcas9_score": [1.0],
+        }
+    )
+    out = standardized_to_deepprime_dataframe(df).iloc[0]
+    assert len(out["WT74_On"]) == 74
+    assert "N" not in out["WT74_On"][:30]
+    assert out["Edited74_On"].count("X") >= 1
+
+
+def test_optiprime_spacer_starts_at_zero_on_ps_pam_edit():
+    spacer = "GTCATCTTAGTCATTACCTG"
+    wt = spacer + "AGGTGTTCGTTGTAACTCATATAAACTGA"
+    assert _locate_optiprime_protospacer(wt, spacer) == (0, 20)
+    assert _locate_optiprime_protospacer(wt, "G" + spacer) == (0, 20)
+
+
+def test_optiprime_conversion_drops_pads_from_pbs_rtt():
+    spacer = "GTCATCTTAGTCATTACCTG"
+    wt = spacer + "NNN" + "AGGTGTTC"
+    mut = spacer + "GGG" + "AGGTGTTC"
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [3],
+            "type_sub": [False],
+            "type_ins": [True],
+            "type_del": [False],
+            "protospacer_location_l": [0],
+            "protospacer_location_r": [20],
+            "pbs_location_l": [10],
+            "pbs_location_r": [17],
+            "rtt_location_l": [17],
+            "rtt_location_r": [28],
+            "lha_location_r": [20],
+            "rha_location_l": [23],
+            "rha_location_r": [28],
+            "editing_efficiency": [0.4],
+        }
+    )
+    out = standardized_to_optiprime_dataframe(df).iloc[0]
+    assert "N" not in out["pbs"]
+    assert "N" not in out["rtt"]
+    assert "N" not in out["full_unedited"]

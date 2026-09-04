@@ -21,6 +21,7 @@ from pe_db.library import (
     list_scaffolds,
     list_studies,
     reload_plugins,
+    run_clear_cached_data,
     run_convert_sheet,
     run_export,
     run_init,
@@ -107,6 +108,31 @@ def build_parser() -> argparse.ArgumentParser:
     std_p.add_argument("--force", action="store_true")
     std_p.set_defaults(func=cmd_standardize)
 
+    cache_p = sub.add_parser(
+        "cache-clear",
+        help="Clear formatted and/or standardized caches (does not touch raw/exported/catalog)",
+    )
+    cache_p.add_argument(
+        "--formatted",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Clear datasets/formatted (default on)",
+    )
+    cache_p.add_argument(
+        "--standardized",
+        action="store_true",
+        help="Also clear datasets/standardized parquet",
+    )
+    cache_p.add_argument(
+        "--all",
+        action="store_true",
+        help="Clear formatted and standardized caches",
+    )
+    cache_p.add_argument("--study", default=None)
+    cache_p.add_argument("--format", dest="target_format", default=None)
+    cache_p.add_argument("--dry-run", action="store_true")
+    cache_p.set_defaults(func=cmd_cache_clear)
+
     convert_p = sub.add_parser("convert", help="Standardize one exported datasheet")
     convert_p.add_argument("--study", required=True)
     convert_p.add_argument("--dataset", required=True)
@@ -180,6 +206,22 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 def cmd_standardize(args: argparse.Namespace) -> int:
     result = run_standardize(study=args.study, force=args.force)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_cache_clear(args: argparse.Namespace) -> int:
+    formatted = True if args.all else bool(args.formatted)
+    standardized = True if args.all else bool(args.standardized)
+    if not formatted and not standardized:
+        raise PeDbLibraryError("Nothing to clear: pass --formatted and/or --standardized (or --all).")
+    result = run_clear_cached_data(
+        formatted=formatted,
+        standardized=standardized,
+        study=args.study,
+        target_format=args.target_format,
+        dry_run=args.dry_run,
+    )
     print(json.dumps(result, indent=2))
     return 0
 

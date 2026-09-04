@@ -90,6 +90,29 @@ def run_standardize(*, study: Optional[str] = None, force: bool = False) -> dict
     }
 
 
+def run_clear_cached_data(
+    *,
+    formatted: bool = True,
+    standardized: bool = False,
+    study: Optional[str] = None,
+    target_format: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Remove derived formatted and/or standardized caches."""
+    from .formatted_cache import clear_cached_data
+
+    try:
+        return clear_cached_data(
+            formatted=formatted,
+            standardized=standardized,
+            study=study,
+            target_format=target_format,
+            dry_run=dry_run,
+        )
+    except ValueError as exc:
+        raise PeDbLibraryError(str(exc)) from exc
+
+
 def run_convert_sheet(
     *,
     study: str,
