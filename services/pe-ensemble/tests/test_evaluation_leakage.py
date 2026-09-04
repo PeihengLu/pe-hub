@@ -11,7 +11,9 @@ from app.evaluation.leakage import (
     REASON_NO_ORIGINAL_TEST_SPLIT,
     REASON_TRAIN_TEST_OVERLAP,
     REASON_UNVERIFIABLE_PROVENANCE,
+    assess_ensemble_leakage,
     assess_leakage,
+    collect_ensemble_training_loci,
 )
 from app.evaluation.runner import execute_evaluation
 from app.evaluation.schemas import EvaluationRequest
@@ -256,3 +258,66 @@ def test_execute_evaluation_allow_data_leak_override(tmp_path, monkeypatch):
     assert "action" not in result["leak_warning"]
     manifest = get_job(job_id)
     assert manifest["status"] == "succeeded"
+
+
+def test_collect_ensemble_training_loci_unions_member_provenance(monkeypatch):
+    def _load(model, weights):
+        mapping = {
+            ("pridict2", "a"): {"ps:aaa", "ps:bbb"},
+            ("pridict2", "b"): {"ps:bbb", "ps:ccc"},
+        }
+        return mapping.get((model, weights))
+
+    monkeypatch.setattr(leakage.weights_registry, "load_training_loci", _load)
+    loci, detail = collect_ensemble_training_loci(
+        [
+            {"model_name": "pridict2", "weights": "a"},
+            {"model_name": "pridict2", "weights": "b"},
+        ]
+    )
+    assert loci == {"ps:aaa", "ps:bbb", "ps:ccc"}
+    assert detail["all_members_have_provenance"] is True
+    assert detail["n_target_loci"] == 3
+    assert detail["loci_fingerprint"]
+
+
+def test_collect_ensemble_training_loci_none_when_any_member_missing(monkeypatch):
+    def _load(model, weights):
+        if weights == "a":
+            return {"ps:aaa"}
+        return None
+
+    monkeypatch.setattr(leakage.weights_registry, "load_training_loci", _load)
+    loci, detail = collect_ensemble_training_loci(
+        [
+            {"model_name": "pridict2", "weights": "a"},
+            {"model_name": "pridict2", "weights": "b"},
+        ]
+    )
+    assert loci is None
+    assert detail["all_members_have_provenance"] is False
+    assert detail["n_members_missing_provenance"] == 1
+
+
+def test_assess_ensemble_leakage_uses_unioned_loci(monkeypatch):
+    def _load(model, weights):
+        mapping = {
+            ("pridict2", "a"): {"ps:aaa"},
+            ("pridict2", "b"): {"ps:bbb"},
+        }
+        return mapping.get((model, weights))
+
+    monkeypatch.setattr(leakage.weights_registry, "load_training_loci", _load)
+    members = [
+        {"model_name": "pridict2", "weights": "a"},
+        {"model_name": "pridict2", "weights": "b"},
+    ]
+    result = assess_ensemble_leakage(
+        test_df=_test_df(["ps:bbb", "ps:ccc"]),
+        split=_split(),
+        members=members,
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_TRAIN_TEST_OVERLAP
+    assert result.detail["n_overlap_loci"] == 1
+    assert result.detail["ensemble_training_loci"]["n_target_loci"] == 2

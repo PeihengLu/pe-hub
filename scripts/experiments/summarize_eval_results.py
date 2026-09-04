@@ -35,6 +35,7 @@ SUMMARY_COLUMNS = [
     "skip_reason",
     "error_type",
     "device",
+    "ensemble",
 ]
 
 AGG_COLUMNS = [
@@ -52,6 +53,7 @@ AGG_COLUMNS = [
     "spearman_mean",
     "spearman_std",
     "n_samples_mean",
+    "ensemble",
 ]
 
 # Longest first so ``__K562MLH1dn`` is not parsed as ``__K562``.
@@ -222,6 +224,7 @@ def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
         "skip_reason": record.get("skip_reason"),
         "error_type": record.get("error_type"),
         "device": record.get("device"),
+        "ensemble": record.get("ensemble", False),
     }
 
 
@@ -242,12 +245,13 @@ def aggregate_cv(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             row.get("study"),
             row.get("datasets"),
             row.get("cell_line"),
+            bool(row.get("ensemble")),
         )
         groups[key].append(row)
 
     out: list[dict[str, Any]] = []
     for key, members in sorted(groups.items(), key=lambda item: item[0]):
-        model, experiment_id, pridict2_head, benchmark_name, study, datasets, cell_line = key
+        model, experiment_id, pridict2_head, benchmark_name, study, datasets, cell_line, ensemble = key
         ok = [m for m in members if m.get("status") == "ok" and m.get("pearson") is not None]
         pearsons = [float(m["pearson"]) for m in ok]
         spearmans = [float(m["spearman"]) for m in ok if m.get("spearman") is not None]
@@ -275,6 +279,7 @@ def aggregate_cv(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "spearman_mean": _mean(spearmans),
                 "spearman_std": _std(spearmans),
                 "n_samples_mean": _mean(n_samples),
+                "ensemble": ensemble,
             }
         )
     return out

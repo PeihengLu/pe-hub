@@ -266,6 +266,7 @@ export interface EnsembleRequest {
   edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   device?: string
+  allow_data_leak?: boolean
 }
 
 export type EnsembleJobStatus = TrainingJobStatus

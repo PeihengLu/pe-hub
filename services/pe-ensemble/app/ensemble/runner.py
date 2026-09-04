@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,13 @@ from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 from pe_common.training import regression_metrics
 
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
+from ..evaluation.leakage import (
+    REASON_TRAIN_TEST_OVERLAP,
+    assess_ensemble_leakage,
+    collect_ensemble_training_loci,
+    ensemble_leak_error_payload,
+    exclude_overlapping_loci,
+)
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
@@ -151,6 +158,16 @@ def _predict_member(
     return model.predict(prepared)
 
 
+def _apply_loci_exclusion(
+    frame: pd.DataFrame,
+    training_loci: Set[str],
+) -> pd.DataFrame:
+    exclusion = exclude_overlapping_loci(frame, training_loci)
+    if exclusion is None:
+        return frame
+    return exclusion.filtered_df
+
+
 def execute_ensemble(
     request: EnsembleRequest,
     *,
@@ -194,6 +211,20 @@ def execute_ensemble(
 
         try:
             _raise_if_cancelled()
+            training_loci, loci_detail = collect_ensemble_training_loci(request.members)
+            if training_loci is not None:
+                _log(
+                    f"Ensemble training loci: union of member provenance "
+                    f"({loci_detail.get('n_target_loci')} loci, "
+                    f"fingerprint={loci_detail.get('loci_fingerprint')})"
+                )
+            else:
+                _log(
+                    "Ensemble training loci incomplete: "
+                    f"{loci_detail.get('n_members_missing_provenance')} member(s) "
+                    "lack recorded provenance"
+                )
+
             std_fetch = _fetch_partition(request, model_format="std", progress_log=_progress_log)
             std_df = std_fetch.df
             if std_df.empty:
@@ -211,6 +242,7 @@ def execute_ensemble(
                         "n_samples": 0,
                         "metrics": None,
                         "member_metrics": [],
+                        "ensemble_training_loci": loci_detail,
                     }
                     if job_id:
                         mark_skipped(job_id, payload, reason=skip_reason)
@@ -218,6 +250,75 @@ def execute_ensemble(
                 raise EnsembleError("No test data resolved for ensemble evaluation.")
 
             _log(f"Resolved {len(std_df)} standardized test rows for labels")
+
+            leak = assess_ensemble_leakage(
+                test_df=std_df,
+                split=request.split,
+                members=request.members,
+            )
+            leak_exclusion_warning: Optional[Dict[str, Any]] = None
+            if leak is not None and leak.is_leak:
+                if (
+                    leak.reason == REASON_TRAIN_TEST_OVERLAP
+                    and not request.allow_data_leak
+                ):
+                    exclusion = exclude_overlapping_loci(
+                        std_df, training_loci or set()
+                    )
+                    if exclusion is not None and not exclusion.is_empty:
+                        std_df = exclusion.filtered_df
+                        leak_exclusion_warning = exclusion.warning_payload()
+                        _log(leak_exclusion_warning["message"])
+                    else:
+                        payload = ensemble_leak_error_payload(
+                            leak,
+                            ensemble_name=request.ensemble_name,
+                            device_id=resolved_device_id,
+                            n_samples=int(len(std_df)),
+                            members=request.members,
+                        )
+                        if exclusion is not None and exclusion.is_empty:
+                            payload["leak"] = {
+                                **payload.get("leak", {}),
+                                **exclusion.warning_payload(),
+                                "message": (
+                                    "All evaluation target loci overlap this "
+                                    "ensemble's member training data; nothing "
+                                    "remains after exclusion."
+                                ),
+                            }
+                        message = (
+                            f"Aborting ensemble: potential data leak ({leak.reason}). "
+                            f"{payload['leak'].get('message', leak.detail.get('message', ''))}"
+                        )
+                        _log(message)
+                        if job_id:
+                            mark_failed(
+                                job_id,
+                                f"{payload['error_type']}: {leak.reason}",
+                                result=payload,
+                            )
+                        return payload
+                elif not request.allow_data_leak:
+                    payload = ensemble_leak_error_payload(
+                        leak,
+                        ensemble_name=request.ensemble_name,
+                        device_id=resolved_device_id,
+                        n_samples=int(len(std_df)),
+                        members=request.members,
+                    )
+                    message = (
+                        f"Aborting ensemble: potential data leak ({leak.reason}). "
+                        f"{leak.detail.get('message', '')}"
+                    )
+                    _log(message)
+                    if job_id:
+                        mark_failed(
+                            job_id,
+                            f"{payload['error_type']}: {leak.reason}",
+                            result=payload,
+                        )
+                    return payload
 
             member_frames: List[pd.DataFrame] = []
             member_predictions: List[List[float]] = []
@@ -242,6 +343,18 @@ def execute_ensemble(
                         f"No test rows for member {model_name}"
                     )
                     raise EnsembleError(reason)
+
+                if (
+                    leak_exclusion_warning is not None
+                    and training_loci is not None
+                    and not request.allow_data_leak
+                ):
+                    member_df = _apply_loci_exclusion(member_df, training_loci)
+                    if member_df.empty:
+                        raise EnsembleError(
+                            f"Member {model_name}:{member.weights} has no rows left "
+                            "after excluding training-overlapping loci."
+                        )
 
                 _progress_log(
                     f"Predicting with member {index}/{len(request.members)} "
@@ -293,6 +406,7 @@ def execute_ensemble(
                 "metrics": combined_metrics,
                 "member_metrics": member_metrics,
                 "alignment": alignment,
+                "ensemble_training_loci": loci_detail,
                 "members": [
                     {
                         "model_name": member.model_name.strip().lower(),
@@ -301,6 +415,18 @@ def execute_ensemble(
                     for member in request.members
                 ],
             }
+            if leak_exclusion_warning is not None:
+                payload["leak_warning"] = leak_exclusion_warning
+                _log(
+                    "Warning: proceeded after excluding training-overlapping test loci; "
+                    "see leak_warning for counts."
+                )
+            elif leak is not None and leak.is_leak and request.allow_data_leak:
+                payload["leak_warning"] = {"reason": leak.reason, **leak.detail}
+                _log(
+                    f"Warning: proceeded despite potential data leak ({leak.reason}); "
+                    "metrics may be optimistic."
+                )
             _log(
                 f"Ensemble succeeded; n_samples={payload['n_samples']} "
                 f"pearson={combined_metrics.get('pearson')}"

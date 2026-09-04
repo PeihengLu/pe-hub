@@ -46,6 +46,16 @@ class EnsembleRequest(BaseModel):
     scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
     device: Optional[str] = "auto"
+    allow_data_leak: bool = Field(
+        default=False,
+        description=(
+            "When False (default), overlapping target loci from the union of "
+            "member training provenance are excluded from the test partition. "
+            "Full overlap or unverifiable provenance still aborts with a "
+            "parseable data_leak error. Set True to keep overlapping rows "
+            "and only emit leak_warning."
+        ),
+    )
 
     @field_validator("combine")
     @classmethod

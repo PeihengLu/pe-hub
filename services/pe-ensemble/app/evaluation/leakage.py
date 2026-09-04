@@ -17,7 +17,7 @@ locus remains. Full overlap (nothing left) still aborts unless
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Iterable, Optional, Sequence, Set, Tuple
 
 import pandas as pd
 
@@ -173,6 +173,58 @@ def exclude_overlapping_loci(
     )
 
 
+def _member_identity(member: Any) -> Tuple[str, str]:
+    if isinstance(member, dict):
+        model_name = str(member.get("model_name") or member.get("model") or "").strip().lower()
+        weights = str(member.get("weights") or "").strip()
+    else:
+        model_name = str(getattr(member, "model_name", "") or "").strip().lower()
+        weights = str(getattr(member, "weights", "") or "").strip()
+    return model_name, weights
+
+
+def collect_ensemble_training_loci(
+    members: Sequence[Any],
+) -> Tuple[Optional[Set[str]], Dict[str, Any]]:
+    """Union ``train_target_loci`` from each ensemble member's provenance.
+
+    Returns ``(training_loci, detail)``. ``training_loci`` is the union when
+    every member has a recorded sidecar; ``None`` when any member lacks
+    provenance (ensemble training exposure cannot be fully known).
+    """
+    member_rows: list[Dict[str, Any]] = []
+    union: Set[str] = set()
+    missing: list[Dict[str, str]] = []
+
+    for member in members:
+        model_name, weights_id = _member_identity(member)
+        loci = weights_registry.load_training_loci(model_name, weights_id)
+        row: Dict[str, Any] = {
+            "model_name": model_name,
+            "weights": weights_id,
+            "training_provenance_available": loci is not None,
+            "n_target_loci": len(loci) if loci is not None else None,
+        }
+        member_rows.append(row)
+        if loci is None:
+            missing.append({"model_name": model_name, "weights": weights_id})
+        else:
+            union |= set(loci)
+
+    complete = len(missing) == 0 and len(member_rows) > 0
+    detail: Dict[str, Any] = {
+        "members": member_rows,
+        "all_members_have_provenance": complete,
+        "n_members_missing_provenance": len(missing),
+        "missing_provenance_members": missing,
+        "n_target_loci": len(union) if complete else None,
+        "loci_fingerprint": (
+            weights_registry.loci_fingerprint(union) if complete and union else None
+        ),
+    }
+    return (union if complete else None), detail
+
+
 def assess_leakage(
     *,
     test_df: pd.DataFrame,
@@ -187,8 +239,39 @@ def assess_leakage(
     provenance-check bug cannot take down evaluation.
     """
     try:
+        training_loci = weights_registry.load_training_loci(model, weights_id)
         return _assess_leakage(
-            test_df=test_df, split=split, model=model, weights_id=weights_id
+            test_df=test_df,
+            split=split,
+            training_loci=training_loci,
+            base_detail={
+                "weights_id": weights_id,
+                "training_provenance_available": training_loci is not None,
+            },
+        )
+    except Exception:
+        return None
+
+
+def assess_ensemble_leakage(
+    *,
+    test_df: pd.DataFrame,
+    split: Any,
+    members: Sequence[Any],
+) -> Optional[LeakAssessment]:
+    """Leak check for an ensemble using the union of member training loci."""
+    try:
+        training_loci, loci_detail = collect_ensemble_training_loci(members)
+        return _assess_leakage(
+            test_df=test_df,
+            split=split,
+            training_loci=training_loci,
+            base_detail={
+                "ensemble_training_loci": loci_detail,
+                "training_provenance_available": training_loci is not None,
+            },
+            overlap_message_subject="this ensemble's member training data",
+            unverifiable_subject="one or more ensemble members have",
         )
     except Exception:
         return None
@@ -198,10 +281,11 @@ def _assess_leakage(
     *,
     test_df: pd.DataFrame,
     split: Any,
-    model: str,
-    weights_id: str,
+    training_loci: Optional[Set[str]],
+    base_detail: Dict[str, Any],
+    overlap_message_subject: str = "this model's training data",
+    unverifiable_subject: str = "the weight set has",
 ) -> Optional[LeakAssessment]:
-    training_loci = weights_registry.load_training_loci(model, weights_id)
     test_uids = _test_target_uids(test_df)
     source_counts = _test_split_source_counts(test_df)
 
@@ -211,9 +295,8 @@ def _assess_leakage(
     test_is_author_holdout = n_author > 0 and n_synthetic == 0
     use_original_fold = bool(getattr(split, "use_original_fold", False))
 
-    base_detail: Dict[str, Any] = {
-        "weights_id": weights_id,
-        "training_provenance_available": training_loci is not None,
+    detail_base: Dict[str, Any] = {
+        **base_detail,
         "n_test_rows": n_total,
         "n_test_loci": len(test_uids) if test_uids is not None else None,
         "n_training_loci": len(training_loci) if training_loci is not None else None,
@@ -229,7 +312,7 @@ def _assess_leakage(
             return None
         overlap = sorted(test_uids & training_loci)
         detail = {
-            **base_detail,
+            **detail_base,
             "n_overlap_loci": len(overlap),
             "overlap_fraction": (len(overlap) / len(test_uids)) if test_uids else 0.0,
             "example_overlap_target_uids": overlap[:_MAX_EXAMPLE_UIDS],
@@ -237,7 +320,7 @@ def _assess_leakage(
         if overlap:
             detail["message"] = (
                 f"{len(overlap)} of {len(test_uids)} evaluation target loci were "
-                "present in this model's training data (train/test overlap)."
+                f"present in {overlap_message_subject} (train/test overlap)."
             )
             return LeakAssessment(True, REASON_TRAIN_TEST_OVERLAP, detail)
         return None
@@ -252,16 +335,17 @@ def _assess_leakage(
         message = (
             "Data leak unavoidable: an original (author-provided) test split was "
             "requested but is not defined for this benchmark, so the test set was "
-            "synthesized, and the weight set has no recorded training provenance "
+            "synthesized, and "
+            f"{unverifiable_subject} no recorded training provenance "
             "to verify separation."
         )
     else:
         reason = REASON_UNVERIFIABLE_PROVENANCE
         message = (
             "Cannot verify train/test separation: the test split is synthetic and "
-            "the weight set has no recorded training provenance."
+            f"{unverifiable_subject} no recorded training provenance."
         )
-    detail = {**base_detail, "message": message}
+    detail = {**detail_base, "message": message}
     return LeakAssessment(True, reason, detail)
 
 
@@ -286,4 +370,31 @@ def leak_error_payload(
         "leak": assessment.detail,
         "n_samples": int(n_samples),
         "metrics": None,
+    }
+
+
+def ensemble_leak_error_payload(
+    assessment: LeakAssessment,
+    *,
+    ensemble_name: str,
+    device_id: str,
+    n_samples: int,
+    members: Iterable[Any],
+) -> Dict[str, Any]:
+    """Build the parseable error result emitted when ensemble evaluation aborts."""
+    member_list = []
+    for member in members:
+        model_name, weights = _member_identity(member)
+        member_list.append({"model_name": model_name, "weights": weights})
+    return {
+        "ensemble_name": ensemble_name,
+        "device": device_id,
+        "status": "error",
+        "error_type": LEAK_ERROR_TYPE,
+        "leak_reason": assessment.reason,
+        "leak": assessment.detail,
+        "n_samples": int(n_samples),
+        "metrics": None,
+        "member_metrics": [],
+        "members": member_list,
     }

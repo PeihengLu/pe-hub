@@ -346,6 +346,7 @@ def build_ensemble_request(args: argparse.Namespace) -> EnsembleRequest:
         target_context=_optional_list(args.target_context),
         scaffold_name=_optional_list(args.scaffold_name),
         device=args.device,
+        allow_data_leak=bool(getattr(args, "allow_data_leak", False)),
     )
 
 
@@ -492,6 +493,14 @@ def _add_ensemble_parser(sub: argparse._SubParsersAction) -> None:
         use_original_fold=True,
     )
     _add_env_flags(parser)
+    parser.add_argument(
+        "--allow-data-leak",
+        action="store_true",
+        help=(
+            "Keep training-overlapping test loci instead of excluding them "
+            "(or aborting when provenance is unverifiable)"
+        ),
+    )
     parser.add_argument("--sync", action="store_true")
     parser.add_argument("--job-id", default=None)
     parser.add_argument("--queue-only", action="store_true")

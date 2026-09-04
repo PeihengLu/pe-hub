@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Evaluate base vendor weights on pooled PE-DB benchmarks via peen evaluate --sync.
+# Evaluate base vendor weights on pooled PE-DB benchmarks via peen evaluate --sync,
+# then PRIDICT2 mean ensembles via peen ensemble --sync.
 #
 # Weights:
 #   - deepprime / DeepPrime_base
 #   - oped / pegRNA_Model_Merged_saved.order3_decoder_weights
 #   - optiprime / base
 #   - pridict2 / August 2023 CV folds × HEK and K562 heads
+#   - pridict2 ensemble / mean(pridict1_1 run_x head, pridict1_2 run_x head)
 #
 # Benchmarks (dataset lists; multi-cell-line datasets are expanded per cell):
 #   minsepie-insert-pooled, deeppe-pooled, deepprime-clinvar,
@@ -17,6 +19,10 @@
 #   - PRIDICT library1 has no author split: vendor training used every locus
 #   - everything else: random group holdout
 #
+# Note: peen ensemble unions member train_target_loci from weight provenance
+# and applies the same leak exclude/abort policy as evaluate. Cells that fully
+# overlap member training data (e.g. pridict1-library1) abort with data_leak.
+#
 # Usage:
 #   conda activate pedb
 #   DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
@@ -26,7 +32,8 @@
 #   RUN_ID            output run id (default: UTC timestamp). Reuse an existing id
 #                     to overwrite matching cells and refresh summary.csv.
 #   OUT_ROOT          results root (default: <repo>/results/base_model_eval)
-#   MODELS            comma/space list to restrict weights (deepprime,oped,optiprime,pridict2)
+#   MODELS            comma/space list to restrict weights (deepprime,oped,optiprime,pridict2).
+#                     Including pridict2 (or leaving MODELS unset) also runs ensembles.
 #   BENCHMARKS        comma/space list of benchmark names
 #   PRIDICT2_HEADS    comma/space list of cell-type heads (default: HEK,K562).
 #                     Each PRIDICT2 CV run is scored with every listed head on
@@ -34,10 +41,16 @@
 #   SKIP_EXISTING=1   skip cells already ok in results.jsonl
 #                     (library-diverse fold-matched cells are distinct from
 #                     earlier random-holdout rows of the same weight)
-#   SMOKE=1           evaluate only first remaining weight × first remaining benchmark
+#   SMOKE=1           evaluate only first remaining weight × first remaining benchmark;
+#                     ensemble stage also limited to first head × run_0 × that bench
+#   ENSEMBLE_ONLY=1   skip the peen evaluate matrix; only run PRIDICT2 ensembles
 #
 # Partial rerun into an existing run (DeepPrime numbers stay; others refresh):
 #   DEVICE=cuda:0 MODELS=oped,pridict2,optiprime RUN_ID=20260902T151810Z \
+#     ./scripts/experiments/evaluate_base_model_benchmarks.sh
+#
+# Ensemble-only into an existing run (keeps prior single-model rows):
+#   DEVICE=cuda:0 ENSEMBLE_ONLY=1 SKIP_EXISTING=1 RUN_ID=20260903T133425Z \
 #     ./scripts/experiments/evaluate_base_model_benchmarks.sh
 
 set -euo pipefail
@@ -205,6 +218,10 @@ cat > "${OUT_DIR}/matrix.json" <<EOF
 EOF
 
 IDX=0
+if [[ "${ENSEMBLE_ONLY:-0}" == "1" ]]; then
+  echo "ENSEMBLE_ONLY=1: skipping peen evaluate matrix"
+  echo ""
+else
 for weight_spec in "${WEIGHTS[@]}"; do
   IFS='|' read -r MODEL WEIGHTS_ID EXPERIMENT_ID CV_RUN <<< "${weight_spec}"
   for bench_spec in "${BENCHMARKS[@]}"; do
@@ -343,6 +360,192 @@ PY
 
   done
 done
+fi
+
+# ---------------------------------------------------------------------------
+# PRIDICT2 ensemble evaluation: mean of pridict1_1 + pridict1_2 per CV fold
+# ---------------------------------------------------------------------------
+ENSEMBLE_MODEL="pridict2"
+MODELS_KEY_FOR_ENS=",$(echo "${FILTER_MODELS}" | tr -s ' ,' ',' | sed 's/^,//;s/,$//'),"
+RUN_ENSEMBLE=0
+if [[ "${ENSEMBLE_ONLY:-0}" == "1" || -z "${FILTER_MODELS}" || "${MODELS_KEY_FOR_ENS}" == *",pridict2,"* ]]; then
+  RUN_ENSEMBLE=1
+fi
+
+if [[ "${RUN_ENSEMBLE}" == "1" ]]; then
+  ENS_HEADS=("${PRIDICT2_HEAD_ARR[@]}")
+  ENS_RUNS=(0 1 2 3 4)
+  if [[ "${SMOKE:-0}" == "1" ]]; then
+    ENS_HEADS=("${ENS_HEADS[0]}")
+    ENS_RUNS=(0)
+    echo "SMOKE=1: ensemble limited to head=${ENS_HEADS[0]} run=0 × ${#BENCHMARKS[@]} benchmark(s)"
+  fi
+
+  ENS_IDX=0
+  ENS_TOTAL=$(( ${#ENS_HEADS[@]} * ${#ENS_RUNS[@]} * ${#BENCHMARKS[@]} ))
+  echo ""
+  echo "=== PRIDICT2 ensemble (mean of pridict1_1 + pridict1_2) ==="
+  echo "Matrix: ${#ENS_HEADS[@]} heads × ${#ENS_RUNS[@]} folds × ${#BENCHMARKS[@]} benchmarks = ${ENS_TOTAL} ensembles"
+  echo ""
+
+  for head in "${ENS_HEADS[@]}"; do
+    for run in "${ENS_RUNS[@]}"; do
+      MEMBER_A="${PRIDICT2_EXPERIMENTS[0]}__run_${run}__${head}"
+      MEMBER_B="${PRIDICT2_EXPERIMENTS[1]}__run_${run}__${head}"
+      ENS_WEIGHTS="ensemble__run_${run}__${head}"
+      ENS_EXPERIMENT_ID="pridict2_ensemble"
+
+      for bench_spec in "${BENCHMARKS[@]}"; do
+        IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE <<< "${bench_spec}"
+        ENS_IDX=$((ENS_IDX + 1))
+        ENS_NAME="pridict2-ensemble-${head}-run${run}-${BENCH_NAME}"
+
+        SPLIT_PLAN_JSON="$(
+          python "${SCRIPT_DIR}/eval_split_args.py" --json \
+            --model "${ENSEMBLE_MODEL}" \
+            --study "${STUDY}" \
+            --datasets "${DATASETS_CSV}" \
+            --cv-run "${run}"
+        )"
+        SPLIT_ARGS=()
+        while IFS= read -r token; do
+          [[ -n "${token}" ]] && SPLIT_ARGS+=("${token}")
+        done < <(python -c "import json,sys; print('\\n'.join(json.loads(sys.argv[1])['args']))" "${SPLIT_PLAN_JSON}")
+
+        SKIP_KEY="$(
+          python - "${SCRIPT_DIR}" "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${BENCH_NAME}" "${CELL_LINE}" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from eval_split_args import eval_result_cell_key
+plan = json.loads(sys.argv[2])
+print(eval_result_cell_key(sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], plan["original_fold_test_value"]))
+PY
+        )"
+        if [[ "${SKIP_EXISTING}" == "1" ]]; then
+          if grep -Fqx "${SKIP_KEY}" "${SKIP_KEYS_FILE}"; then
+            echo "[ens ${ENS_IDX}/${ENS_TOTAL}] skip ${ENS_NAME}"
+            continue
+          fi
+        fi
+
+        FOLD_TAG="$(python -c "import json,sys; v=json.loads(sys.argv[1]).get('original_fold_test_value'); print('' if v is None else f'__fold_{int(v)}')" "${SPLIT_PLAN_JSON}")"
+        SAFE_NAME="$(echo "${ENSEMBLE_MODEL}__${ENS_WEIGHTS}__${BENCH_NAME}${FOLD_TAG}" | tr '/:' '__')"
+        STDOUT_FILE="${LOG_DIR}/${SAFE_NAME}.stdout"
+        STDERR_FILE="${LOG_DIR}/${SAFE_NAME}.stderr"
+
+        echo "[ens ${ENS_IDX}/${ENS_TOTAL}] ${ENS_NAME}"
+
+        DATASET_ARGS=()
+        IFS=',' read -ra DS_ARR <<< "${DATASETS_CSV}"
+        for ds in "${DS_ARR[@]}"; do
+          DATASET_ARGS+=(--dataset "${ds}")
+        done
+        if [[ -n "${CELL_LINE}" ]]; then
+          DATASET_ARGS+=(--cell-line "${CELL_LINE}")
+        fi
+
+        META_JSON="$(
+          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" <<'PY'
+import json
+import sys
+
+plan = json.loads(sys.argv[1])
+cv_run = sys.argv[5].strip()
+print(json.dumps({
+    "model": sys.argv[2],
+    "weights": sys.argv[3],
+    "experiment_id": sys.argv[4] or None,
+    "cv_run": int(cv_run) if cv_run else None,
+    "study": sys.argv[6],
+    "datasets": [item for item in sys.argv[7].split(",") if item],
+    "cell_line": sys.argv[8] or None,
+    "benchmark_name": sys.argv[9],
+    "use_original_fold": plan["use_original_fold"],
+    "original_fold_test_value": plan["original_fold_test_value"],
+    "ensemble": True,
+    "ensemble_members": [sys.argv[10], sys.argv[11]],
+}))
+PY
+        )"
+
+        set +e
+        "${PEEN_CMD[@]}" ensemble \
+          --ensemble-name "${ENS_NAME}" \
+          --combine mean \
+          --member "${ENSEMBLE_MODEL}:${MEMBER_A}" \
+          --member "${ENSEMBLE_MODEL}:${MEMBER_B}" \
+          --study "${STUDY}" \
+          "${DATASET_ARGS[@]}" \
+          "${SPLIT_ARGS[@]}" \
+          --sync \
+          --device "${DEVICE}" \
+          > "${STDOUT_FILE}" 2> "${STDERR_FILE}"
+        EXIT_CODE=$?
+        set -e
+
+        python - "${RESULTS_JSONL}" "${STDOUT_FILE}" "${STDERR_FILE}" "${EXIT_CODE}" "${META_JSON}" "${SCRIPT_DIR}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out_path = Path(sys.argv[1])
+stdout_path = Path(sys.argv[2])
+stderr_path = Path(sys.argv[3])
+exit_code = int(sys.argv[4])
+meta = json.loads(sys.argv[5])
+sys.path.insert(0, sys.argv[6])
+from summarize_eval_results import extract_json_object
+
+stdout = stdout_path.read_text(encoding="utf-8", errors="replace").strip()
+stderr = stderr_path.read_text(encoding="utf-8", errors="replace").strip()
+
+record = dict(meta)
+record["exit_code"] = exit_code
+
+payload = extract_json_object(stdout) if stdout else None
+
+if payload is not None:
+    # Keep meta identity fields; ensemble JSON has no model/weights/benchmark_name.
+    for key, value in payload.items():
+        if key in (
+            "model",
+            "weights",
+            "experiment_id",
+            "cv_run",
+            "study",
+            "datasets",
+            "cell_line",
+            "benchmark_name",
+            "use_original_fold",
+            "original_fold_test_value",
+            "ensemble",
+            "ensemble_members",
+        ):
+            continue
+        record[key] = value
+    if payload.get("skipped"):
+        record.setdefault("status", "skipped")
+    elif payload.get("error_type") == "data_leak" or payload.get("status") == "error":
+        record.setdefault("status", "error")
+    elif payload.get("metrics") is not None:
+        record.setdefault("status", "ok")
+    else:
+        record.setdefault("status", payload.get("status") or "unknown")
+else:
+    record["status"] = "error"
+    record["error_type"] = "cli_failure"
+    record["metrics"] = None
+    record["n_samples"] = None
+    record["stderr_tail"] = stderr[-2000:] if stderr else None
+
+with out_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps(record, default=str) + "\n")
+PY
+
+      done
+    done
+  done
+fi
 
 echo ""
 echo "Wrote ${RESULTS_JSONL}"
