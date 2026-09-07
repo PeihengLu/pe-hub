@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
 # Shared helpers for the scratch-benchmark experiment:
-#   model × dataset matrix, holdout_3 tune → train → evaluate (from scratch).
+#   model × dataset matrix via scripts/experiments/datasheet-benchmark
+#   holdout_3 × N_SEEDS (default 3) with Optuna N_TRIALS (default 10) per seed.
 #
-# Benchmarks align with scripts/experiments/evaluate_base_model_benchmarks.sh:
-#   pridict1-library1, pridict2-library-diverse, deepprime-clinvar,
-#   deeppe-pooled, minsepie-insert-pooled, optiprime-lib-mmr, optiprime-lib-cv
+# Each cell: tune → register best weights (train) → evaluate test.
+# Benchmarks align with scripts/experiments/evaluate_base_model_benchmarks.sh.
 # Models: deepprime, oped, pridict2 (OptiPrime model excluded; lib-* are datasets).
 
 set -euo pipefail
 
 EXP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HP_DIR="$(cd "${EXP_DIR}/../../hyperparameter" && pwd)"
+BENCH_PY="${EXP_DIR}/../datasheet-benchmark/run_benchmark.py"
+
+# Nested protocol defaults — set before hyperparameter/_common.sh so its
+# N_TRIALS="${N_TRIALS:-20}" keeps 10.
+: "${N_SEEDS:=3}"
+: "${N_TRIALS:=10}"
+: "${PROTOCOL:=holdout_3}"
+
 # shellcheck source=../../hyperparameter/_common.sh
 source "${HP_DIR}/_common.sh"
+
+if [[ "${SMOKE:-0}" == "1" ]]; then
+    N_SEEDS="${N_SEEDS_SMOKE:-2}"
+fi
+N="${N_SEEDS}"
 
 STATE_DIR="${STATE_DIR:-${EXP_DIR}/state}"
 RESULTS_DIR="${RESULTS_DIR:-${EXP_DIR}/results}"
@@ -87,81 +100,81 @@ maybe_skip_if_state() {
     fi
 }
 
-extract_weights_id() {
-    local py
-    py="$(command -v python 2>/dev/null || command -v python3)"
-    "${py}" - <<'PY'
-import json, sys
-text = sys.stdin.read()
-decoder = json.JSONDecoder()
-last = None
-idx = 0
-while True:
-    start = text.find("{", idx)
-    if start < 0:
-        break
-    try:
-        obj, end = decoder.raw_decode(text, start)
-    except json.JSONDecodeError:
-        idx = start + 1
-        continue
-    if isinstance(obj, dict) and obj.get("weights_id"):
-        last = obj["weights_id"]
-    idx = end
-if not last:
-    sys.stderr.write("Error: no weights_id found in peen output\n")
-    sys.exit(1)
-print(last)
-PY
+ensure_run_id() {
+    if [[ -z "${RUN_ID:-}" ]]; then
+        RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+    fi
+    printf '%s\n' "${RUN_ID}" > "${RESULTS_DIR}/LATEST_RUN_ID"
+    export RUN_ID
 }
 
-run_peen_capture_weights() {
-    local state_key="$1"
-    shift
-    local logfile
-    logfile="$(state_path "${state_key}.log")"
-    echo "+ peen $*"
-    echo "  (log: ${logfile})"
-    if peen "$@" 2>&1 | tee "${logfile}" | extract_weights_id > "$(state_path "${state_key}.tmp")"; then
-        mv "$(state_path "${state_key}.tmp")" "$(state_path "${state_key}")"
-        echo "Wrote state ${state_key}=$(cat "$(state_path "${state_key}")")"
+cell_out_dir() {
+    local model="$1"
+    local bench="$2"
+    echo "${RESULTS_DIR}/${RUN_ID}/$(cell_key "${model}" "${bench}")"
+}
+
+cell_done_key() {
+    local prefix="$1"
+    local key="$2"
+    if [[ -n "${INDEX:-}" ]]; then
+        echo "${prefix}__${key}__s${INDEX}"
     else
-        rm -f "$(state_path "${state_key}.tmp")"
-        echo "Error: peen failed; see ${logfile}" >&2
-        exit 1
+        echo "${prefix}__${key}"
     fi
+}
+
+run_datasheet_benchmark_cell() {
+    local model="$1"
+    local skip_eval="${2:-0}"
+    local extra_args=("${@:3}")
+    local py out_dir
+    py="$(command -v python 2>/dev/null || command -v python3)"
+    out_dir="$(cell_out_dir "${model}" "${MATRIX_BENCH}")"
+    mkdir -p "${out_dir}"
+
+    local args=(
+        --model "${model}"
+        --n "${N_SEEDS}"
+        --n-trials "${N_TRIALS}"
+        --protocol "${PROTOCOL}"
+        --dataset-name "$(dataset_name_for_cell "${model}" "${MATRIX_BENCH}")"
+        --device "${DEVICE}"
+        --base-seed "${SPLIT_RANDOM_STATE}"
+        --train-pct "${TRAIN_PCT}"
+        --val-pct "${VAL_PCT}"
+        --test-pct "${TEST_PCT}"
+        --run-id "${RUN_ID}"
+        --out-dir "${out_dir}"
+        --merge
+        --no-write-preset
+    )
+    append_study_dataset_args args "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
+
+    if [[ -n "${INDEX:-}" ]]; then
+        args+=(--index "${INDEX}")
+    fi
+    if [[ "${SKIP_IF_DONE:-0}" == "1" ]]; then
+        args+=(--skip-existing)
+    fi
+    if [[ "${skip_eval}" == "1" ]]; then
+        args+=(--skip-eval)
+    fi
+    if [[ -n "${FIXED_HP_JSON:-}" ]]; then
+        args+=(--fixed-hyperparameters-json "${FIXED_HP_JSON}")
+    fi
+    if ((${#extra_args[@]})); then
+        args+=("${extra_args[@]}")
+    fi
+
+    echo "+ ${py} ${BENCH_PY} ${args[*]}"
+    "${py}" "${BENCH_PY}" "${args[@]}"
 }
 
 cell_key() {
     local model="$1"
     local bench="$2"
     echo "${model}__${bench}"
-}
-
-dataset_preset_key_for_cell() {
-    local study="$1"
-    local datasets_csv="$2"
-    local py
-    py="$(command -v python 2>/dev/null || command -v python3)"
-    STUDY="${study}" DATASETS_CSV="${datasets_csv}" REPO_ROOT="${HP_DIR}/../.." \
-        "${py}" - <<'PY'
-import os, sys
-from pathlib import Path
-
-root = Path(os.environ["REPO_ROOT"]) / "services" / "pe-ensemble"
-sys.path.insert(0, str(root))
-from app.training.dataset_key import dataset_preset_key
-
-study = os.environ["STUDY"]
-datasets = [part.strip() for part in os.environ["DATASETS_CSV"].split(",") if part.strip()]
-if not datasets:
-    raise SystemExit("empty datasets list")
-payload = datasets[0] if len(datasets) == 1 else datasets
-key = dataset_preset_key(study=study, dataset=payload)
-if not key:
-    raise SystemExit(f"could not derive preset key for {study!r} / {datasets!r}")
-print(key)
-PY
 }
 
 parse_matrix_row() {
@@ -192,12 +205,6 @@ datasets_display_for_row() {
     echo "${datasets_csv//,/, }"
 }
 
-study_name_for_cell() {
-    local model="$1"
-    local bench="$2"
-    echo "${EXP_PREFIX}__${model}__${bench}"
-}
-
 dataset_name_for_cell() {
     local model="$1"
     local bench="$2"
@@ -219,55 +226,6 @@ print(json.dumps(hp, separators=(",", ":")))
 PY
 }
 
-train_hp_json() {
-    local model="$1"
-    local py
-    py="$(command -v python 2>/dev/null || command -v python3)"
-    MODEL="${model}" \
-    BATCH_SIZE="${BATCH_SIZE}" \
-    NUM_WORKERS="${NUM_WORKERS}" \
-    EARLY_STOPPING_PATIENCE="${EARLY_STOPPING_PATIENCE}" \
-    MAX_EPOCHS_DEEPPRIME="${MAX_EPOCHS_DEEPPRIME}" \
-    MAX_EPOCHS_OPED="${MAX_EPOCHS_OPED}" \
-    MAX_EPOCHS_PRIDICT2="${MAX_EPOCHS_PRIDICT2}" \
-    "${py}" - <<'PY'
-import json, os
-model = os.environ["MODEL"].strip().lower()
-hp = {
-    "load_pretrained": False,
-    "batch_size": int(os.environ["BATCH_SIZE"]),
-    "num_workers": int(os.environ["NUM_WORKERS"]),
-    "early_stopping_patience": int(os.environ["EARLY_STOPPING_PATIENCE"]),
-    "freezing": False,
-}
-if model == "deepprime":
-    n = int(os.environ["MAX_EPOCHS_DEEPPRIME"])
-    hp["epochs"] = n
-elif model == "oped":
-    n = int(os.environ["MAX_EPOCHS_OPED"])
-    hp["epoch_num"] = n
-elif model == "pridict2":
-    n = int(os.environ["MAX_EPOCHS_PRIDICT2"])
-    hp["num_epochs"] = n
-    hp["loss_func"] = "MSEloss"
-    hp["y_ref"] = ["averageedited"]
-else:
-    raise SystemExit(f"unsupported model: {model}")
-print(json.dumps(hp, separators=(",", ":")))
-PY
-}
-
-split_args_for_cell() {
-    SPLIT_ARGS=(
-        --split-strategy holdout_3
-        --train-pct "${TRAIN_PCT}"
-        --val-pct "${VAL_PCT}"
-        --test-pct "${TEST_PCT}"
-        --split-random-state "${SPLIT_RANDOM_STATE}"
-        --no-use-original-fold
-    )
-}
-
 selected_models() {
     if [[ -n "${MODELS:-}" ]]; then
         # shellcheck disable=SC2206
@@ -278,7 +236,7 @@ selected_models() {
 }
 
 selected_matrix_rows() {
-    local want_bench model bench_row
+    local want_bench bench_row
     if [[ -n "${BENCHMARKS:-}" ]]; then
         for want_bench in ${BENCHMARKS}; do
             for bench_row in "${MATRIX_ALL[@]}"; do
@@ -299,17 +257,17 @@ print_benchmark_banner() {
     echo "STATE_DIR:   ${STATE_DIR}"
     echo "RESULTS_DIR: ${RESULTS_DIR}"
     echo "EXP_PREFIX:  ${EXP_PREFIX}"
-    echo "split:       holdout_3 (${TRAIN_PCT}/${VAL_PCT}/${TEST_PCT}, seed=${SPLIT_RANDOM_STATE})"
+    echo "protocol:    ${PROTOCOL} × ${N_SEEDS} seeds, ${N_TRIALS} Optuna trials/seed"
+    echo "split:       holdout_3 (${TRAIN_PCT}/${VAL_PCT}/${TEST_PCT}, base_seed=${SPLIT_RANDOM_STATE})"
     echo "models:      $(selected_models)"
     echo "benchmarks:"
-    local row bench
+    local row
     while IFS= read -r row; do
         parse_matrix_row "${row}"
-        IFS='|' read -r bench _study _datasets <<< "${row}"
-        echo "  ${bench} (${_study}: $(datasets_display_for_row "${_datasets}"), holdout seed=${SPLIT_RANDOM_STATE})"
+        echo "  ${MATRIX_BENCH} (${MATRIX_STUDY}: $(datasets_display_for_row "${MATRIX_DATASETS}") )"
     done < <(selected_matrix_rows)
     if [[ "${SMOKE:-0}" == "1" ]]; then
-        echo "SMOKE:       1 (n_trials=${N_TRIALS}; mini data unless SMOKE_FULL_DATA=1)"
+        echo "SMOKE:       1 (n_trials=${N_TRIALS} n_seeds=${N_SEEDS}; mini data unless SMOKE_FULL_DATA=1)"
     fi
     echo ""
 }

@@ -1,9 +1,12 @@
 # Scratch benchmark (from-scratch model comparison)
 
 Cross-model experiment for **DeepPrime**, **OPED**, and **PRIDICT2** on the same
-pooled benchmarks as `evaluate_base_model_benchmarks.sh`, with **Optuna tuning**
-and **holdout_3** (70/15/15) splits. Designed for local runs and Oxford ARC batch
-submission.
+pooled benchmarks as `evaluate_base_model_benchmarks.sh`. Each cell uses the
+[`datasheet-benchmark`](../datasheet-benchmark/README.md) runner:
+
+- **holdout_3** (70/15/15), **3 random split + init seeds**
+- **10 Optuna trials per seed**
+- Final train via `register_best_weights`, then test evaluation — **in the same job**
 
 The **OptiPrime model** is excluded (no scratch HPO search space); **lib-mmr** /
 **lib-cv** are included as datasets all three models train on.
@@ -12,33 +15,32 @@ The **OptiPrime model** is excluded (no scratch HPO search space); **lib-mmr** /
 
 | Benchmark | Study / dataset(s) | ~Rows | Split |
 |-----------|-------------------|------:|-------|
-| `pridict1-library1` | pridict1 / library1 | 92k | random holdout_3, seed 42 |
-| `pridict2-library-diverse` | pridict2 / library-diverse | 66k | random holdout_3, seed 42 |
-| `deeppe-pooled` | deeppe / ht + type + position + endo | 49k | random holdout_3, seed 42 |
-| `minsepie-insert-pooled` | minsepie / set12 + 18nt + codon-variant + codon-hek3 | 27k | random holdout_3, seed 42 |
-| `optiprime-lib-mmr` | optiprime / lib-mmr | 36k | random holdout_3, seed 42 |
-| `optiprime-lib-cv` | optiprime / lib-cv | 37k | random holdout_3, seed 42 |
-| `deepprime-clinvar` | deepprime / deepprime-clinvar | 289k | random holdout_3, seed 42 |
+| `pridict1-library1` | pridict1 / library1 | 92k | holdout_3 × 3 seeds |
+| `pridict2-library-diverse` | pridict2 / library-diverse | 66k | holdout_3 × 3 seeds |
+| `deeppe-pooled` | deeppe / ht + type + position + endo | 49k | holdout_3 × 3 seeds |
+| `minsepie-insert-pooled` | minsepie / set12 + 18nt + codon-variant + codon-hek3 | 27k | holdout_3 × 3 seeds |
+| `optiprime-lib-mmr` | optiprime / lib-mmr | 36k | holdout_3 × 3 seeds |
+| `optiprime-lib-cv` | optiprime / lib-cv | 37k | holdout_3 × 3 seeds |
+| `deepprime-clinvar` | deepprime / deepprime-clinvar | 289k | holdout_3 × 3 seeds |
 
-All cells use `--no-use-original-fold --split-random-state 42` (no author folds).
+All cells use `--protocol holdout_3` (no author folds). Base seed 42 → seeds 42, 43, 44.
 
-Models × benchmarks = **21 cells** (7 × 3). Each cell: tune → train → evaluate on test.
+Models × benchmarks × seeds = **63 jobs** (7 × 3 × 3). Each job: 10 HPO trials + 1 final train + eval.
 
 ## Local usage
 
 ```bash
 conda activate pe-hub
 
-# Smoke (mini DATA_ROOT, 1 trial, 2 epochs train)
+# Smoke (mini DATA_ROOT, 1 trial, 2 seeds)
 SMOKE=1 DEVICE=cuda:0 ./scripts/experiments/scratch-benchmark/run_all.sh
 
 # Full pipeline (sequential; long on ClinVar)
 DEVICE=cuda:0 ./scripts/experiments/scratch-benchmark/run_all.sh
 
 # Stages individually
-./scripts/experiments/scratch-benchmark/01_tune_matrix.sh
-./scripts/experiments/scratch-benchmark/02_train_matrix.sh
-./scripts/experiments/scratch-benchmark/03_evaluate_matrix.sh
+./scripts/experiments/scratch-benchmark/01_tune_matrix.sh   # HPO + train + eval
+./scripts/experiments/scratch-benchmark/03_evaluate_matrix.sh  # aggregate (+ leftover eval)
 ```
 
 ### Filter to one model or benchmark
@@ -47,21 +49,34 @@ DEVICE=cuda:0 ./scripts/experiments/scratch-benchmark/run_all.sh
 MODELS=oped BENCHMARKS=deepprime-clinvar \
   ./scripts/experiments/scratch-benchmark/01_tune_matrix.sh
 
-MODEL=pridict2 BENCHMARK=pridict1-library1 \
-  ./scripts/experiments/scratch-benchmark/02_train_matrix.sh
+INDEX=0 MODEL=pridict2 BENCHMARK=pridict1-library1 \
+  ./scripts/experiments/scratch-benchmark/01_tune_matrix.sh
 ```
 
-### Resume / skip completed cells
+### Resume / skip completed seeds
+
+Optuna studies resume remaining trials (not 10 extra). Re-run 01 with the same
+`RUN_ID` / `INDEX` after a walltime kill:
 
 ```bash
-SKIP_IF_DONE=1 ./scripts/experiments/scratch-benchmark/02_train_matrix.sh
+SKIP_IF_DONE=1 RUN_ID=<id> INDEX=0 MODEL=oped BENCHMARK=deepprime-clinvar \
+  ./scripts/experiments/scratch-benchmark/01_tune_matrix.sh
 ```
+
+`02_train_matrix.sh` is a thin alias for that resume (`SKIP_IF_DONE=1`).
 
 State files: `scripts/experiments/scratch-benchmark/state/` (or under `/tmp/pe-hub-smoke-*` when `SMOKE=1`).
 
 ## ARC submission
 
-From **htc-login** (not on the login node for compute):
+From **htc-login** (not on the login node for compute). Defaults in
+`env.sh.example`: **short / 12h / L40S**, one GPU.
+
+Each short job is **one seed**: 10 Optuna trials + `register_best_weights` +
+eval. That is 11 full holdout_3 trains, not a separate tune stage then train
+stage. Smaller sheets (MinSePIE, DeepPE, lib-*, library-diverse, library1)
+should fit 12h on L40S. ClinVar (~289k) may hit the wall; re-queue the same
+`INDEX` with the same `RUN_ID` (Optuna continues, then final train + eval).
 
 ```bash
 cd $DATA/pe-hub
@@ -70,23 +85,27 @@ source scripts/cluster/oxford-arc/env.sh
 # Dry-run scheduler validation
 DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
-# Recommend submitting stages separately (tune is the long pole)
-ARC_PARTITION=medium ARC_TIME=2-00:00:00 \
-  ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+# 63 jobs (7 × 3 × 3 seeds), short L40S
+./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
-ARC_PARTITION=medium ARC_TIME=1-00:00:00 \
-  ./scripts/cluster/oxford-arc/submit.sh 02_train_matrix.sh
-
-./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
-
-# Single cell (1 GPU)
+# One model × dataset → 3 seed jobs
 MODEL=oped BENCHMARK=deepprime-clinvar \
   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
-# All 21 cells in parallel (one 1-GPU job per cell — recommended if you have quota)
-./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 01_tune_matrix.sh
-./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 02_train_matrix.sh
-./scripts/experiments/scratch-benchmark/submit_arc_matrix.sh 03_evaluate_matrix.sh
+# One seed only
+INDEX=0 MODEL=oped BENCHMARK=deepprime-clinvar \
+  ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+
+# Re-queue a timed-out seed (same RUN_ID)
+RUN_ID=<id> SKIP_IF_DONE=1 INDEX=2 MODEL=oped BENCHMARK=deepprime-clinvar \
+  ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+
+# Aggregate after GPU jobs finish (set RUN_ID from 01 logs / LATEST_RUN_ID)
+RUN_ID=<id> ./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
+
+# Legacy: one job per cell (all 3 seeds) — needs medium/48h
+SUBMIT_SEEDS=0 ARC_PARTITION=medium ARC_TIME=2-00:00:00 \
+  ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 ```
 
 ## Multi-GPU
@@ -94,15 +113,15 @@ MODEL=oped BENCHMARK=deepprime-clinvar \
 **Single training/tuning job:** one GPU only. Lightning is configured with `devices=1` in
 `pe_common.training`; extra GPUs on the same SLURM allocation stay idle.
 
-**Parallel throughput:** submit one job per matrix cell (21 jobs × 1 L40S). Use
-`submit_arc_matrix.sh` above, or manual `MODEL=… BENCHMARK=… submit.sh …` per cell.
-Each job should keep `ARC_GPUS=1` and `DEVICE=cuda:0` (defaults in `env.sh`).
+**Parallel throughput:** 63 jobs × 1 L40S (`submit.sh 01_tune_matrix.sh`).
+Keep `ARC_GPUS=1` and `DEVICE=cuda:0`. Pack seeds with `SUBMIT_SEEDS=0` only if
+you want fewer, longer jobs.
 
 Save only runs you care about (see
 [`scripts/cluster/oxford-arc/README.md`](../../cluster/oxford-arc/README.md#dvc-selective-artifacts)):
 
 ```bash
-# on ARC — example: benchmark results folder + one weight set
+# on ARC
 dvc add scripts/experiments/scratch-benchmark/results/<RUN_ID>
 dvc add services/pe-ensemble/weights/<model>/<weights_id>
 dvc push
@@ -119,27 +138,27 @@ cat scripts/experiments/scratch-benchmark/results/LATEST_RUN_ID
 |----------|----------|
 | Optuna DB | `services/pe-ensemble/tuning_studies/*.db` |
 | Dataset presets | `services/pe-ensemble/config/training_presets_local/` |
-| Trained weights | `services/pe-ensemble/weights/*__custom__*` |
+| Trained weights | `services/pe-ensemble/weights/*__custom__*` (one set per seed) |
 | Pipeline state | `scripts/experiments/scratch-benchmark/state/` |
-| Eval JSONL + CSV | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/` |
+| Per-cell JSONL | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/<model>__<bench>/` |
+| Matrix summary | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/summary.csv` |
 
 ## Tunable env vars
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `N_TRIALS` | 20 | Optuna trials per cell |
-| `SPLIT_RANDOM_STATE` | 42 | Reproducible holdout_3 |
-| `BATCH_SIZE` | 128 | Final train batch size |
-| `EARLY_STOPPING_PATIENCE` | 12 | Final train early stop |
-| `MAX_EPOCHS_*` | 50 | Epoch cap per model (final train) |
-| `NUM_WORKERS` | 15 | DataLoader workers |
+| `N_TRIALS` | 10 | Optuna trials **per seed** |
+| `N_SEEDS` | 3 | holdout_3 repeats (split + init seeds) |
+| `PROTOCOL` | `holdout_3` | datasheet-benchmark protocol |
+| `SPLIT_RANDOM_STATE` | 42 | Base seed (seeds are 42, 43, 44) |
+| `INDEX` | unset | 0-based seed for cluster fan-out |
 | `DEVICE` | auto | CUDA device |
 
-Smoke overrides (`SMOKE=1`): 1 trial, mini data locally; on ARC use `SMOKE=1` with full data via `submit.sh`.
+Smoke overrides (`SMOKE=1`): 1 trial, 2 seeds, mini data locally; on ARC use `SMOKE=1` with full data via `submit.sh`.
 
 ## Comparison notes
 
 - All models train **from scratch** (`load_pretrained=false`).
-- Tuning optimizes **validation** metrics; **test** is only used in stage 03.
+- Each seed has its own Optuna study and registered weights; test metrics are mean±std across seeds.
 - PRIDICT2 uses `MSEloss` on `averageedited` (same as probe/reproduction).
-- ClinVar (~289k rows) is much slower; DeepPE / MinSePIE / lib-mmr / lib-cv are smaller and better fits for **short** (12h) per-cell jobs.
+- ClinVar (~289k rows) is the cell most likely to need a second short job.

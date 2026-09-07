@@ -24,10 +24,13 @@
 # Dry-run (validate + estimated start):
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
 #
-# Scratch-benchmark matrix (one SLURM job per model×benchmark cell):
+# Scratch-benchmark matrix: default is one short L40S job per seed
+# (7 datasets × 3 models × 3 seeds = 63). Set SUBMIT_MATRIX_AS_ONE=1 to pack
+# every cell into a single job. Set INDEX + MODEL + BENCHMARK for one seed.
 #   ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 #   MODEL=oped BENCHMARK=pridict1-library1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
-#   SUBMIT_MATRIX_AS_ONE=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh  # all cells in one job
+#   SUBMIT_MATRIX_AS_ONE=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+#   RUN_ID=<id> ./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
 
 set -euo pipefail
 
@@ -52,16 +55,19 @@ fi
 
 STAGE_BASENAME="$(basename "${STAGE_SCRIPT}")"
 
-# Matrix stages (01/02/03_*_matrix.sh) run one model×benchmark cell per job.
-# submit.sh 01_tune_matrix.sh  → fans out via submit_arc_matrix.sh (21 jobs)
-# MODEL=oped BENCHMARK=… submit.sh 01_tune_matrix.sh  → single cell
-# SUBMIT_MATRIX_AS_ONE=1 submit.sh 01_tune_matrix.sh  → one job, all cells (legacy)
-if [[ "${STAGE_BASENAME}" == *_matrix.sh \
-    && "${SUBMIT_MATRIX_AS_ONE:-0}" != "1" \
-    && ( -z "${MODEL:-}" || -z "${BENCHMARK:-}" ) ]]; then
+# Matrix stages 01/02 default to one job per seed via submit_arc_matrix.sh.
+# Skip the fan-out when already inside that helper, when packing all cells
+# (SUBMIT_MATRIX_AS_ONE=1), or when the caller pinned a single INDEX.
+# MODEL=oped BENCHMARK=… submit.sh 01_tune_matrix.sh  → 3 seed jobs
+# INDEX=0 MODEL=oped BENCHMARK=… submit.sh 01_tune_matrix.sh  → one seed
+# SUBMIT_MATRIX_AS_ONE=1 submit.sh 01_tune_matrix.sh  → one job, all cells
+if [[ "${STAGE_BASENAME}" == 01_tune_matrix.sh || "${STAGE_BASENAME}" == 02_train_matrix.sh ]] \
+    && [[ "${SUBMIT_MATRIX_AS_ONE:-0}" != "1" ]] \
+    && [[ "${_ARC_MATRIX_CELL:-0}" != "1" ]] \
+    && [[ -z "${INDEX:-}" ]]; then
     MATRIX_SUBMIT="${PE_HUB_ROOT}/scripts/experiments/scratch-benchmark/submit_arc_matrix.sh"
     if [[ -x "${MATRIX_SUBMIT}" ]]; then
-        echo "Matrix stage ${STAGE_BASENAME}: submitting one SLURM job per cell (set SUBMIT_MATRIX_AS_ONE=1 to run all cells in one job)."
+        echo "Matrix stage ${STAGE_BASENAME}: submitting one SLURM job per seed (set SUBMIT_SEEDS=0 for one job per cell, SUBMIT_MATRIX_AS_ONE=1 for all cells in one job)."
         exec "${MATRIX_SUBMIT}" "${STAGE_BASENAME}"
     fi
     echo "Warning: ${MATRIX_SUBMIT} missing; submitting ${STAGE_BASENAME} as a single job." >&2
@@ -72,6 +78,9 @@ JOB_NAME="pe-$(basename "${STAGE_SCRIPT}" .sh | tr '_' '-' | cut -c1-40)"
 if [[ -n "${MODEL:-}" && -n "${BENCHMARK:-}" ]]; then
     JOB_SUFFIX="$(echo "${MODEL}__${BENCHMARK}" | tr '[:upper:]' '[:lower:]' | tr '_/' '-' | tr -cd 'a-z0-9.-')"
     JOB_NAME="pe-$(basename "${STAGE_SCRIPT}" .sh | tr '_' '-' | cut -c1-24)-${JOB_SUFFIX}"
+    if [[ -n "${INDEX:-}" ]]; then
+        JOB_NAME="${JOB_NAME}-s${INDEX}"
+    fi
     JOB_NAME="${JOB_NAME:0:40}"
 fi
 
@@ -88,7 +97,7 @@ SBATCH_ARGS=(
     --cpus-per-task="${ARC_CPUS}"
     --mem="${ARC_MEM}"
     --gres="gpu:${ARC_GPUS}"
-    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}",MODEL="${MODEL:-}",BENCHMARK="${BENCHMARK:-}"
+    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}",MODEL="${MODEL:-}",BENCHMARK="${BENCHMARK:-}",RUN_ID="${RUN_ID:-}",N_SEEDS="${N_SEEDS:-3}",N_TRIALS="${N_TRIALS:-10}",PROTOCOL="${PROTOCOL:-holdout_3}",INDEX="${INDEX:-}",SKIP_IF_DONE="${SKIP_IF_DONE:-0}"
     --chdir="${PE_HUB_ROOT}"
 )
 

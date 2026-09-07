@@ -125,7 +125,16 @@ def execute_tuning(
             )
             return result.metric
 
-        study.optimize(objective, n_trials=int(request.n_trials))
+        n_target = int(request.n_trials)
+        n_existing = len(study.get_trials(deepcopy=False))
+        n_remaining = max(0, n_target - n_existing)
+        _log(
+            f"Study {study_name!r} has {n_existing} trial(s); "
+            f"running {n_remaining} more (target {n_target})",
+            job_id=job_id,
+        )
+        if n_remaining > 0:
+            study.optimize(objective, n_trials=n_remaining)
 
         best = study.best_trial
         # Optuna best.params omits SearchSpaceSpec.fixed and pre-remap aliases
@@ -186,7 +195,7 @@ def execute_tuning(
             final_request = training.model_copy(
                 update={
                     "hyperparameters": best_params,
-                    "hyperparameter_mode": "merge",
+                    "hyperparameter_mode": training.hyperparameter_mode,
                     "notes": (training.notes or "optuna best trial"),
                     "device": effective_device,
                 }

@@ -56,6 +56,37 @@ def test_execute_tuning_runs_trials(tuning_env, monkeypatch: pytest.MonkeyPatch)
     assert len(calls) == 2
 
 
+def test_execute_tuning_resumes_remaining_trials_only(
+    tuning_env, monkeypatch: pytest.MonkeyPatch
+):
+    calls: list[dict] = []
+
+    def fake_trial(request, *, suggested, register_weights=False):
+        calls.append(dict(suggested))
+        from app.training.tune_runner import TrialResult
+
+        return TrialResult(
+            metric=float(suggested.get("epochs", 0)),
+            hyperparameters=dict(suggested),
+            train_result={},
+        )
+
+    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr(
+        "app.training.tune_study.suggest_trial_hyperparameters",
+        lambda model_name, trial: {"epochs": trial.number + 1},
+    )
+
+    first = execute_tuning(_request(n_trials=1, study_name="resume-cap"))
+    assert len(calls) == 1
+    second = execute_tuning(_request(n_trials=2, study_name="resume-cap"))
+    assert len(calls) == 2
+    third = execute_tuning(_request(n_trials=2, study_name="resume-cap"))
+    assert len(calls) == 2
+    assert second["best_trial"] == first["best_trial"] or second["best_trial"] == 1
+    assert third["study_name"] == second["study_name"]
+
+
 def test_execute_tuning_requires_dataset_key(tuning_env, monkeypatch: pytest.MonkeyPatch):
     from app.training.tune_runner import TrialResult
 
@@ -100,3 +131,44 @@ def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: py
         "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2"
     )
     assert summary["preset_path"] is not None
+
+
+def test_register_best_weights_keeps_training_hyperparameter_mode(
+    tuning_env, monkeypatch: pytest.MonkeyPatch
+):
+    from app.training.tune_runner import TrialResult
+
+    captured: list[str] = []
+
+    def fake_trial(request, *, suggested, register_weights=False):
+        return TrialResult(metric=0.1, hyperparameters=dict(suggested), train_result={})
+
+    def fake_train(request, *, device_id=None, register_weights=True):
+        captured.append(request.hyperparameter_mode)
+        return {"weights_id": "w1"}
+
+    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr(
+        "app.training.tune_study.suggest_trial_hyperparameters",
+        lambda model_name, trial: {"lr": 1e-4},
+    )
+    monkeypatch.setattr("app.training.tune_study.execute_training", fake_train)
+
+    training = TrainingRequest(
+        model_name="deepprime",
+        dataset_source="pe-db",
+        dataset_name="library2",
+        study="deepprime",
+        dataset="library2",
+        device="cpu",
+        hyperparameter_mode="replace",
+    )
+    execute_tuning(
+        TuningRequest(
+            training=training,
+            n_trials=1,
+            no_write_preset=True,
+            register_best_weights=True,
+        )
+    )
+    assert captured == ["replace"]

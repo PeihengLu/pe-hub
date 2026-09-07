@@ -125,12 +125,11 @@ SMOKE=1 ARC_PARTITION=short ARC_TIME=01:00:00 \
 
 Other pridict2-reproduction stages use the same pattern (`02_…`, `04_…`, `05_…`, …).
 
-**Scratch benchmark** (DeepPrime / OPED / PRIDICT2 × library1 / library-diverse / ClinVar, holdout_3 HPO):
+**Scratch benchmark** (DeepPrime / OPED / PRIDICT2 × 7 datasets × 3 seeds; 10 Optuna trials + final train + eval per short L40S job):
 
 ```bash
-./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh   # scratch-benchmark/
-./scripts/cluster/oxford-arc/submit.sh 02_train_matrix.sh
-./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
+./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh   # 63 jobs
+RUN_ID=<id> ./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
 ```
 
 See [`scripts/experiments/scratch-benchmark/README.md`](../../experiments/scratch-benchmark/README.md).
@@ -202,11 +201,13 @@ git push
 | Job                                        | Suggested partition / time                              |
 | ------------------------------------------ | ------------------------------------------------------- |
 | `SMOKE=1` tune                           | `short` / 1h                                          |
-| Full HPO (`N_TRIALS=20`, `CV_FOLDS=5`) | `medium` 48h; re-submit to resume Optuna if needed    |
-| Single train / fine-tune                   | `short`–`medium`                                   |
-| Multi-day HPO                              | `long` with explicit `--time` (e.g. `7-00:00:00`) |
+| Scratch-benchmark 01 (one seed: 10 trials + train + eval) | `short` / 12h L40S; re-queue same `INDEX` if ClinVar times out |
+| Scratch-benchmark 01 (63 jobs)                    | `submit.sh 01_tune_matrix.sh` (default per-seed fan-out) |
+| Packed cell (3 seeds in one job)                  | `SUBMIT_SEEDS=0` + `medium` / 48h              |
+| Single train / fine-tune                           | `short`–`medium`                               |
+| Multi-day HPO                                      | `long` with explicit `--time` (e.g. `7-00:00:00`) |
 
-Default peen HPO is ~100 fold trains (20×5) plus a final register — plan for multi-hour / multi-day, not a login-node run.
+Each scratch-benchmark GPU job is **one seed**: 10 Optuna trials plus `register_best_weights` (11 trains) and eval. There is no separate train stage. Optuna resumes remaining trials if you re-submit after a 12h kill.
 
 ## Checklist before first real submit
 

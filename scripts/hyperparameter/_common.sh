@@ -35,6 +35,9 @@ if [[ "${SMOKE}" == "1" ]]; then
     TEST_PCT="${TEST_PCT_SMOKE:-0.2}"
 fi
 
+# Datasheet nested benchmark: N folds or random seeds (defaults to CV_FOLDS).
+N="${N:-${CV_FOLDS}}"
+
 print_experiment_banner() {
     local title="$1"
     echo "======================================"

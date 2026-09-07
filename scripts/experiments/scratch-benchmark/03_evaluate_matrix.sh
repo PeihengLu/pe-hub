@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Stage 03 — Evaluate registered weights on the held-out test partition.
+# Stage 03 — Evaluate leftover seeds (if 01 skipped eval) and flatten summaries.
 #
-# Writes append-only JSONL under results/ and a flat summary CSV.
+# Default: resume peen evaluate via datasheet-benchmark (--skip-existing).
+# Per-seed 01 jobs already evaluate; this is then a cheap aggregation pass.
+#
+# Then flatten all cells under results/<RUN_ID>/ into matrix summary.csv.
 #
 # Usage:
 #   ./scripts/experiments/scratch-benchmark/03_evaluate_matrix.sh
 #   RUN_ID=20260901T140000 ./scripts/experiments/scratch-benchmark/03_evaluate_matrix.sh
 #
-# ARC:
-#   ./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
+# ARC (single job — do not fan out per cell):
+#   RUN_ID=<id> ./scripts/cluster/oxford-arc/submit.sh 03_evaluate_matrix.sh
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,155 +24,122 @@ if [[ -n "${MODEL:-}" && -n "${BENCHMARK:-}" ]]; then
     export BENCHMARKS="${BENCHMARK}"
 fi
 
-RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-OUT_DIR="${RESULTS_DIR}/${RUN_ID}"
-LOG_DIR="${OUT_DIR}/logs"
-RESULTS_JSONL="${OUT_DIR}/results.jsonl"
-SUMMARY_CSV="${OUT_DIR}/summary.csv"
-mkdir -p "${OUT_DIR}" "${LOG_DIR}"
+if [[ -z "${RUN_ID:-}" && -f "${RESULTS_DIR}/LATEST_RUN_ID" ]]; then
+    RUN_ID="$(tr -d '[:space:]' < "${RESULTS_DIR}/LATEST_RUN_ID")"
+fi
+ensure_run_id
 
-print_benchmark_banner "03 Evaluate matrix (test holdout)"
+print_benchmark_banner "03 Evaluate matrix (datasheet-benchmark test holdout)"
 echo "RUN_ID:  ${RUN_ID}"
-echo "OUT_DIR: ${OUT_DIR}"
 echo ""
 
-PEEN_CMD=(python -m pe_ensemble.cli)
-IDX=0
-TOTAL=$(($(selected_models | wc -w) * $(selected_matrix_rows | wc -l)))
+export SKIP_IF_DONE="${SKIP_IF_DONE:-1}"
 
 while IFS= read -r row; do
     parse_matrix_row "${row}"
     while read -r model; do
         [[ -n "${model}" ]] || continue
-        IDX=$((IDX + 1))
         key="$(cell_key "${model}" "${MATRIX_BENCH}")"
-        weights_state="weights__${key}"
-        weights_id="$(read_state "${weights_state}")"
+        export FIXED_HP_JSON="$(fixed_tune_hp_json "${model}")"
 
-        SAFE_NAME="${model}__${MATRIX_BENCH}"
-        STDOUT_FILE="${LOG_DIR}/${SAFE_NAME}.stdout"
-        STDERR_FILE="${LOG_DIR}/${SAFE_NAME}.stderr"
+        echo "======================================"
+        echo "EVAL ${model} @ ${MATRIX_BENCH}"
+        echo "======================================"
 
-        echo "[${IDX}/${TOTAL}] ${model} / ${weights_id} @ ${MATRIX_BENCH}"
+        out_dir="$(cell_out_dir "${model}" "${MATRIX_BENCH}")"
+        if [[ ! -d "${out_dir}/state" ]]; then
+            echo "Warning: no 01/02 output at ${out_dir}/state — skip eval for ${key}" >&2
+            continue
+        fi
 
-        EVAL_ARGS=(
-            evaluate
-            --model "${model}"
-            --weights "${weights_id}"
-            --custom-benchmark
-            --benchmark-name "${MATRIX_BENCH}"
-        )
-        append_study_dataset_args EVAL_ARGS "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
-        EVAL_ARGS+=(
-            --device "${DEVICE}"
-            --sync
-        )
-        split_args_for_cell
-        EVAL_ARGS+=("${SPLIT_ARGS[@]}")
-
-        META_JSON="$(python -c "
-import json
-print(json.dumps({
-  'run_id': '''${RUN_ID}''',
-  'model': '''${model}''',
-  'weights': '''${weights_id}''',
-  'benchmark_name': '''${MATRIX_BENCH}''',
-  'study': '''${MATRIX_STUDY}''',
-  'datasets': '''${MATRIX_DATASETS}'''.split(','),
-  'split_strategy': 'holdout_3',
-  'split_random_state': int('''${SPLIT_RANDOM_STATE}'''),
-}))
-")"
-
-        set +e
-        "${PEEN_CMD[@]}" "${EVAL_ARGS[@]}" > "${STDOUT_FILE}" 2> "${STDERR_FILE}"
-        EXIT_CODE=$?
-        set -e
-
-        python - "${RESULTS_JSONL}" "${STDOUT_FILE}" "${STDERR_FILE}" "${EXIT_CODE}" "${META_JSON}" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-out_path = Path(sys.argv[1])
-stdout_path = Path(sys.argv[2])
-stderr_path = Path(sys.argv[3])
-exit_code = int(sys.argv[4])
-meta = json.loads(sys.argv[5])
-
-stdout = stdout_path.read_text(encoding="utf-8", errors="replace").strip()
-stderr = stderr_path.read_text(encoding="utf-8", errors="replace").strip()
-
-record = dict(meta)
-record["exit_code"] = exit_code
-
-payload = None
-if stdout:
-    start = stdout.find("{")
-    if start >= 0:
-        try:
-            payload = json.loads(stdout[start:])
-        except json.JSONDecodeError:
-            payload = None
-
-if payload is not None:
-    record.update(payload)
-    metrics = payload.get("metrics") or {}
-    if isinstance(metrics, dict):
-        record["test_spearman"] = metrics.get("spearman")
-        record["test_pearson"] = metrics.get("pearson")
-        record["test_mse"] = metrics.get("mse")
-    if payload.get("skipped"):
-        record.setdefault("status", "skipped")
-    elif payload.get("error_type") == "data_leak" or payload.get("status") == "error":
-        record.setdefault("status", "error")
-    elif payload.get("metrics") is not None:
-        record.setdefault("status", "ok")
-    else:
-        record.setdefault("status", payload.get("status") or "unknown")
-else:
-    record["status"] = "error"
-    record["error_type"] = "cli_failure"
-    record["metrics"] = None
-
-if stderr and record.get("status") == "error":
-    record["stderr_tail"] = stderr[-2000:]
-
-with out_path.open("a", encoding="utf-8") as handle:
-    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-print(json.dumps(record, indent=2))
-PY
+        # Re-run with skip-existing: 01 already evals; this resumes leftover seeds.
+        if ! run_datasheet_benchmark_cell "${model}" 0; then
+            echo "Warning: evaluate/resume failed for ${key}" >&2
+        fi
         echo ""
     done < <(selected_models | tr ' ' '\n')
 done < <(selected_matrix_rows)
 
-python - "${RESULTS_JSONL}" "${SUMMARY_CSV}" <<'PY'
+OUT_DIR="${RESULTS_DIR}/${RUN_ID}"
+RESULTS_JSONL="${OUT_DIR}/results.jsonl"
+SUMMARY_CSV="${OUT_DIR}/summary.csv"
+AGG_CSV="${OUT_DIR}/summary_mean_std.csv"
+
+python - "${OUT_DIR}" "${RESULTS_JSONL}" "${SUMMARY_CSV}" "${AGG_CSV}" <<'PY'
 import csv
 import json
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 
-jsonl = Path(sys.argv[1])
-csv_path = Path(sys.argv[2])
+out_dir = Path(sys.argv[1])
+jsonl_path = Path(sys.argv[2])
+summary_path = Path(sys.argv[3])
+agg_path = Path(sys.argv[4])
+
 rows = []
-if jsonl.is_file():
-    for line in jsonl.read_text(encoding="utf-8").splitlines():
+for path in sorted(out_dir.glob("*/results.jsonl")):
+    for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             rows.append(json.loads(line))
 
+jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+with jsonl_path.open("w", encoding="utf-8") as handle:
+    for row in rows:
+        handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
 fields = [
-    "run_id", "model", "weights", "benchmark_name", "study", "datasets",
-    "status", "test_spearman", "test_pearson", "test_mse", "exit_code",
+    "run_id", "model", "protocol", "repeat_id", "seed", "n_trials",
+    "dataset_name", "weights_id", "status", "n_samples",
+    "test_spearman", "test_pearson", "test_mse", "best_value",
 ]
-with csv_path.open("w", newline="", encoding="utf-8") as handle:
+with summary_path.open("w", newline="", encoding="utf-8") as handle:
     writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
         writer.writerow(row)
 
-print(f"Wrote {csv_path} ({len(rows)} rows)")
+groups = defaultdict(list)
+for row in rows:
+    if row.get("status") != "ok":
+        continue
+    key = (row.get("model"), row.get("dataset_name") or row.get("protocol"))
+    if row.get("test_spearman") is not None:
+        groups[key].append(row)
+
+agg_fields = [
+    "model", "dataset_name", "n_ok",
+    "test_spearman_mean", "test_spearman_std",
+    "test_pearson_mean", "test_pearson_std",
+]
+with agg_path.open("w", newline="", encoding="utf-8") as handle:
+    writer = csv.DictWriter(handle, fieldnames=agg_fields)
+    writer.writeheader()
+    for (model, dataset_name), items in sorted(groups.items()):
+        spears = [float(r["test_spearman"]) for r in items if r.get("test_spearman") is not None]
+        pears = [float(r["test_pearson"]) for r in items if r.get("test_pearson") is not None]
+        def _mean_std(values):
+            if not values:
+                return None, None
+            mean = statistics.fmean(values)
+            std = statistics.stdev(values) if len(values) > 1 else 0.0
+            return mean, std
+        s_mean, s_std = _mean_std(spears)
+        p_mean, p_std = _mean_std(pears)
+        writer.writerow({
+            "model": model,
+            "dataset_name": dataset_name,
+            "n_ok": len(items),
+            "test_spearman_mean": s_mean,
+            "test_spearman_std": s_std,
+            "test_pearson_mean": p_mean,
+            "test_pearson_std": p_std,
+        })
+
+print(f"Wrote {jsonl_path} ({len(rows)} rows)")
+print(f"Wrote {summary_path}")
+print(f"Wrote {agg_path}")
 PY
 
-printf '%s\n' "${RUN_ID}" > "${RESULTS_DIR}/LATEST_RUN_ID"
 echo "Done: evaluate matrix → ${OUT_DIR}"
