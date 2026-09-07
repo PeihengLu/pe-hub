@@ -10,12 +10,14 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "experiments"))
 
 from summarize_eval_results import (  # noqa: E402
     aggregate_cv,
+    comparison_table,
     extract_json_object,
     flatten_row,
     pridict2_head_from_weights,
     repair_cli_failures_from_logs,
     repair_ensemble_payloads_from_logs,
 )
+from paper_reported_metrics import annotate_row_with_paper  # noqa: E402
 
 
 def test_extract_json_skips_optiprime_syn_brace():
@@ -176,3 +178,199 @@ def test_repair_cli_failure_from_optiprime_stdout(tmp_path: Path):
     assert records[0]["status"] == "ok"
     assert records[0]["metrics"]["pearson"] == 0.26
     assert "error_type" not in records[0]
+
+
+def test_optiprime_lib_mmr_leak_is_author_fill():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "optiprime-lib-mmr__hek293t__pe2",
+                "study": "optiprime",
+                "datasets": ["lib-mmr"],
+                "cell_line": "hek293t",
+                "pe_system": "pe2",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 3658,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "author_fill"
+    assert row["plot_hatch"] == "///"
+    assert row["pearson_plot"] == 0.723
+    assert row["pearson_measured"] is None
+    assert row["status"] == "error"
+    assert row["leak_reason"] == "no_original_test_split"
+
+
+def test_optiprime_lib_mmr_pe4_leak_is_not_author_fill():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "optiprime-lib-mmr__hek293t__pe4",
+                "study": "optiprime",
+                "datasets": ["lib-mmr"],
+                "cell_line": "hek293t",
+                "pe_system": "pe4",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 3658,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "leak_unfilled"
+    assert row["pearson_plot"] is None
+
+
+def test_optiprime_library_diverse_leak_is_not_filled_with_hsu_number():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "pridict2-library-diverse__hek293t",
+                "study": "pridict2",
+                "datasets": ["library-diverse"],
+                "cell_line": "hek293t",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 4530,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "leak_unfilled"
+    assert row["pearson_plot"] is None
+    assert row["paper_id"] is None
+
+
+def test_optiprime_clinvar_leak_is_not_filled_with_hsu_number():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "deepprime-clinvar",
+                "study": "deepprime",
+                "datasets": ["deepprime-clinvar"],
+                "cell_line": "hek293t",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 28084,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "leak_unfilled"
+    assert row["pearson_plot"] is None
+    assert row["paper_id"] is None
+
+
+def test_pridict2_library1_leak_is_not_filled_with_pridict1_number():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "pridict2",
+                "weights": "ensemble__run_0__HEK",
+                "benchmark_name": "pridict1-library1",
+                "study": "pridict1",
+                "datasets": ["library1"],
+                "cell_line": "hek293t",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 18399,
+                "metrics": None,
+                "ensemble": True,
+            }
+        )
+    )
+    assert row["value_source"] == "leak_unfilled"
+    assert row["pearson_plot"] is None
+    assert row["paper_id"] is None
+
+
+def test_deepprime_clinvar_keeps_measured_and_joins_paper():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "deepprime",
+                "weights": "DeepPrime_base",
+                "benchmark_name": "deepprime-clinvar",
+                "study": "deepprime",
+                "datasets": ["deepprime-clinvar"],
+                "cell_line": "hek293t",
+                "status": "ok",
+                "n_samples": 28221,
+                "metrics": {"pearson": 0.827, "spearman": 0.854},
+            }
+        )
+    )
+    assert row["value_source"] == "measured"
+    assert row["plot_hatch"] == ""
+    assert row["paper_pearson"] == 0.84
+    assert abs(row["pearson_plot"] - 0.827) < 1e-9
+
+
+def test_comparison_table_uses_cv_mean_for_pridict2():
+    rows = []
+    for run in range(5):
+        rows.append(
+            annotate_row_with_paper(
+                flatten_row(
+                    {
+                        "model": "pridict2",
+                        "weights": f"ensemble__run_{run}__HEK",
+                        "experiment_id": "pridict2_ensemble",
+                        "cv_run": run,
+                        "benchmark_name": "pridict2-library-diverse__hek293t",
+                        "study": "pridict2",
+                        "datasets": ["library-diverse"],
+                        "cell_line": "hek293t",
+                        "status": "ok",
+                        "n_samples": 4445,
+                        "metrics": {"pearson": 0.87, "spearman": 0.87},
+                        "ensemble": True,
+                    }
+                )
+            )
+        )
+    table = comparison_table(rows, aggregate_cv(rows))
+    assert len(table) == 1
+    assert table[0]["paper_pearson"] == 0.90
+    assert table[0]["value_source"] == "measured"
+    assert abs(table[0]["pearson_delta"] - (0.87 - 0.90)) < 1e-9
+
+
+def test_bar_fill_kind_distinguishes_measured_author_and_missing():
+    from plot_base_model_eval import (
+        FILL_AUTHOR,
+        FILL_MEASURED,
+        FILL_MISSING,
+        cell_fill_kind,
+    )
+
+    assert cell_fill_kind(None) == FILL_MISSING
+    assert (
+        cell_fill_kind({"plot_marker": "measured", "value_source": "measured", "pearson_plot": 0.8})
+        == FILL_MEASURED
+    )
+    assert (
+        cell_fill_kind({"plot_marker": "author_fill", "value_source": "author_fill", "pearson_plot": 0.723})
+        == FILL_AUTHOR
+    )
+    assert (
+        cell_fill_kind({"plot_marker": "", "value_source": "leak_unfilled", "pearson_plot": ""})
+        == FILL_MISSING
+    )
+

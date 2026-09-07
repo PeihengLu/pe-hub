@@ -2966,30 +2966,66 @@ def _export_optiprime_datasheets() -> None:
     )
 
 
+def _optiprime_genomic_protospacer_probes(spacer: str) -> list[str]:
+    """20-mer probes for Hsu's designed 5G pegRNA spacer column.
+
+    The DNA protospacer is 20 nt. A 21-nt spacer that starts with G is the
+    U6 5′ G plus that 20-mer (``spacer[1:]``), not the first 20 of the pegRNA.
+    """
+    spacer = str(spacer).upper().replace("U", "T")
+    probes: list[str] = []
+    if len(spacer) == 21 and spacer.startswith("G"):
+        probes.append(spacer[1:])
+    if len(spacer) >= 20:
+        probes.append(spacer[-20:])
+        if spacer[:20] not in probes:
+            probes.append(spacer[:20])
+    elif spacer:
+        probes.append(spacer)
+    return [probe for probe in probes if len(probe) >= 15]
+
+
 def _locate_optiprime_protospacer(wt_sequence: str, spacer: str) -> tuple[int, int]:
     """Return 20 bp protospacer bounds on an OptiPrime ``ps-pam-edit`` (or lib-cv) WT.
 
-    Author targets start at the spacer — there is no DeepPrime 4 bp upstream pad.
+    Author targets often start at the spacer (Lib-MMR has no DeepPrime 4 bp pad).
     Designed 5G spacers may carry an extra leading G; match the genomic 20-mer.
     """
     wt = str(wt_sequence).upper().replace("U", "T")
-    spacer = str(spacer).upper().replace("U", "T")
-    probes: list[str] = []
-    if spacer:
-        probes.append(spacer)
-        if spacer.startswith("G") and len(spacer) in (20, 21):
-            probes.append(spacer[1:])
-        if len(spacer) > 20:
-            probes.append(spacer[-20:])
-            probes.append(spacer[:20])
-    for probe in probes:
-        if len(probe) < 15:
-            continue
-        window = probe[:20] if len(probe) >= 20 else probe
+    for window in _optiprime_genomic_protospacer_probes(spacer):
         idx = wt.find(window)
         if idx >= 0:
             return idx, idx + len(window)
     return 0, min(20, len(wt))
+
+
+def _optiprime_homology_end(
+    mut_sequence: str,
+    *,
+    nick: int,
+    edit_pos: int,
+    edit_len: int,
+    type_del: bool,
+    homology_arm: str,
+) -> int:
+    """Right bound of the pegRNA RTT / 3′ homology on the unaligned Mut sequence."""
+    mut = str(mut_sequence).upper().replace("U", "T")
+    if homology_arm is None or (isinstance(homology_arm, float) and pd.isna(homology_arm)):
+        ha = ""
+    else:
+        ha = str(homology_arm).upper().replace("U", "T").strip()
+    if ha in {"", "NAN", "NONE", "<NA>"}:
+        ha = ""
+    ha_start = int(edit_pos) if type_del else int(edit_pos) + int(edit_len)
+    ha_start = max(int(nick), ha_start)
+    if ha:
+        idx = mut.find(ha, ha_start)
+        if idx < 0:
+            idx = mut.find(ha, int(nick))
+        if idx >= 0:
+            return idx + len(ha)
+        return min(len(mut), ha_start + len(ha))
+    return len(mut)
 
 
 def _standardize_optiprime(
@@ -3044,7 +3080,6 @@ def _standardize_optiprime(
     df["pbs_r"] = nick_pos
 
     df["rtt_l"] = nick_pos
-    df["rtt_r"] = mut_sequence.str.len().astype(int)
 
     def _find_edit_pos(wt, mut):
         for i, (a, b) in enumerate(zip(wt, mut)):
@@ -3061,6 +3096,29 @@ def _standardize_optiprime(
     df["lha_r"] = edit_positions
 
     edit_len = df["edit_len"].astype(int)
+    if "homology_arm" in df.columns:
+        homology_arm = df["homology_arm"].where(df["homology_arm"].notna(), "").astype(str)
+    else:
+        homology_arm = pd.Series("", index=df.index)
+    rtt_r = [
+        _optiprime_homology_end(
+            mut,
+            nick=int(nick),
+            edit_pos=int(edit_pos),
+            edit_len=int(length),
+            type_del=bool(is_del),
+            homology_arm=ha,
+        )
+        for mut, nick, edit_pos, length, is_del, ha in zip(
+            mut_sequence,
+            nick_pos,
+            edit_positions,
+            edit_len,
+            df["type_del"],
+            homology_arm,
+        )
+    ]
+    df["rtt_r"] = pd.Series(rtt_r, index=df.index, dtype=int)
     df["rha_l"] = edit_positions + np.where(df["type_del"], 0, edit_len)
     df["rha_r"] = df["rtt_r"]
 

@@ -68,7 +68,27 @@ def _safe_float_series(series: pd.Series, default: float = 0.0) -> pd.Series:
 
 
 def _format_location(left: int, right: int) -> str:
-    return f"[{int(left)}, {int(right)}]"
+    left, right = int(left), int(right)
+    if right < left:
+        right = left
+    return f"[{left}, {right}]"
+
+
+def _pridict_indel_correction_length(df: pd.DataFrame) -> pd.Series:
+    """Gap size vendor ``align_seqs`` should insert after pads are dropped.
+
+    Stored ``edit_len`` counts padded-schema N's. After ``_pridict_author_frame``
+    the true insertion/deletion is ``|len(mut) - len(wt)|``. Using the stored
+    length when that disagrees leaves WT/Mut unequal and blows up PBS columns.
+    """
+    stored = _safe_int_series(_edit_length_series(df), default=0)
+    type_ins = _col_as_series(df, "type_ins", False).astype(bool)
+    type_del = _col_as_series(df, "type_del", False).astype(bool)
+    delta = (
+        _col_as_series(df, "wt_sequence", "").astype(str).str.len()
+        - _col_as_series(df, "mut_sequence", "").astype(str).str.len()
+    ).abs()
+    return stored.where(~(type_ins | type_del), delta).astype(int)
 
 
 def _resolve_correction_type(type_sub: bool, type_ins: bool, type_del: bool) -> str:
@@ -89,7 +109,7 @@ def _rtt_wt_right_bounds(df: pd.DataFrame) -> pd.Series:
     for ``RT_initial_location``, which differs from the mutated end on indels.
     """
     rtt_mut_r = _safe_int_series(_col_as_series(df, "rtt_location_r", 0))
-    edit_len = _safe_int_series(_edit_length_series(df), default=0)
+    edit_len = _pridict_indel_correction_length(df)
     type_ins = _col_as_series(df, "type_ins", False).astype(bool)
     type_del = _col_as_series(df, "type_del", False).astype(bool)
     rtt_wt_r = rtt_mut_r.copy()
@@ -307,6 +327,22 @@ def _gc_fraction_percent(seq: str) -> float:
     return 100.0 * gc_count / len(seq)
 
 
+def _tm_nn_or_zero(seq: str, *, nn_table) -> float:
+    """BioPython ``Tm_NN`` indexes ``seq[0]`` and crashes on empty oligo."""
+    if not seq:
+        return 0.0
+    try:
+        return float(mt.Tm_NN(seq=Seq(seq), nn_table=nn_table))
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def _rna_mfe_or_zero(fold, seq: str) -> float:
+    if not seq:
+        return 0.0
+    return float(fold(seq)[1])
+
+
 def _compute_pridict2_gc_features(pbs_seq: str, rt_seq: str) -> dict[str, float]:
     pbs = pbs_seq.upper()
     rt = rt_seq.upper()
@@ -358,18 +394,18 @@ def _compute_pridict2_tm_features(
     s_for_tm3 = [rt, s_tm3_anti]
     s_for_tm4 = [_reverse_complement(rt.replace("A", "U")), rt]
 
-    tm1 = float(mt.Tm_NN(seq=Seq(s_for_tm1), nn_table=mt.R_DNA_NN1))
-    tm2 = float(mt.Tm_NN(seq=Seq(s_for_tm2), nn_table=mt.DNA_NN3))
-    tm2new = float(mt.Tm_NN(seq=Seq(s_for_tm2new), nn_table=mt.DNA_NN3))
+    tm1 = _tm_nn_or_zero(s_for_tm1, nn_table=mt.R_DNA_NN1)
+    tm2 = _tm_nn_or_zero(s_for_tm2, nn_table=mt.DNA_NN3)
+    tm2new = _tm_nn_or_zero(s_for_tm2new, nn_table=mt.DNA_NN3)
 
     tm3 = 0.0
     for s_seq1, s_seq2 in zip(s_for_tm3[0], s_for_tm3[1]):
         try:
             tm3 = float(mt.Tm_NN(seq=s_seq1, c_seq=s_seq2, nn_table=mt.DNA_NN3))
-        except ValueError:
+        except (ValueError, IndexError):
             continue
 
-    tm4 = float(mt.Tm_NN(seq=Seq(s_for_tm4[0]), nn_table=mt.R_DNA_NN1))
+    tm4 = _tm_nn_or_zero(s_for_tm4[0], nn_table=mt.R_DNA_NN1)
     tmD = tm3 - tm2
     return {
         "Tm1": tm1,
@@ -426,14 +462,17 @@ def _compute_pridict2_mfe_features(
     extension_scaffold = PRIDICT2_PE2_SCAFFOLD + extension
     protospacer_extension_scaffold = protospacer + extension_scaffold
 
+    fold = RNA.fold
     return {
-        "MFE_protospacer": float(RNA.fold(protospacer)[1]),
-        "MFE_protospacer_scaffold": float(RNA.fold(protospacer_scaffold)[1]),
-        "MFE_extension": float(RNA.fold(extension)[1]),
-        "MFE_extension_scaffold": float(RNA.fold(extension_scaffold)[1]),
-        "MFE_protospacer_extension_scaffold": float(RNA.fold(protospacer_extension_scaffold)[1]),
-        "MFE_rt": float(RNA.fold(rt_rc)[1]),
-        "MFE_pbs": float(RNA.fold(pbs_rc)[1]),
+        "MFE_protospacer": _rna_mfe_or_zero(fold, protospacer),
+        "MFE_protospacer_scaffold": _rna_mfe_or_zero(fold, protospacer_scaffold),
+        "MFE_extension": _rna_mfe_or_zero(fold, extension),
+        "MFE_extension_scaffold": _rna_mfe_or_zero(fold, extension_scaffold),
+        "MFE_protospacer_extension_scaffold": _rna_mfe_or_zero(
+            fold, protospacer_extension_scaffold
+        ),
+        "MFE_rt": _rna_mfe_or_zero(fold, rt_rc),
+        "MFE_pbs": _rna_mfe_or_zero(fold, pbs_rc),
     }
 
 
@@ -531,7 +570,7 @@ def _enrich_pridict2_features(
     rha_r = _safe_int_series(_col_as_series(source, "rha_location_r", 0))
     prot_r = _safe_int_series(_col_as_series(source, "protospacer_location_r", 0))
     prot_l = _safe_int_series(_col_as_series(source, "protospacer_location_l", 0))
-    edit_len = _safe_int_series(_edit_length_series(source), default=0)
+    edit_len = _pridict_indel_correction_length(source)
     type_sub = _col_as_series(source, "type_sub", False).astype(bool)
     type_ins = _col_as_series(source, "type_ins", False).astype(bool)
     type_del = _col_as_series(source, "type_del", False).astype(bool)
@@ -653,7 +692,7 @@ def standardized_to_pridict_dataframe(
             _col_as_series(df, "type_del", False),
         )
     ]
-    out["Correction_Length"] = _safe_int_series(_edit_length_series(df), default=0)
+    out["Correction_Length"] = _pridict_indel_correction_length(df)
     out["protospacerlocation_only_initial"] = [
         _format_location(l, r)
         for l, r in zip(_col_as_series(df, "protospacer_location_l", 0), _col_as_series(df, "protospacer_location_r", 0))
@@ -741,7 +780,15 @@ def standardized_to_deepprime_dataframe(
         rt_pbs_len = pbs_len + rt_len
 
         wt_unpadded = remove_padding(wt)
-        wt74_start = max(0, unpadded_coordinate(wt, protospacer_l) - 4)
+        spacer_start = unpadded_coordinate(wt, protospacer_l)
+        # DeepPrime WT74 assumes 4 bp upstream of the 20-nt spacer. Hsu Lib-MMR
+        # targets start at the spacer; left-pad unknown context instead of
+        # clamping the crop to 0 (which frameshifts the spacer).
+        pad_left = max(0, 4 - spacer_start)
+        if pad_left:
+            wt_unpadded = ("N" * pad_left) + wt_unpadded
+            spacer_start += pad_left
+        wt74_start = spacer_start - 4
         wt74 = wt_unpadded[wt74_start: wt74_start + 74]
         if len(wt74) < 74:
             wt74 = wt74 + ("N" * (74 - len(wt74)))
@@ -752,8 +799,8 @@ def standardized_to_deepprime_dataframe(
 
         edit_pos = int(max(1, min(rt_len, (lha_r - rtt_l + 1))))
         rha_len = int(max(1, rha_r - rha_l))
-        protospacer_l_unpadded = unpadded_coordinate(wt, protospacer_l)
-        protospacer_r_unpadded = unpadded_coordinate(wt, protospacer_r)
+        protospacer_l_unpadded = unpadded_coordinate(wt, protospacer_l) + pad_left
+        protospacer_r_unpadded = unpadded_coordinate(wt, protospacer_r) + pad_left
 
         thermo = _compute_deepprime_thermo_features(
             wt_unpadded,
@@ -926,11 +973,16 @@ def standardized_to_oped_dataframe(
             ref_chars.extend(base if base in {"A", "C", "G", "T"} else "A" for base in mut[len(wt):])
         ref_seq = "".join(ref_chars)
 
-        target_start = max(0, int(prot_l_i) - int(protospacer_upstream_bases))
+        spacer_l = int(prot_l_i)
+        pad_left = max(0, int(protospacer_upstream_bases) - spacer_l)
+        if pad_left:
+            # OPED sanitize drops N; A is placeholder genomic context so the
+            # 20-nt spacer stays at offset 4. Do not slide the window left when
+            # the target is shorter than 47 bp — that frameshifts the spacer.
+            ref_seq = ("A" * pad_left) + ref_seq
+            spacer_l += pad_left
+        target_start = spacer_l - int(protospacer_upstream_bases)
         target_end = target_start + target_len
-        if target_end > len(ref_seq):
-            target_start = max(0, len(ref_seq) - target_len)
-            target_end = len(ref_seq)
 
         target = sanitize_dna_sequence(ref_seq[target_start:target_end])
         # PBS anneals to WT; the RT template is the edited (Mut) sequence.

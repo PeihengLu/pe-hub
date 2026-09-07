@@ -15,6 +15,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
+from paper_reported_metrics import annotate_row_with_paper
+
 
 SUMMARY_COLUMNS = [
     "model",
@@ -26,6 +28,8 @@ SUMMARY_COLUMNS = [
     "study",
     "datasets",
     "cell_line",
+    "pe_system",
+    "use_original_fold",
     "original_fold_test_value",
     "status",
     "n_samples",
@@ -36,6 +40,18 @@ SUMMARY_COLUMNS = [
     "error_type",
     "device",
     "ensemble",
+    "pearson_measured",
+    "spearman_measured",
+    "pearson_plot",
+    "spearman_plot",
+    "value_source",
+    "plot_marker",
+    "plot_hatch",
+    "paper_id",
+    "paper_pearson",
+    "paper_spearman",
+    "paper_citation",
+    "paper_protocol_match",
 ]
 
 AGG_COLUMNS = [
@@ -55,6 +71,139 @@ AGG_COLUMNS = [
     "n_samples_mean",
     "ensemble",
 ]
+
+
+COMPARISON_COLUMNS = [
+    "model",
+    "pridict2_head",
+    "benchmark_name",
+    "cell_line",
+    "status",
+    "value_source",
+    "plot_marker",
+    "plot_hatch",
+    "pearson_plot",
+    "spearman_plot",
+    "pearson_measured",
+    "spearman_measured",
+    "paper_pearson",
+    "paper_spearman",
+    "pearson_delta",
+    "spearman_delta",
+    "paper_citation",
+    "paper_protocol_match",
+    "n_samples",
+    "leak_reason",
+]
+
+
+def _delta(measured: Any, paper: Any) -> Optional[float]:
+    try:
+        if measured is None or paper is None or measured == "" or paper == "":
+            return None
+        return float(measured) - float(paper)
+    except (TypeError, ValueError):
+        return None
+
+
+def comparison_table(
+    rows: list[dict[str, Any]], agg: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """One comparison row per model × head × benchmark (CV mean when folded)."""
+    by_key: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        key = (
+            row.get("model"),
+            row.get("pridict2_head"),
+            row.get("benchmark_name"),
+            row.get("cell_line"),
+            bool(row.get("ensemble")),
+        )
+        by_key[key].append(row)
+
+    agg_groups: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    for r in agg:
+        agg_groups[
+            (
+                r.get("model"),
+                r.get("pridict2_head"),
+                r.get("benchmark_name"),
+                r.get("cell_line"),
+                bool(r.get("ensemble")),
+            )
+        ].append(r)
+
+    out: list[dict[str, Any]] = []
+    for key, members in sorted(by_key.items(), key=lambda item: item[0]):
+        sample = members[0]
+        agg_members = agg_groups.get(key) or []
+        ok_aggs = [r for r in agg_members if r.get("n_ok")]
+        if ok_aggs:
+            def _mean_field(name: str) -> Optional[float]:
+                vals = [float(r[name]) for r in ok_aggs if r.get(name) not in (None, "")]
+                return statistics.fmean(vals) if vals else None
+
+            measured_p = _mean_field("pearson_mean")
+            measured_s = _mean_field("spearman_mean")
+            n_samples = _mean_field("n_samples_mean")
+            status = "ok"
+        else:
+            measured_p = sample.get("pearson_measured")
+            measured_s = sample.get("spearman_measured")
+            n_samples = sample.get("n_samples")
+            status = sample.get("status")
+        fresh = {
+            key_name: sample.get(key_name)
+            for key_name in (
+                "model",
+                "pridict2_head",
+                "benchmark_name",
+                "cell_line",
+                "error_type",
+                "leak_reason",
+                "ensemble",
+            )
+        }
+        annotated = annotate_row_with_paper(
+            {
+                **fresh,
+                "pearson": measured_p,
+                "spearman": measured_s,
+                "n_samples": n_samples,
+                "status": status,
+            }
+        )
+        out.append(
+            {
+                "model": sample.get("model"),
+                "pridict2_head": sample.get("pridict2_head"),
+                "benchmark_name": sample.get("benchmark_name"),
+                "cell_line": sample.get("cell_line"),
+                "status": annotated.get("status"),
+                "value_source": annotated.get("value_source"),
+                "plot_marker": annotated.get("plot_marker"),
+                "plot_hatch": annotated.get("plot_hatch"),
+                "pearson_plot": annotated.get("pearson_plot"),
+                "spearman_plot": annotated.get("spearman_plot"),
+                "pearson_measured": measured_p if status == "ok" else None,
+                "spearman_measured": measured_s if status == "ok" else None,
+                "paper_pearson": annotated.get("paper_pearson"),
+                "paper_spearman": annotated.get("paper_spearman"),
+                "pearson_delta": _delta(
+                    measured_p if status == "ok" else None,
+                    annotated.get("paper_pearson"),
+                ),
+                "spearman_delta": _delta(
+                    measured_s if status == "ok" else None,
+                    annotated.get("paper_spearman"),
+                ),
+                "paper_citation": annotated.get("paper_citation"),
+                "paper_protocol_match": annotated.get("paper_protocol_match"),
+                "n_samples": n_samples,
+                "leak_reason": sample.get("leak_reason"),
+            }
+        )
+    return out
 
 # Longest first so ``__K562MLH1dn`` is not parsed as ``__K562``.
 _PRIDICT2_HEAD_SUFFIXES = ("K562MLH1dn", "K562", "HEK")
@@ -278,6 +427,8 @@ def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
         "study": record.get("study"),
         "datasets": _datasets_str(record.get("datasets")),
         "cell_line": record.get("cell_line"),
+        "pe_system": record.get("pe_system"),
+        "use_original_fold": record.get("use_original_fold"),
         "original_fold_test_value": record.get("original_fold_test_value"),
         "status": status,
         "n_samples": n_samples,
@@ -364,6 +515,9 @@ def print_console_summary(rows: list[dict[str, Any]], agg: list[dict[str, Any]])
     leak = sum(1 for r in rows if r.get("error_type") == "data_leak")
     if leak:
         print(f"data_leak aborts: {leak}")
+    filled = sum(1 for r in rows if r.get("value_source") == "author_fill")
+    if filled:
+        print(f"author_fill plot rows: {filled} (hatched /// in paper_comparison.csv)")
     if agg:
         print(f"cv aggregates (experiment × head × benchmark): {len(agg)}")
         for row in agg[:12]:
@@ -428,11 +582,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"Repaired {repaired_cli} cli_failure and "
                 f"{repaired_ens} ensemble row(s) from logs"
             )
-    rows = [flatten_row(record) for record in records]
+    rows = [annotate_row_with_paper(flatten_row(record)) for record in records]
     write_csv(summary_path, rows, SUMMARY_COLUMNS)
 
     agg = aggregate_cv(rows)
     write_csv(agg_path, agg, AGG_COLUMNS)
+    comparison_path = out_dir / "paper_comparison.csv"
+    comparison_rows = comparison_table(rows, agg)
+    write_csv(comparison_path, comparison_rows, COMPARISON_COLUMNS)
+    print(f"Wrote {comparison_path} ({len(comparison_rows)} rows)")
 
     print(f"Wrote {summary_path} ({len(rows)} rows)")
     print(f"Wrote {agg_path} ({len(agg)} rows)")

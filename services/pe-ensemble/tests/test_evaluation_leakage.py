@@ -14,6 +14,7 @@ from app.evaluation.leakage import (
     assess_ensemble_leakage,
     assess_leakage,
     collect_ensemble_training_loci,
+    dataset_names_from_training,
 )
 from app.evaluation.runner import execute_evaluation
 from app.evaluation.schemas import EvaluationRequest
@@ -57,6 +58,56 @@ def test_overlap_with_recorded_training_loci_is_a_leak(monkeypatch):
     assert result.reason == REASON_TRAIN_TEST_OVERLAP
     assert result.detail["n_overlap_loci"] == 1
     assert "ps:bbb" in result.detail["example_overlap_target_uids"]
+
+
+def test_restrict_to_author_holdout_drops_unlabeled_mix():
+    mixed = pd.concat(
+        [
+            _test_df(["ps:aaa", "ps:bbb"], split_source="original_fold"),
+            _test_df(["ps:endo"], split_source="group_id"),
+        ],
+        ignore_index=True,
+    )
+    filtered, n_dropped = leakage.restrict_to_author_holdout_rows(mixed)
+    assert n_dropped == 1
+    assert list(filtered["target_uid"]) == ["ps:aaa", "ps:bbb"]
+    assert filtered["split_source"].eq("original_fold").all()
+
+
+def test_restrict_to_author_holdout_leaves_pure_synthetic():
+    synthetic = _test_df(["ps:ccc", "ps:ddd"], split_source="group_id")
+    filtered, n_dropped = leakage.restrict_to_author_holdout_rows(synthetic)
+    assert n_dropped == 0
+    assert len(filtered) == 2
+
+
+def test_author_holdout_mixed_with_unlabeled_is_not_a_split_leak(monkeypatch):
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:train"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: {"filters": {"dataset": ["deeppe-ht", "deeppe-endo"]}},
+    )
+    mixed = pd.concat(
+        [
+            _test_df(["ps:test-a", "ps:test-b"], split_source="original_fold"),
+            _test_df(["ps:endo"], split_source="group_id"),
+        ],
+        ignore_index=True,
+    )
+    filtered, _ = leakage.restrict_to_author_holdout_rows(mixed)
+    result = assess_leakage(
+        test_df=filtered,
+        split=_split(use_original_fold=True),
+        model="oped",
+        weights_id="w1",
+        eval_datasets=["deeppe-ht", "deeppe-type", "deeppe-position", "deeppe-endo"],
+    )
+    assert result is None
 
 
 def test_exclude_overlapping_loci_keeps_non_overlapping_rows():
@@ -321,3 +372,283 @@ def test_assess_ensemble_leakage_uses_unioned_loci(monkeypatch):
     assert result.reason == REASON_TRAIN_TEST_OVERLAP
     assert result.detail["n_overlap_loci"] == 1
     assert result.detail["ensemble_training_loci"]["n_target_loci"] == 2
+
+
+def test_dataset_names_from_training_normalizes_underscores():
+    names = dataset_names_from_training(
+        {
+            "filters": {"dataset": ["library1", "library_diverse"]},
+            "data_provenance": {
+                "vendor_training_lineage": [{"dataset": "lib_cv", "study": "optiprime"}]
+            },
+        }
+    )
+    assert names == {"library1", "library-diverse", "lib-cv"}
+
+
+def test_synthetic_library1_eval_aborts_even_without_uid_overlap(monkeypatch):
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: {"filters": {"dataset": ["library1"]}},
+    )
+    result = assess_leakage(
+        test_df=_test_df(["ps:ccc", "ps:ddd"]),
+        split=_split(),
+        model="pridict2",
+        weights_id="w1",
+        eval_datasets="library1",
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result.detail["in_domain_datasets"] == ["library1"]
+    assert result.detail["test_is_author_holdout"] is False
+
+
+def test_weight_respects_author_holdout_defaults_true_when_key_missing():
+    assert leakage.weight_respects_author_holdout(None) is True
+    assert leakage.weight_respects_author_holdout({"filters": {"dataset": ["library-diverse"]}}) is True
+    assert (
+        leakage.weight_respects_author_holdout(
+            {"data_provenance": {"loci_recorded": True}}
+        )
+        is True
+    )
+    assert (
+        leakage.weight_respects_author_holdout(
+            {"data_provenance": {"has_original_test_split": True}}
+        )
+        is True
+    )
+    assert (
+        leakage.weight_respects_author_holdout(
+            {"data_provenance": {"has_original_test_split": False}}
+        )
+        is False
+    )
+
+
+def _optiprime_training_meta() -> dict:
+    return {
+        "filters": {
+            "dataset": [
+                "lib-mmr",
+                "lib-cv",
+                "library1",
+                "deepprime-clinvar",
+                "library-diverse",
+            ]
+        },
+        "data_provenance": {"has_original_test_split": False},
+    }
+
+
+def test_optiprime_library_diverse_author_holdout_aborts(monkeypatch):
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: _optiprime_training_meta(),
+    )
+    result = assess_leakage(
+        test_df=_test_df(["ps:ccc", "ps:ddd"], split_source="original_fold"),
+        split=_split(use_original_fold=True),
+        model="optiprime",
+        weights_id="base",
+        eval_datasets="library-diverse",
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result.detail["in_domain_datasets"] == ["library-diverse"]
+    assert result.detail["test_is_author_holdout"] is True
+    assert result.detail["weight_respects_author_holdout"] is False
+
+
+def test_optiprime_clinvar_author_holdout_aborts(monkeypatch):
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: _optiprime_training_meta(),
+    )
+    result = assess_leakage(
+        test_df=_test_df(["ps:ccc"], split_source="original_fold"),
+        split=_split(use_original_fold=True),
+        model="optiprime",
+        weights_id="base",
+        eval_datasets="deepprime-clinvar",
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result.detail["in_domain_datasets"] == ["deepprime-clinvar"]
+    assert result.detail["test_is_author_holdout"] is True
+    assert result.detail["weight_respects_author_holdout"] is False
+
+
+def test_author_holdout_of_training_dataset_is_not_a_split_leak(monkeypatch):
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: {
+            "filters": {"dataset": ["library-diverse"]},
+            "data_provenance": {"has_original_test_split": True},
+        },
+    )
+    result = assess_leakage(
+        test_df=_test_df(["ps:ccc"], split_source="original_fold"),
+        split=_split(use_original_fold=True),
+        model="pridict2",
+        weights_id="w1",
+        eval_datasets="library-diverse",
+    )
+    assert result is None
+
+
+def test_execute_evaluation_aborts_optiprime_library_diverse_holdout(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVAL_JOBS_ROOT", str(tmp_path / "eval_jobs"))
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: _optiprime_training_meta(),
+    )
+
+    request = EvaluationRequest(
+        model_name="optiprime",
+        benchmark_name="pridict2-library-diverse__hek293t",
+        weights="base",
+        study="pridict2",
+        dataset="library-diverse",
+        auto_training_benchmark=False,
+    )
+    from app.evaluation.jobs import create_job, get_job
+
+    job_id = create_job(request)
+    fetch = ModelFormatFetchResult(
+        df=_test_df(["ps:ccc", "ps:ddd"], split_source="original_fold")
+    )
+
+    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
+        "app.evaluation.runner.ModelFactory.create_model"
+    ) as create_model:
+        result = execute_evaluation(request, job_id=job_id, device_id="cpu")
+
+    create_model.assert_not_called()
+    assert result["status"] == "error"
+    assert result["error_type"] == "data_leak"
+    assert result["leak_reason"] == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result["metrics"] is None
+    assert result["leak"]["in_domain_datasets"] == ["library-diverse"]
+    assert "excluded_overlap_loci" not in str(result.get("leak", {}))
+    manifest = get_job(job_id)
+    assert manifest["status"] == "failed"
+
+
+def test_execute_evaluation_aborts_synthetic_library1(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVAL_JOBS_ROOT", str(tmp_path / "eval_jobs"))
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_loci",
+        lambda model, weights: {"ps:aaa"},
+    )
+    monkeypatch.setattr(
+        leakage.weights_registry,
+        "load_training_metadata",
+        lambda model, weights: {"filters": {"dataset": ["library1"]}},
+    )
+
+    request = EvaluationRequest(
+        model_name="deepprime",
+        benchmark_name="pridict1-library1",
+        weights="w1",
+        study="pridict1",
+        dataset="library1",
+    )
+    from app.evaluation.jobs import create_job, get_job
+
+    job_id = create_job(request)
+    fetch = ModelFormatFetchResult(df=_test_df(["ps:ccc", "ps:ddd"]))
+
+    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch):
+        result = execute_evaluation(request, job_id=job_id, device_id="cpu")
+
+    assert result["status"] == "error"
+    assert result["error_type"] == "data_leak"
+    assert result["leak_reason"] == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result["metrics"] is None
+    assert result["leak"]["in_domain_datasets"] == ["library1"]
+    manifest = get_job(job_id)
+    assert manifest["status"] == "failed"
+
+
+def test_assess_ensemble_leakage_aborts_synthetic_library1(monkeypatch):
+    def _load_loci(model, weights):
+        return {"ps:aaa"}
+
+    def _load_meta(model, weights):
+        return {"filters": {"dataset": ["library1", "library-diverse"]}}
+
+    monkeypatch.setattr(leakage.weights_registry, "load_training_loci", _load_loci)
+    monkeypatch.setattr(leakage.weights_registry, "load_training_metadata", _load_meta)
+    result = assess_ensemble_leakage(
+        test_df=_test_df(["ps:zzz"]),
+        split=_split(),
+        members=[
+            {"model_name": "pridict2", "weights": "a"},
+            {"model_name": "pridict2", "weights": "b"},
+        ],
+        eval_datasets="library1",
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result.detail["in_domain_datasets"] == ["library1"]
+
+
+def test_assess_ensemble_leakage_aborts_when_any_member_lacks_author_holdout(monkeypatch):
+    def _load_loci(model, weights):
+        return {"ps:aaa"}
+
+    def _load_meta(model, weights):
+        if model == "optiprime":
+            return _optiprime_training_meta()
+        return {
+            "filters": {"dataset": ["library-diverse"]},
+            "data_provenance": {"has_original_test_split": True},
+        }
+
+    monkeypatch.setattr(leakage.weights_registry, "load_training_loci", _load_loci)
+    monkeypatch.setattr(leakage.weights_registry, "load_training_metadata", _load_meta)
+    result = assess_ensemble_leakage(
+        test_df=_test_df(["ps:zzz"], split_source="original_fold"),
+        split=_split(use_original_fold=True),
+        members=[
+            {"model_name": "pridict2", "weights": "a"},
+            {"model_name": "optiprime", "weights": "base"},
+        ],
+        eval_datasets="library-diverse",
+    )
+    assert result is not None and result.is_leak
+    assert result.reason == REASON_NO_ORIGINAL_TEST_SPLIT
+    assert result.detail["weight_respects_author_holdout"] is False

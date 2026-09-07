@@ -28,6 +28,18 @@ def test_deepprime_clinvar_uses_author_test_fold():
     assert original_fold_test_value_from_args(args) is None
 
 
+def test_deeppe_uses_author_test_fold_for_all_models():
+    for model in ("oped", "deepprime", "pridict2", "optiprime"):
+        args = evaluation_split_cli_args(
+            model=model,
+            study="deeppe",
+            datasets="deeppe-ht,deeppe-type,deeppe-position,deeppe-endo",
+            cv_run=None,
+        )
+        assert args == ["--use-original-fold"], model
+        assert original_fold_test_value_from_args(args) is None
+
+
 def test_pridict2_library_diverse_tests_matching_run_fold():
     args = evaluation_split_cli_args(
         model="pridict2",
@@ -101,6 +113,35 @@ def test_cell_key_includes_fold_only_when_author_fold_set():
         }
     )
     assert old == random_key
+
+
+def test_cell_key_includes_pe_system():
+    pe2 = eval_result_cell_key(
+        model="optiprime",
+        weights="base",
+        benchmark_name="optiprime-lib-mmr__hek293t__pe2",
+        cell_line="hek293t",
+        pe_system="pe2",
+    )
+    pe4 = eval_result_cell_key(
+        model="optiprime",
+        weights="base",
+        benchmark_name="optiprime-lib-mmr__hek293t__pe4",
+        cell_line="hek293t",
+        pe_system="pe4",
+    )
+    assert pe2 != pe4
+    assert pe2.endswith("|pe2")
+    assert pe4.endswith("|pe4")
+    assert eval_result_cell_key_from_record(
+        {
+            "model": "optiprime",
+            "weights": "base",
+            "benchmark_name": "optiprime-lib-mmr__hek293t__pe2",
+            "cell_line": "hek293t",
+            "pe_system": "pe2",
+        }
+    ) == pe2
 
 
 def test_cli_json():

@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 # Bump a format when its converter semantics change so stale parquet is skipped.
 # Formats still at revision 1 keep pre-revision caches (no ``.revision`` file).
 FORMATTED_CACHE_REVISIONS: dict[str, int] = {
-    "deepprime": 2,  # WT74 from unpadded WT; PBS/RTT drop alignment pads
-    "pridict": 2,  # drop N pads; map coords back to the author frame
-    "pridict2": 2,
-    "oped": 3,  # 47 bp crop from grown aligned sequences
-    "optiprime": 2,  # spacer at 0:20; drop pads in PBS/RTT / full sequences
+    "deepprime": 3,  # left-pad WT74 when spacer starts before offset 4
+    "pridict": 4,  # OptiPrime RTT bounded by homology_arm
+    "pridict2": 4,
+    "oped": 4,  # left-pad 47-mer when spacer starts before offset 4; no recenter
+    "optiprime": 3,  # 5G genomic 20-mer locate; RTT from homology_arm
 }
 
 

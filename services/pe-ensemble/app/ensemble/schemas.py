@@ -49,11 +49,12 @@ class EnsembleRequest(BaseModel):
     allow_data_leak: bool = Field(
         default=False,
         description=(
-            "When False (default), overlapping target loci from the union of "
-            "member training provenance are excluded from the test partition. "
-            "Full overlap or unverifiable provenance still aborts with a "
-            "parseable data_leak error. Set True to keep overlapping rows "
-            "and only emit leak_warning."
+            "When False (default), a synthetic in-domain test, or a sheet "
+            "holdout that any member did not use (has_original_test_split "
+            "false), aborts with no_original_test_split. Author-holdout locus "
+            "overlap on members that used that holdout excludes overlapping "
+            "target loci. Full overlap or unverifiable provenance still aborts. "
+            "Set True to keep overlapping rows and only emit leak_warning."
         ),
     )
 

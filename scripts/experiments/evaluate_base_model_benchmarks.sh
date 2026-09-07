@@ -6,17 +6,19 @@
 #   - deepprime / DeepPrime_base
 #   - oped / pegRNA_Model_Merged_saved.order3_decoder_weights
 #   - optiprime / base
-#   - pridict2 / August 2023 CV folds × HEK and K562 heads
-#   - pridict2 ensemble / mean(pridict1_1 run_x head, pridict1_2 run_x head)
+#   - pridict2 / mean ensemble only (pridict1_1 + pridict1_2, matching CV fold + head)
+#     Single Model A / Model B checkpoints are not scored.
 #
 # Benchmarks (dataset lists; multi-cell-line datasets are expanded per cell):
 #   minsepie-insert-pooled, deeppe-pooled, deepprime-clinvar,
 #   pridict1-library1, pridict2-library-diverse, optiprime-lib-mmr, optiprime-lib-cv
 #
 # Splits:
-#   - DeepPrime ClinVar: author original_fold=-1 test
+#   - DeepPrime ClinVar / DeepPE: author original_fold=-1 test
 #   - PRIDICT2 × library-diverse: run_x tests on author testset_fold==x
 #   - PRIDICT library1 has no author split: vendor training used every locus
+#   - OptiPrime has_original_test_split=false: in-domain ClinVar / library-diverse
+#     / lib-* / library1 abort (Hsu pooled protospacer CV, not Yu/Mathis holdouts)
 #   - everything else: random group holdout
 #
 # Note: peen ensemble unions member train_target_loci from weight provenance
@@ -33,7 +35,8 @@
 #                     to overwrite matching cells and refresh summary.csv.
 #   OUT_ROOT          results root (default: <repo>/results/base_model_eval)
 #   MODELS            comma/space list to restrict weights (deepprime,oped,optiprime,pridict2).
-#                     Including pridict2 (or leaving MODELS unset) also runs ensembles.
+#                     pridict2 selects ensembles only (no single A/B evaluate jobs).
+#                     Leaving MODELS unset runs the three vendor models plus ensembles.
 #   BENCHMARKS        comma/space list of benchmark names
 #   PRIDICT2_HEADS    comma/space list of cell-type heads (default: HEK,K562).
 #                     Each PRIDICT2 CV run is scored with every listed head on
@@ -43,14 +46,14 @@
 #                     earlier random-holdout rows of the same weight)
 #   SMOKE=1           evaluate only first remaining weight × first remaining benchmark;
 #                     ensemble stage also limited to first head × run_0 × that bench
-#   ENSEMBLE_ONLY=1   skip the peen evaluate matrix; only run PRIDICT2 ensembles
+#   ENSEMBLE_ONLY=1   skip DeepPrime/OPED/OptiPrime evaluate; only run PRIDICT2 ensembles
 #
 # Partial rerun into an existing run (DeepPrime numbers stay; others refresh):
 #   DEVICE=cuda:0 MODELS=oped,pridict2,optiprime RUN_ID=20260902T151810Z \
 #     ./scripts/experiments/evaluate_base_model_benchmarks.sh
 #
-# Ensemble-only into an existing run (keeps prior single-model rows):
-#   DEVICE=cuda:0 ENSEMBLE_ONLY=1 SKIP_EXISTING=1 RUN_ID=20260903T133425Z \
+# PRIDICT2 ensembles only (no other vendors):
+#   DEVICE=cuda:0 MODELS=pridict2 SKIP_EXISTING=1 RUN_ID=20260903T133425Z \
 #     ./scripts/experiments/evaluate_base_model_benchmarks.sh
 
 set -euo pipefail
@@ -73,6 +76,7 @@ RESULTS_JSONL="${OUT_DIR}/results.jsonl"
 LOG_DIR="${OUT_DIR}/logs"
 FILTER_MODELS="${MODELS:-}"
 FILTER_BENCHMARKS="${BENCHMARKS:-}"
+WANT_PRIDICT2_ENSEMBLE=1
 mkdir -p "${OUT_DIR}" "${LOG_DIR}"
 
 print_experiment_banner "Base model evaluation (pooled benchmarks)"
@@ -96,23 +100,16 @@ PRIDICT2_EXPERIMENTS=(
   "pridict1_1__exp_2023-08-25_20-55-53"
   "pridict1_2__exp_2023-08-28_22-22-26"
 )
-# Multi-head vendor runs require a cell-type suffix. Score every listed head
-# on every benchmark (HEK and K562 by default) so HEK-trained vs K562-trained
-# decoders can be compared on the same sheet. CV mean/std is over run_0..4
-# within each head.
+# Multi-head vendor runs require a cell-type suffix. Ensemble each listed
+# head on every benchmark (HEK and K562 by default) so HEK-trained vs
+# K562-trained decoders can be compared on the same sheet. CV mean/std is
+# over run_0..4 within each head.
 PRIDICT2_HEADS_KEY="$(echo "${PRIDICT2_HEADS:-HEK,K562}" | tr -s ' ,' ',' | sed 's/^,//;s/,$//')"
 IFS=',' read -ra PRIDICT2_HEAD_ARR <<< "${PRIDICT2_HEADS_KEY}"
 if [[ ${#PRIDICT2_HEAD_ARR[@]} -eq 0 ]]; then
   echo "Error: PRIDICT2_HEADS='${PRIDICT2_HEADS:-}' produced no heads" >&2
   exit 1
 fi
-for exp in "${PRIDICT2_EXPERIMENTS[@]}"; do
-  for run in 0 1 2 3 4; do
-    for head in "${PRIDICT2_HEAD_ARR[@]}"; do
-      WEIGHTS+=("pridict2|${exp}__run_${run}__${head}|${exp}|${run}")
-    done
-  done
-done
 
 # name|study|dataset1,dataset2,...
 BENCHMARKS=(
@@ -135,7 +132,11 @@ if [[ -n "${FILTER_MODELS}" ]]; then
     fi
   done
   WEIGHTS=("${FILTERED_WEIGHTS[@]}")
-  if [[ ${#WEIGHTS[@]} -eq 0 ]]; then
+  WANT_PRIDICT2_ENSEMBLE=0
+  if [[ "${MODELS_KEY}" == *",pridict2,"* ]]; then
+    WANT_PRIDICT2_ENSEMBLE=1
+  fi
+  if [[ ${#WEIGHTS[@]} -eq 0 && "${WANT_PRIDICT2_ENSEMBLE}" != "1" ]]; then
     echo "Error: MODELS='${FILTER_MODELS}' matched no weights (deepprime|oped|optiprime|pridict2)" >&2
     exit 1
   fi
@@ -157,7 +158,7 @@ if [[ -n "${FILTER_BENCHMARKS}" ]]; then
   fi
 fi
 
-# Split multi-cell-line datasets (library-diverse HEK/K562/K562MLH1dn, etc.)
+# Split multi-cell-line (and multi-PE) datasets so PE2/PE4 are not pooled.
 mapfile -t BENCHMARKS < <(
   python "${SCRIPT_DIR}/expand_eval_cell_lines.py" \
     --datasets-dir "${REPO_ROOT}/datasets" \
@@ -169,7 +170,9 @@ if [[ ${#BENCHMARKS[@]} -eq 0 ]]; then
 fi
 
 if [[ "${SMOKE:-0}" == "1" ]]; then
-  WEIGHTS=("${WEIGHTS[0]}")
+  if [[ ${#WEIGHTS[@]} -gt 0 ]]; then
+    WEIGHTS=("${WEIGHTS[0]}")
+  fi
   BENCHMARKS=("${BENCHMARKS[0]}")
   echo "SMOKE=1: running ${#WEIGHTS[@]} weight(s) × ${#BENCHMARKS[@]} benchmark(s)"
   echo ""
@@ -202,8 +205,27 @@ print(f"SKIP_EXISTING=1: {len(keys)} completed cell(s)")
 PY
 fi
 
+if [[ "${ENSEMBLE_ONLY:-0}" == "1" ]]; then
+  WANT_PRIDICT2_ENSEMBLE=1
+fi
+
 TOTAL=$((${#WEIGHTS[@]} * ${#BENCHMARKS[@]}))
-echo "Matrix: ${#WEIGHTS[@]} weights × ${#BENCHMARKS[@]} benchmarks = ${TOTAL} evaluations"
+ENS_HEADS=("${PRIDICT2_HEAD_ARR[@]}")
+ENS_RUNS=(0 1 2 3 4)
+if [[ "${SMOKE:-0}" == "1" ]]; then
+  ENS_HEADS=("${ENS_HEADS[0]}")
+  ENS_RUNS=(0)
+fi
+ENS_TOTAL=0
+if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
+  ENS_TOTAL=$(( ${#ENS_HEADS[@]} * ${#ENS_RUNS[@]} * ${#BENCHMARKS[@]} ))
+fi
+echo "Vendor evaluate: ${#WEIGHTS[@]} weights × ${#BENCHMARKS[@]} benchmarks = ${TOTAL} jobs (deepprime, oped, optiprime)"
+if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
+  echo "PRIDICT2 ensembles after that: ${#ENS_HEADS[@]} heads × ${#ENS_RUNS[@]} folds × ${#BENCHMARKS[@]} benchmarks = ${ENS_TOTAL} jobs"
+else
+  echo "PRIDICT2 ensembles: skipped (MODELS filter)"
+fi
 echo "PRIDICT2_HEADS: ${PRIDICT2_HEADS_KEY}"
 echo ""
 
@@ -213,7 +235,8 @@ cat > "${OUT_DIR}/matrix.json" <<EOF
   "device": "${DEVICE}",
   "n_weights": ${#WEIGHTS[@]},
   "n_benchmarks": ${#BENCHMARKS[@]},
-  "n_evaluations": ${TOTAL}
+  "n_evaluations": ${TOTAL},
+  "n_ensembles": ${ENS_TOTAL}
 }
 EOF
 
@@ -221,14 +244,17 @@ IDX=0
 if [[ "${ENSEMBLE_ONLY:-0}" == "1" ]]; then
   echo "ENSEMBLE_ONLY=1: skipping peen evaluate matrix"
   echo ""
+elif [[ ${#WEIGHTS[@]} -eq 0 ]]; then
+  echo "No vendor evaluate jobs (PRIDICT2 is ensemble-only)"
+  echo ""
 else
 for weight_spec in "${WEIGHTS[@]}"; do
   IFS='|' read -r MODEL WEIGHTS_ID EXPERIMENT_ID CV_RUN <<< "${weight_spec}"
   for bench_spec in "${BENCHMARKS[@]}"; do
-    IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE <<< "${bench_spec}"
+    IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE PE_SYSTEM <<< "${bench_spec}"
     IDX=$((IDX + 1))
     EFFECTIVE_WEIGHTS="${WEIGHTS_ID}"
-    # DeepPrime ClinVar: author original_fold=-1 is the permanent test set.
+    # DeepPrime ClinVar / DeepPE: author original_fold=-1 is the permanent test.
     # PRIDICT2 × library-diverse: vendor run_x held out testset_fold==x
     # (~20% of loci). Using the default test value -1 would send every
     # 0..4 row to train. Other benches: random group holdout.
@@ -245,12 +271,19 @@ for weight_spec in "${WEIGHTS[@]}"; do
     done < <(python -c "import json,sys; print('\\n'.join(json.loads(sys.argv[1])['args']))" "${SPLIT_PLAN_JSON}")
 
     SKIP_KEY="$(
-      python - "${SCRIPT_DIR}" "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${BENCH_NAME}" "${CELL_LINE}" <<'PY'
+      python - "${SCRIPT_DIR}" "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${BENCH_NAME}" "${CELL_LINE}" "${PE_SYSTEM}" <<'PY'
 import json, sys
 sys.path.insert(0, sys.argv[1])
 from eval_split_args import eval_result_cell_key
 plan = json.loads(sys.argv[2])
-print(eval_result_cell_key(sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], plan["original_fold_test_value"]))
+print(eval_result_cell_key(
+    model=sys.argv[3],
+    weights=sys.argv[4],
+    benchmark_name=sys.argv[5],
+    cell_line=sys.argv[6],
+    original_fold_test_value=plan["original_fold_test_value"],
+    pe_system=sys.argv[7] or None,
+))
 PY
     )"
     if [[ "${SKIP_EXISTING}" == "1" ]]; then
@@ -274,9 +307,12 @@ PY
     if [[ -n "${CELL_LINE}" ]]; then
       DATASET_ARGS+=(--cell-line "${CELL_LINE}")
     fi
+    if [[ -n "${PE_SYSTEM}" ]]; then
+      DATASET_ARGS+=(--pe-system "${PE_SYSTEM}")
+    fi
 
     META_JSON="$(
-      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" <<'PY'
+      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${PE_SYSTEM}" <<'PY'
 import json
 import sys
 
@@ -291,6 +327,7 @@ print(json.dumps({
     "datasets": [item for item in sys.argv[7].split(",") if item],
     "cell_line": sys.argv[8] or None,
     "benchmark_name": sys.argv[9],
+    "pe_system": sys.argv[10] or None,
     "use_original_fold": plan["use_original_fold"],
     "original_fold_test_value": plan["original_fold_test_value"],
 }))
@@ -366,23 +403,8 @@ fi
 # PRIDICT2 ensemble evaluation: mean of pridict1_1 + pridict1_2 per CV fold
 # ---------------------------------------------------------------------------
 ENSEMBLE_MODEL="pridict2"
-MODELS_KEY_FOR_ENS=",$(echo "${FILTER_MODELS}" | tr -s ' ,' ',' | sed 's/^,//;s/,$//'),"
-RUN_ENSEMBLE=0
-if [[ "${ENSEMBLE_ONLY:-0}" == "1" || -z "${FILTER_MODELS}" || "${MODELS_KEY_FOR_ENS}" == *",pridict2,"* ]]; then
-  RUN_ENSEMBLE=1
-fi
-
-if [[ "${RUN_ENSEMBLE}" == "1" ]]; then
-  ENS_HEADS=("${PRIDICT2_HEAD_ARR[@]}")
-  ENS_RUNS=(0 1 2 3 4)
-  if [[ "${SMOKE:-0}" == "1" ]]; then
-    ENS_HEADS=("${ENS_HEADS[0]}")
-    ENS_RUNS=(0)
-    echo "SMOKE=1: ensemble limited to head=${ENS_HEADS[0]} run=0 × ${#BENCHMARKS[@]} benchmark(s)"
-  fi
-
+if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
   ENS_IDX=0
-  ENS_TOTAL=$(( ${#ENS_HEADS[@]} * ${#ENS_RUNS[@]} * ${#BENCHMARKS[@]} ))
   echo ""
   echo "=== PRIDICT2 ensemble (mean of pridict1_1 + pridict1_2) ==="
   echo "Matrix: ${#ENS_HEADS[@]} heads × ${#ENS_RUNS[@]} folds × ${#BENCHMARKS[@]} benchmarks = ${ENS_TOTAL} ensembles"
@@ -396,7 +418,7 @@ if [[ "${RUN_ENSEMBLE}" == "1" ]]; then
       ENS_EXPERIMENT_ID="pridict2_ensemble"
 
       for bench_spec in "${BENCHMARKS[@]}"; do
-        IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE <<< "${bench_spec}"
+        IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE PE_SYSTEM <<< "${bench_spec}"
         ENS_IDX=$((ENS_IDX + 1))
         ENS_NAME="pridict2-ensemble-${head}-run${run}-${BENCH_NAME}"
 
@@ -413,12 +435,19 @@ if [[ "${RUN_ENSEMBLE}" == "1" ]]; then
         done < <(python -c "import json,sys; print('\\n'.join(json.loads(sys.argv[1])['args']))" "${SPLIT_PLAN_JSON}")
 
         SKIP_KEY="$(
-          python - "${SCRIPT_DIR}" "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${BENCH_NAME}" "${CELL_LINE}" <<'PY'
+          python - "${SCRIPT_DIR}" "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${BENCH_NAME}" "${CELL_LINE}" "${PE_SYSTEM}" <<'PY'
 import json, sys
 sys.path.insert(0, sys.argv[1])
 from eval_split_args import eval_result_cell_key
 plan = json.loads(sys.argv[2])
-print(eval_result_cell_key(sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], plan["original_fold_test_value"]))
+print(eval_result_cell_key(
+    model=sys.argv[3],
+    weights=sys.argv[4],
+    benchmark_name=sys.argv[5],
+    cell_line=sys.argv[6],
+    original_fold_test_value=plan["original_fold_test_value"],
+    pe_system=sys.argv[7] or None,
+))
 PY
         )"
         if [[ "${SKIP_EXISTING}" == "1" ]]; then
@@ -443,9 +472,12 @@ PY
         if [[ -n "${CELL_LINE}" ]]; then
           DATASET_ARGS+=(--cell-line "${CELL_LINE}")
         fi
+        if [[ -n "${PE_SYSTEM}" ]]; then
+          DATASET_ARGS+=(--pe-system "${PE_SYSTEM}")
+        fi
 
         META_JSON="$(
-          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" <<'PY'
+          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" "${PE_SYSTEM}" <<'PY'
 import json
 import sys
 
@@ -460,6 +492,7 @@ print(json.dumps({
     "datasets": [item for item in sys.argv[7].split(",") if item],
     "cell_line": sys.argv[8] or None,
     "benchmark_name": sys.argv[9],
+    "pe_system": sys.argv[12] or None,
     "use_original_fold": plan["use_original_fold"],
     "original_fold_test_value": plan["original_fold_test_value"],
     "ensemble": True,
@@ -515,6 +548,7 @@ if payload is not None:
             "study",
             "datasets",
             "cell_line",
+            "pe_system",
             "benchmark_name",
             "use_original_fold",
             "original_fold_test_value",
@@ -550,7 +584,7 @@ fi
 echo ""
 echo "Wrote ${RESULTS_JSONL}"
 python - "${RESULTS_JSONL}" "${SCRIPT_DIR}" <<'PY'
-"""Keep the last record per eval cell (model, weights, benchmark, cell, fold)."""
+"""Keep the last record per eval cell (model, weights, benchmark, cell, pe, fold)."""
 import json
 import sys
 from pathlib import Path

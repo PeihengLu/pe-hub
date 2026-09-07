@@ -5,6 +5,11 @@ Vendor PRIDICT2 ``run_x`` is the library-diverse CV fold that held out
 ``testset_fold == x`` (copied to PE-DB ``original_fold``). Evaluating that
 checkpoint on the other folds scores training loci.
 
+DeepPE HT / type / position sheets store the Kim et al. held-out tests as
+``original_fold == -1``. A random group holdout on those sheets is not the
+author test (and is in-domain for OPED). Endo has no author fold; unlabeled
+rows stay out of test when an author ``-1`` partition is present.
+
 PRIDICT library1 has no author split, so vendor training used every locus.
 A random holdout on that sheet is only a scoring convenience; leak checks
 must still treat the full library1 locus set as train.
@@ -44,6 +49,9 @@ def evaluation_split_cli_args(
     if study_key == "deepprime" and dataset_keys == ["deepprime-clinvar"]:
         return ["--use-original-fold"]
 
+    if study_key == "deeppe":
+        return ["--use-original-fold"]
+
     if (
         model_key == "pridict2"
         and study_key == "pridict2"
@@ -76,18 +84,21 @@ def eval_result_cell_key(
     benchmark_name: Any = None,
     cell_line: Any = None,
     original_fold_test_value: Any = None,
+    pe_system: Any = None,
     **_ignored: Any,
 ) -> str:
     """Identity for skip-existing / jsonl compaction.
 
     Fold-matched library-diverse cells include ``fold:x`` so a prior random
     holdout of the same weight does not skip the author-fold rerun.
+    PE2 vs PE4 on the same cell (OptiPrime Lib-MMR / Lib-CV) include ``pe``.
     """
     parts = [
         str(model or ""),
         str(weights or ""),
         str(benchmark_name or ""),
         str(cell_line or ""),
+        str(pe_system or ""),
     ]
     if original_fold_test_value is not None and original_fold_test_value != "":
         parts.append(f"fold:{int(float(original_fold_test_value))}")
@@ -101,6 +112,7 @@ def eval_result_cell_key_from_record(record: dict[str, Any]) -> str:
         benchmark_name=record.get("benchmark_name"),
         cell_line=record.get("cell_line"),
         original_fold_test_value=record.get("original_fold_test_value"),
+        pe_system=record.get("pe_system"),
     )
 
 

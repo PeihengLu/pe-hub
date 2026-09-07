@@ -59,11 +59,14 @@ class EvaluationRequest(BaseModel):
     allow_data_leak: bool = Field(
         default=False,
         description=(
-            "When False (default), recorded train/test locus overlap excludes "
-            "overlapping target loci from the test partition and continues when "
-            "any loci remain; full overlap or unverifiable provenance still aborts "
-            "with a parseable data_leak error. Set True to keep overlapping rows "
-            "and attach a leak warning instead."
+            "When False (default), in-domain eval aborts with "
+            "no_original_test_split when the test is synthetic or the weight "
+            "set's has_original_test_split is false (OptiPrime pooled CV is "
+            "not Yu/Mathis holdouts). Author-holdout locus overlap on a weight "
+            "that used that holdout excludes overlapping target loci and "
+            "continues when any remain; full overlap or unverifiable provenance "
+            "still aborts. Set True to keep overlapping rows and attach a leak "
+            "warning instead."
         ),
     )
 

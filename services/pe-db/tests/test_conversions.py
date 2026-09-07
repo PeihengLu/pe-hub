@@ -26,6 +26,7 @@ from app.utils.standardize_data import (  # noqa: E402
     _build_standardized_output_df,
     _coerce_original_fold,
     _locate_optiprime_protospacer,
+    _optiprime_homology_end,
 )
 
 DEEPPRIME_REQUIRED = {
@@ -77,7 +78,7 @@ PRIDICT2_AUTHOR_FEATURE_MAP = {
 def _standardized_df(edit_length_col: str = "edit_len") -> pd.DataFrame:
     base = {
         "wt_sequence": ["ACGT" * 30, "TGCA" * 30],
-        "mut_sequence": ["ACGT" * 30, "TGCA" * 30],
+        "mut_sequence": ["ACGT" * 30, "TGCA" * 30 + "AAA"],
         edit_length_col: [1, 3],
         "type_sub": [True, False],
         "type_ins": [False, True],
@@ -269,6 +270,62 @@ def test_pridict_rt_initial_location_accounts_for_indels():
     assert ins_out["RT_mutated_location"].iloc[0] == "[26, 50]"
     assert del_out["RT_initial_location"].iloc[0] == "[26, 50]"
     assert del_out["RT_mutated_location"].iloc[0] == "[26, 38]"
+
+
+def test_pridict_empty_rt_after_inverted_coords_does_not_crash():
+    """Pad-drop can invert RTT on a deletion; Tm_NN must not IndexError."""
+    df = pd.DataFrame(
+        {
+            "wt_sequence": ["A" * 54],
+            "mut_sequence": ["A" * 44],
+            "edit_len": [10],
+            "type_sub": [False],
+            "type_ins": [False],
+            "type_del": [True],
+            "protospacer_location_l": [30],
+            "protospacer_location_r": [50],
+            "pbs_location_l": [40],
+            "pbs_location_r": [47],
+            "rtt_location_l": [47],
+            "rtt_location_r": [46],
+            "lha_location_r": [47],
+            "rha_location_l": [46],
+            "rha_location_r": [46],
+            "spcas9_score": [0.5],
+        }
+    )
+    out = standardized_to_pridict_dataframe(df)
+    assert len(out) == 1
+    assert out["RT_mutated_location"].iloc[0] == "[47, 47]"
+    assert float(out["RTlength"].iloc[0]) == 0.0
+    assert out["Tm2"].iloc[0] == pytest.approx(0.0)
+
+
+def test_pridict_correction_length_uses_unpadded_indel_delta():
+    wt = "A" * 47
+    mut = "A" * 57
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [99],
+            "type_sub": [False],
+            "type_ins": [True],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [14],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [40],
+            "lha_location_r": [30],
+            "rha_location_l": [29],
+            "rha_location_r": [40],
+            "spcas9_score": [0.5],
+        }
+    )
+    out = standardized_to_pridict_dataframe(df)
+    assert int(out["Correction_Length"].iloc[0]) == 10
 
 
 def test_oped_schema_and_target_length():
@@ -469,3 +526,83 @@ def test_optiprime_conversion_drops_pads_from_pbs_rtt():
     assert "N" not in out["pbs"]
     assert "N" not in out["rtt"]
     assert "N" not in out["full_unedited"]
+
+
+def test_optiprime_5g_spacer_uses_genomic_20mer_with_upstream():
+    genomic = "CAGGCACCCCGACTATGATG"
+    wt = "ACGT" + genomic + "AGGTGTTC"
+    assert _locate_optiprime_protospacer(wt, "G" + genomic) == (4, 24)
+    assert wt[4:24] == genomic
+
+
+def test_optiprime_homology_arm_bounds_rtt():
+    mut = "G" * 17 + "ACGT" + "ACGTACGTACGTAC" + "TTTTTTTT"
+    end = _optiprime_homology_end(
+        mut,
+        nick=17,
+        edit_pos=17,
+        edit_len=4,
+        type_del=False,
+        homology_arm="ACGTACGTACGTAC",
+    )
+    assert end == 17 + 4 + 14
+    assert end < len(mut)
+
+
+def test_deepprime_left_pads_when_spacer_starts_at_zero():
+    spacer = "GTCATCTTAGTCATTACCTG"
+    wt = spacer + "AGG" + ("T" * 40)
+    mut = spacer + "AGG" + ("C" * 40)
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [0],
+            "protospacer_location_r": [20],
+            "pbs_location_l": [7],
+            "pbs_location_r": [17],
+            "rtt_location_l": [17],
+            "rtt_location_r": [31],
+            "lha_location_r": [20],
+            "rha_location_l": [21],
+            "rha_location_r": [31],
+            "spcas9_score": [1.0],
+        }
+    )
+    out = standardized_to_deepprime_dataframe(df).iloc[0]
+    assert out["WT74_On"][:4] == "NNNN"
+    assert out["WT74_On"][4:24] == spacer
+
+
+def test_oped_left_pads_instead_of_recentering_short_targets():
+    spacer = "GTCATCTTAGTCATTACCTG"
+    wt = spacer + "AGG" + ("T" * 16)
+    mut = spacer + "AGG" + ("C" * 16)
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [0],
+            "protospacer_location_r": [20],
+            "pbs_location_l": [7],
+            "pbs_location_r": [17],
+            "rtt_location_l": [17],
+            "rtt_location_r": [27],
+            "lha_location_r": [20],
+            "rha_location_l": [21],
+            "rha_location_r": [27],
+            "editing_efficiency": [0.4],
+        }
+    )
+    out = standardized_to_oped_dataframe(df)
+    assert out["Target(47bp)"].str.len().eq(47).all()
+    assert out["Target(47bp)"].str.startswith("AAAA").all()
+    assert out["Target(47bp)"].str.slice(4, 24).eq(spacer).all()

@@ -16,6 +16,7 @@ from ..evaluation.leakage import (
     collect_ensemble_training_loci,
     ensemble_leak_error_payload,
     exclude_overlapping_loci,
+    restrict_to_author_holdout_rows,
 )
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
@@ -105,20 +106,22 @@ def _align_member_matrix(
     lengths = [len(std_df)] + [len(frame) for frame in member_frames] + [
         len(preds) for preds in member_predictions
     ]
-    n_aligned = min(lengths)
     alignment = {
         "std_rows": int(len(std_df)),
         "member_rows": [int(len(frame)) for frame in member_frames],
-        "rows_after_alignment": int(n_aligned),
+        "prediction_rows": [int(len(preds)) for preds in member_predictions],
+        "rows_after_alignment": int(len(std_df)),
     }
     if len(set(lengths)) != 1:
-        alignment["truncated"] = True
-        alignment["warning"] = (
-            "Member row counts differed; predictions were truncated to the shortest partition."
+        raise EnsembleError(
+            "Ensemble member predictions do not match the test row count: "
+            f"std={len(std_df)}, member_rows={alignment['member_rows']}, "
+            f"predictions={alignment['prediction_rows']}. "
+            "Refusing to truncate labels."
         )
-    y_true = _extract_label_column(std_df.iloc[:n_aligned])
+    y_true = _extract_label_column(std_df)
     matrix = np.column_stack(
-        [np.asarray(predictions[:n_aligned], dtype=float) for predictions in member_predictions]
+        [np.asarray(predictions, dtype=float) for predictions in member_predictions]
     )
     return y_true, matrix, alignment
 
@@ -147,9 +150,16 @@ def _predict_member(
             from ..models.pridict2_wrapper import PERNNDistributionModel
 
             if isinstance(model.model, PERNNDistributionModel):
-                return model.predict(test_df)
-            dloader = model.prepare_data(test_df, y_ref=["averageedited"])
-            return model.predict(dloader)
+                predictions = model.predict(test_df)
+            else:
+                dloader = model.prepare_data(test_df, y_ref=["averageedited"])
+                predictions = model.predict(dloader)
+        if len(predictions) != len(test_df):
+            raise EnsembleError(
+                f"PRIDICT2 returned {len(predictions)} predictions for "
+                f"{len(test_df)} input rows."
+            )
+        return predictions
     feature_df = test_df.copy()
     for column in ("Efficiency", "PE_efficiency", "averageedited"):
         if column in feature_df.columns:
@@ -250,11 +260,18 @@ def execute_ensemble(
                 raise EnsembleError("No test data resolved for ensemble evaluation.")
 
             _log(f"Resolved {len(std_df)} standardized test rows for labels")
+            std_df, n_unlabeled_dropped = restrict_to_author_holdout_rows(std_df)
+            if n_unlabeled_dropped:
+                _log(
+                    f"Dropped {n_unlabeled_dropped} unlabeled rows from an "
+                    f"author-fold test; evaluating {len(std_df)} remaining rows"
+                )
 
             leak = assess_ensemble_leakage(
                 test_df=std_df,
                 split=request.split,
                 members=request.members,
+                eval_datasets=request.dataset,
             )
             leak_exclusion_warning: Optional[Dict[str, Any]] = None
             if leak is not None and leak.is_leak:
@@ -343,6 +360,7 @@ def execute_ensemble(
                         f"No test rows for member {model_name}"
                     )
                     raise EnsembleError(reason)
+                member_df, _ = restrict_to_author_holdout_rows(member_df)
 
                 if (
                     leak_exclusion_warning is not None

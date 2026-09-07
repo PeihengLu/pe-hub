@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Expand eval benchmark specs so each cell line is scored separately.
+"""Expand eval benchmark specs so each cell line (and PE system) is scored separately.
 
 Reads ``name|study|dataset1,dataset2,...`` lines and prints
-``name|study|datasets|cell_line`` (``name`` gains a ``__{cell}`` suffix when a
-benchmark spans more than one cell line).
+``name|study|datasets|cell_line|pe_system``.
+
+``name`` gains a ``__{cell}`` suffix when a benchmark spans more than one cell
+line, and a ``__{pe}`` suffix when it spans more than one PE system (OptiPrime
+Lib-MMR / Lib-CV PE2 vs PE4). Single-PE benches keep their current names.
 """
 from __future__ import annotations
 
@@ -18,14 +21,18 @@ def _normalize_segment(value: str) -> str:
     return str(value).strip().lower().replace("-", "_")
 
 
-def cell_lines_for_datasets(
+def _normalize_pe_system(value: str) -> str:
+    return str(value).strip().lower().replace("-", "")
+
+
+def conditions_for_datasets(
     datasets_dir: Path,
     study: str,
     datasets: list[str],
-) -> list[str]:
-    """Return sorted cell-line stems from standardized ``{cell}-{pe}.parquet`` files."""
+) -> list[tuple[str, str]]:
+    """Return sorted ``(cell_line, pe_system)`` from standardized parquet stems."""
     study_key = _normalize_segment(study)
-    found: set[str] = set()
+    found: set[tuple[str, str]] = set()
     for dataset in datasets:
         folder = datasets_dir / "standardized" / study_key / _normalize_segment(dataset)
         if not folder.is_dir():
@@ -34,25 +41,42 @@ def cell_lines_for_datasets(
             stem = path.stem
             if "-" not in stem:
                 continue
-            cell, _pe = stem.rsplit("-", 1)
-            if cell:
-                found.add(canonical_cell_line(cell))
+            cell, pe = stem.rsplit("-", 1)
+            if cell and pe:
+                found.add((canonical_cell_line(cell), _normalize_pe_system(pe)))
     return sorted(found)
 
 
+def cell_lines_for_datasets(
+    datasets_dir: Path,
+    study: str,
+    datasets: list[str],
+) -> list[str]:
+    """Return sorted cell-line stems from standardized ``{cell}-{pe}.parquet`` files."""
+    return sorted({cell for cell, _pe in conditions_for_datasets(datasets_dir, study, datasets)})
+
+
 def expand_benchmark_spec(spec: str, datasets_dir: Path) -> list[str]:
-    """Expand one ``name|study|datasets`` spec into per-cell-line specs."""
+    """Expand one ``name|study|datasets`` spec into per-cell / per-PE specs."""
     parts = spec.split("|")
     if len(parts) < 3:
         raise ValueError(f"Benchmark spec must be name|study|datasets, got: {spec!r}")
     name, study, datasets_csv = parts[0], parts[1], parts[2]
     datasets = [item for item in datasets_csv.split(",") if item.strip()]
-    cells = cell_lines_for_datasets(datasets_dir, study, datasets)
-    if not cells:
-        return [f"{name}|{study}|{datasets_csv}|"]
-    if len(cells) == 1:
-        return [f"{name}|{study}|{datasets_csv}|{cells[0]}"]
-    return [f"{name}__{cell}|{study}|{datasets_csv}|{cell}" for cell in cells]
+    conditions = conditions_for_datasets(datasets_dir, study, datasets)
+    if not conditions:
+        return [f"{name}|{study}|{datasets_csv}||"]
+    cells = {cell for cell, _pe in conditions}
+    pes = {pe for _cell, pe in conditions}
+    out: list[str] = []
+    for cell, pe in conditions:
+        bench = name
+        if len(cells) > 1:
+            bench = f"{bench}__{cell}"
+        if len(pes) > 1:
+            bench = f"{bench}__{pe}"
+        out.append(f"{bench}|{study}|{datasets_csv}|{cell}|{pe}")
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:

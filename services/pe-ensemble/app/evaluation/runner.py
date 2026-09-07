@@ -19,6 +19,7 @@ from .leakage import (
     assess_leakage,
     exclude_overlapping_loci,
     leak_error_payload,
+    restrict_to_author_holdout_rows,
 )
 from .schemas import EvaluationRequest
 
@@ -137,6 +138,12 @@ def execute_evaluation(
                 raise EvaluationError("No test data resolved for evaluation.")
 
             _log(f"Resolved {len(test_df)} test rows")
+            test_df, n_unlabeled_dropped = restrict_to_author_holdout_rows(test_df)
+            if n_unlabeled_dropped:
+                _log(
+                    f"Dropped {n_unlabeled_dropped} unlabeled rows from an "
+                    f"author-fold test; evaluating {len(test_df)} remaining rows"
+                )
 
             leak = None
             leak_exclusion_warning: Optional[Dict[str, Any]] = None
@@ -145,6 +152,7 @@ def execute_evaluation(
                 split=request.split,
                 model=model_name,
                 weights_id=request.weights,
+                eval_datasets=request.dataset,
             )
             if leak is not None and leak.is_leak:
                 if (

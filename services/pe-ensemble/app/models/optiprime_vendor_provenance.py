@@ -13,11 +13,18 @@ This module records that knowledge as:
 1. a ``training`` block on ``weights/optiprime/base/manifest.json``
 2. a ``train_target_loci.json`` sidecar for evaluation-time leak checks
 
-Loci are derived from standardized PE-DB parquet sheets. DeepPrime ClinVar
-rows with author ``original_fold == -1`` are excluded. PRIDICT library1 has
-**no author test split**, so every library1 locus is recorded as training data
-(the same rule as any other vendor model trained on that sheet). Library-diverse
-is included in full because OptiPrime does not ship per-fold checkpoints.
+Loci are derived from standardized PE-DB parquet sheets. Hsu pooled these
+sources and ran **their own protospacer-stratified 5-fold CV**; they did not
+use Yu's ClinVar ``original_fold=-1`` or Mathis's library-diverse folds.
+``data_provenance.has_original_test_split`` is therefore ``false``: in-domain
+eval of any of these sheets aborts with ``no_original_test_split`` rather than
+leftover-excluding another paper's holdout.
+
+PRIDICT library1 has **no author test split**, so every library1 locus is
+recorded as training data. Library-diverse and Lib-MMR / Lib-CV are included
+in full. The ClinVar sidecar currently lists train-fold loci only (a PE-hub
+reconstruction); Hsu still trained on the pooled ClinVar sheet, so that
+holdout is not a valid OptiPrime test.
 """
 from __future__ import annotations
 
@@ -142,8 +149,8 @@ def sync_optiprime_vendor_provenance() -> dict[str, int]:
             "vendor_training_lineage": lineage,
             "external_sources": [
                 "PRIDICT library1 (Mathis et al. 2023, ref. 54)",
-                "DeepPrime ClinVar train folds (Yu et al. 2023, ref. 55)",
-                "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56)",
+                "DeepPrime ClinVar (Yu et al. 2023, ref. 55; Hsu pooled protospacer CV, not Yu's holdout)",
+                "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56; Hsu pooled protospacer CV, not Mathis folds)",
             ],
             "per_dataset_train_folds_only": {
                 "deepprime-clinvar": True,

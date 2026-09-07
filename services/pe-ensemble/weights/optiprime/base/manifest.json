@@ -16,8 +16,8 @@
     "data_provenance": {
       "external_sources": [
         "PRIDICT library1 (Mathis et al. 2023, ref. 54)",
-        "DeepPrime ClinVar train folds (Yu et al. 2023, ref. 55)",
-        "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56)"
+        "DeepPrime ClinVar (Yu et al. 2023, ref. 55; Hsu pooled protospacer CV, not Yu's holdout)",
+        "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56; Hsu pooled protospacer CV, not Mathis folds)"
       ],
       "has_original_test_split": false,
       "loci_recorded": true,
