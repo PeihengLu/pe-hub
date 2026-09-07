@@ -17,13 +17,13 @@ been migrated into services and `packages/pe-common/`.
 
 ### Migrated to `services/pe-db/`
 
-- Data conversion → `app/converter.py`, `app/utils/standardize_data.py`, `app/utils/convert_data.py`
+- Data conversion → `app/converter.py`, `app/pipeline/`, `app/studies/`, `app/formats/`
 - Catalog metadata → `app/catalog/`
 
 ### Migrated to `services/pe-ensemble/`
 
 - Model runners → `app/models/` (wrappers + `model_factory.py`)
-- Training pipeline → `app/training/` (jobs, runner, device scheduler)
+- Training pipeline → `app/training/` (jobs, runner) and `app/compute/` (device scheduler, JobStore)
 - CLI entry → `app/train_models.py`
 
 ### Remaining here

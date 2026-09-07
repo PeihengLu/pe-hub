@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Literal, Optional
 
+from pe_common.filter_params import FILTER_LIST_FIELDS, coerce_list_param
 from pe_common.splits import SplitConfig, split_config_from_params
 
 from .catalog.initialize import initialize_database
@@ -13,7 +14,7 @@ from .db.repository import CatalogRepository
 from .db.session import get_session
 from .format_registry import known_output_formats, validate_output_format
 from .plugin_loader import load_active_plugins, reload_active_plugins
-from .utils.standardize_data import export_original_data, standardize_exported_data
+from .pipeline.run import export_original_data, standardize_exported_data
 
 logger = logging.getLogger(__name__)
 
@@ -229,14 +230,6 @@ def filter_data(
     return {"status": "success", **result}
 
 
-def _coerce_list_param(value: Any) -> Optional[list[Any]]:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return value or None
-    return [value]
-
-
 def filter_from_params(
     params: dict[str, Any],
     *,
@@ -254,18 +247,9 @@ def filter_from_params(
             append_progress(_token, message)
 
     return filter_data(
-        study=_coerce_list_param(params.get("study")),
-        dataset=_coerce_list_param(params.get("dataset")),
-        cell_line=_coerce_list_param(params.get("cell_line")),
-        pe_system=_coerce_list_param(params.get("pe_system")),
-        edit_type=_coerce_list_param(params.get("edit_type")),
-        edit_length=_coerce_list_param(params.get("edit_length")),
+        **{name: coerce_list_param(params.get(name)) for name in FILTER_LIST_FIELDS},
         edit_efficiency_min=params.get("edit_efficiency_min"),
         edit_efficiency_max=params.get("edit_efficiency_max"),
-        edit_scope=_coerce_list_param(params.get("edit_scope")),
-        experimental_method=_coerce_list_param(params.get("experimental_method")),
-        target_context=_coerce_list_param(params.get("target_context")),
-        scaffold_name=_coerce_list_param(params.get("scaffold_name")),
         format_=params.get("format"),
         split_strategy=params.get("split_strategy"),
         train_pct=params.get("train_pct"),

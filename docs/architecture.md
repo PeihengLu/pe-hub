@@ -31,7 +31,7 @@ Two rules explain most of the layout:
 
 1. **PE-DB owns data shape.** Converting standardized rows into DeepPrime /
    PRIDICT / OPED / OptiPrime columns happens only in
-   `services/pe-db/app/utils/convert_data.py`. PE-Ensemble asks for data in a
+   `services/pe-db/app/formats/`. PE-Ensemble asks for data in a
    model's native format and never converts standardized rows itself. This is
    why every wrapper's `prepare_data` validates its columns and raises with a
    "fetch from PE-DB" message rather than trying to fix the frame.
@@ -50,15 +50,15 @@ server.
 
 ```
 datasets/raw/<study>/            Original published files (Excel, CSV)
-  │   export_original_data()             app/utils/standardize_data.py
+  │   export_original_data()             app/pipeline/run.py → app/studies/<name>.py
   ▼
 datasets/exported/<study>/<dataset>/<cell_line>-<pe_system>.csv
   │                                      Per-study column renaming, one CSV per datasheet
-  │   standardize_exported_data()        app/utils/standardize_data.py
+  │   standardize_exported_data()        app/pipeline/run.py → app/studies/<name>.py
   ▼
 datasets/standardized/<study>/<dataset>/<cell_line>-<pe_system>.parquet
   │                                      Shared schema, 0-based half-open coordinates
-  │   format_registry.convert_standardized()   app/format_registry.py
+  │   format_registry.convert_standardized()   app/format_registry.py → app/formats/
   ▼
 datasets/formatted/<format>/...          Cached model-native columns
   │                                      app/formatted_cache.py
@@ -94,7 +94,7 @@ Things worth knowing about this pipeline:
 - **Some datasets are only partially standardizable.** `pridict1/endogenous`,
   `pridict2/trip_analysis` and `deepprime/deepprime_off_subpool` get
   filter-only parquets that lack sequence and coordinate columns, so they are
-  reachable through `GET /api/data` but not through `format=` exports.
+  reachable through `GET /api/filter` but not through `format=` exports.
 - **`pridict` and `pridict2` share one converter.** Both run the full PRIDICT2
   feature pipeline, including the ViennaRNA MFE features.
 
@@ -190,6 +190,7 @@ both services. Usage: [`packages/pe-common/README.md`](../packages/pe-common/REA
 | `plugins.py` | 392 | Plugin manifest parsing and discovery |
 | `plugin_validation.py` | 501 | The validation harness that gates plugin activation |
 | `cell_lines.py` | 83 | Cell-line name normalization |
+| `filter_params.py` | ~70 | Catalog/edit filter field names shared by `pedb`, `peen`, and `filter_from_params` |
 | `conversion_progress.py` | 44 | Progress reporting shared with PE-DB conversion |
 
 `training.py` and `features.py` are loaded lazily because they pull in torch and
@@ -203,7 +204,7 @@ Catalog and data service. Usage and API: [`services/pe-db/README.md`](../service
 
 | Module | Lines | Responsibility |
 |---|---:|---|
-| `main.py` | 505 | FastAPI routes (`/api/studies`, `/api/data`, `/api/filter`, `/api/export`, …) |
+| `main.py` | ~300 | FastAPI catalog/filter/health routes (`/api/studies`, `/api/filter`, …) |
 | `library.py` | 349 | Headless equivalent of the HTTP API; what `pedb` and in-process `peen` call |
 | `converter.py` | 199 | Orchestrates export → standardize → model-format conversion, with cache lookup |
 | `format_registry.py` | 89 | Maps a format name (`std`, `deepprime`, `pridict`, `pridict2`, `oped`, `optiprime`, plus plugin formats) to its converter |
@@ -217,28 +218,46 @@ Catalog and data service. Usage and API: [`services/pe-db/README.md`](../service
 
 | Module | Lines | Responsibility |
 |---|---:|---|
-| `studies.py` | 439 | `STUDY_REGISTRY` / `DATASET_REGISTRY` — the declarative source of truth for studies, datasets, and whether each is standardizable |
+| `studies.py` | registry rows | `STUDY_REGISTRY` / `DATASET_REGISTRY` |
+| `records.py` | dataclasses | `StudyRecord`, `DatasetRecord` (`partial` = filter-only parquet) |
 | `datasheets.py` | 453 | Scans `datasets/exported/` and indexes `Datasheet` rows; infers scaffolds |
 | `scaffolds.py` | 121 | pegRNA scaffold sequences and IDs |
 | `seed.py` | 167 | Writes the registries into SQL; migrates legacy columns |
 | `initialize.py` | 34 | The startup sequence: seed → export → standardize |
 
-Adding a study means editing `studies.py` and adding an exporter — see
-[README § Contributing data](../README.md#contributing-data).
+Adding a study means catalog rows in `studies.py` plus a pipeline module under
+`app/studies/` — see [README § Contributing data](../README.md#contributing-data).
 
-### `app/utils/` — the pipeline itself
+### `app/pipeline/` and `app/studies/` — the pipeline
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `standardize_data.py` | 3217 | Every per-study exporter and standardizer. The largest file in the repo |
-| `convert_data.py` | 1053 | Standardized → model-native converters, and the schema check |
-| `deepspcas9.py` | 304 | Extracts 30-mer windows and fills missing SpCas9 scores (TensorFlow 1.x model) |
-| `json_utils.py` | 41 | NaN/Inf-safe JSON encoding for API responses |
+| Module | Responsibility |
+|---|---|
+| `pipeline/run.py` | `export_original_data`, `standardize_exported_data`, `standardize_pe_data` |
+| `pipeline/registry.py` | Study exporters/standardizers/scaffold callbacks |
+| `pipeline/schema.py` | Shared standardized columns and builders |
+| `studies/<name>.py` | Per-study export + standardize (no edits to the orchestrator) |
 
-`standardize_data.py` is organized as: shared helpers and the standardized
-column lists, then one `_export_<study>_datasheets` and one
-`_standardize_<study>_<dataset>` function per study. To trace one dataset, find
-its pair of functions.
+### `app/formats/` — model-native converters
+
+| Module | Responsibility |
+|---|---|
+| `common.py` | Standardized schema check and series helpers |
+| `thermo.py` | Shared Tm / GC / ViennaRNA helpers |
+| `pridict.py` | PRIDICT / PRIDICT2 features |
+| `deepprime.py` | DeepPrime 74-mer + thermo features |
+| `optiprime.py` | OptiPrime RNA-alphabet inputs |
+| `oped.py` | OPED 47-bp target / PBS / RT |
+
+`utils/convert_data.py` re-exports these for tests and the MFE process-pool worker.
+
+### `app/utils/` — scoring helpers
+
+| Module | Responsibility |
+|---|---|
+| `deepspcas9.py` | Extracts 30-mer windows and fills missing SpCas9 scores (TensorFlow 1.x model) |
+| `json_utils.py` | NaN/Inf-safe JSON encoding for API responses |
+
+`pipeline/` plus `studies/` own export and standardization. To trace one dataset, find its `app/studies/<name>.py` module.
 
 ### `app/db/` — SQL layer
 
@@ -296,7 +315,7 @@ Weight-set layout, ID conventions and manifest fields:
 | `search_spaces.py` | 229 | Per-model search spaces and objective metric names |
 | `hyperparameter_presets.py` | 286 | Merges baselines + shipped YAML + local YAML + request overrides |
 | `data.py` | 247 | Builds PE-DB filter params and fetches the training frame |
-| `jobs.py` / `tune_jobs.py` | 216 / 220 | Filesystem-backed job state and logs |
+| `jobs.py` / `tune_jobs.py` | thin wrappers | Domain manifests; storage is `JobStore` |
 | `dataset_key.py` | 165 | Canonical preset lookup keys for merged/multi-dataset filters |
 | `progress_log.py` | 155 | Epoch log lines, stdout/stderr tee, cancellation hooks |
 | `schemas.py` | 131 | Request models, including split validation |
@@ -317,7 +336,8 @@ layers entirely, which is what tuning trials use.
 
 | Module | Lines | Responsibility |
 |---|---:|---|
-| `device_scheduler.py` | 380 | Per-device queues; at most one running job per device |
+| `device_scheduler.py` | ~310 | Per-device queues; kind → `JobStore` + execute table |
+| `job_store.py` | ~190 | Shared filesystem job registry (create/list/logs/status) |
 | `job_lifecycle.py` | 80 | Kill and delete semantics |
 | `job_logging.py` | 64 | Routes the root logger into a job's log file |
 | `manifest_io.py` | 51 | Atomic JSON writes and truncation-tolerant reads |
@@ -332,10 +352,11 @@ layers entirely, which is what tuning trials use.
 - `ensemble/` — `combine.py` (214) fuses member predictions; `runner.py` (470)
   orchestrates multi-model ensemble jobs.
 - `plugins/` — `manager.py` (578) handles upload, activation and removal;
-  `validation_jobs.py` (189) runs the validation harness asynchronously.
+  `validation_jobs.py` is a thin `JobStore` wrapper around validation manifests.
 
-Each of these packages repeats the same `jobs.py` + `schemas.py` + `config.py`
-filesystem-job pattern as `app/training/`; see
+`training/`, `evaluation/`, `ensemble/`, and `plugins/` keep domain `create_job`
+and `mark_succeeded` helpers; the shared filesystem mechanics live in
+`app/compute/job_store.py`. On-disk layout is unchanged — see
 [`services/pe-ensemble/jobs/README.md`](../services/pe-ensemble/jobs/README.md).
 
 ### `pe_ensemble/` — CLI

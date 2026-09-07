@@ -34,9 +34,10 @@ from .data_utils import (
     target_uid_series,
 )
 from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
+from .filter_params import FILTER_LIST_FIELDS, coerce_list_param
 
 # NOTE: standardized -> model-format conversion lives in the PE-DB service
-# (services/pe-db/app/utils/convert_data.py) and is exposed via GET /api/filter.
+# (services/pe-db/app/formats/) and is exposed via GET /api/filter.
 # PE-Ensemble consumes model-format data from that endpoint; pe-common stays
 # free of model-specific conversion logic.
 
@@ -84,6 +85,8 @@ __all__ = [
     "iter_assigned_cv_folds",
     "resolve_train_val_from_splits",
     "resolve_final_train_val_for_cv_export",
+    "FILTER_LIST_FIELDS",
+    "coerce_list_param",
     # Training utilities (lazy-loaded — requires torch)
     "DEFAULT_TRAINING_SEED",
     "EarlyStopping",

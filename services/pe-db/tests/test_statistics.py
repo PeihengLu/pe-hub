@@ -18,7 +18,7 @@ def _filter_dataframe_entries(
 
     mask = pd.Series(True, index=df.index)
     if edit_lengths is not None:
-        length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
+        length_col = "edit_len"
         if length_col not in df.columns:
             return df.iloc[0:0]
         mask &= pd.to_numeric(df[length_col], errors="coerce").isin(edit_lengths)
@@ -28,10 +28,9 @@ def _filter_dataframe_entries(
 
 def _extract_edit_length_series(df: pd.DataFrame) -> pd.Series:
     """Mirror of DatasheetRepository._extract_edit_length_series."""
-    length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
-    if length_col not in df.columns:
+    if "edit_len" not in df.columns:
         return pd.Series([None] * len(df), index=df.index, dtype=object)
-    return pd.to_numeric(df[length_col], errors="coerce")
+    return pd.to_numeric(df["edit_len"], errors="coerce")
 
 
 def _entry_df(edit_lens: list[int]) -> pd.DataFrame:

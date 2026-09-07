@@ -842,10 +842,9 @@ class CatalogRepository:
 
         mask = pd.Series(True, index=df.index)
         if edit_lengths is not None:
-            length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
-            if length_col not in df.columns:
+            if "edit_len" not in df.columns:
                 return df.iloc[0:0]
-            mask &= pd.to_numeric(df[length_col], errors="coerce").isin(edit_lengths)
+            mask &= pd.to_numeric(df["edit_len"], errors="coerce").isin(edit_lengths)
 
         if edit_type_codes is not None:
             type_columns = ("type_sub", "type_ins", "type_del")
@@ -893,10 +892,9 @@ class CatalogRepository:
 
     @staticmethod
     def _extract_edit_length_series(df: pd.DataFrame) -> pd.Series:
-        length_col = "edit_len" if "edit_len" in df.columns else "edit_length"
-        if length_col not in df.columns:
+        if "edit_len" not in df.columns:
             return pd.Series([None] * len(df), index=df.index, dtype=object)
-        return pd.to_numeric(df[length_col], errors="coerce")
+        return pd.to_numeric(df["edit_len"], errors="coerce")
 
     @staticmethod
     def _build_stat_rows(

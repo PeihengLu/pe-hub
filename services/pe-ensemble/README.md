@@ -30,7 +30,7 @@ Five subpackages under `app/`, each owning one stage. Cross-service context is i
 | `app/training/` | Train and tune orchestration, data fetching, search spaces |
 | `app/evaluation/` | Benchmark jobs and leakage checks |
 | `app/ensemble/` | Post-hoc fusion of multiple models' predictions |
-| `app/compute/` | Device scheduling, job lifecycle, logging, manifest I/O |
+| `app/compute/` | Device scheduling, shared `JobStore`, job lifecycle, logging |
 | `app/plugins/` | Third-party model plugin discovery and validation |
 
 `main.py` holds every route; `train_models.py` and `tune_models.py` are the
@@ -50,7 +50,7 @@ its wrapper and `registry.py` describes the vendor weight sets.
 | `oped_wrapper.py` | `TransformerEncoderModelOrder3` over k-mer tokens. Requires `embedding_size % nhead == 0` |
 | `optiprime_wrapper.py` | JAX/Flax; import is lazy so the service still starts without JAX |
 | `weights_registry.py` | Disk-backed registry under `weights/`. Manifests are written atomically and index rebuilds take an `fcntl` lock |
-| `*_vendor_provenance.py` | Records which vendor checkpoint a weight set descends from |
+| `*_vendor_provenance.py` | Records which vendor checkpoint a weight set descends from; fold predicates live in `author_folds.py` |
 | `migrate_weights.py`, `convert_oped_weights.py` | One-off layout and format migrations |
 
 ### `app/training/` — orchestration
@@ -64,8 +64,8 @@ its wrapper and `registry.py` describes the vendor weight sets.
 | `model_architecture.py` | Architecture override parsing and validation |
 | `hyperparameter_presets.py` | Named hyperparameter bundles per model |
 | `search_spaces.py` | Optuna distributions per model |
-| `tune_runner.py`, `tune_study.py`, `tune_jobs.py` | Optuna study creation, trial execution, and tuning job state |
-| `jobs.py` | Training job manifests under `jobs/` |
+| `tune_runner.py`, `tune_study.py` | Optuna study creation and trial execution |
+| `jobs.py` / `tune_jobs.py` | Thin `JobStore` wrappers; manifests under `jobs/` and `tune_jobs/` |
 | `dataset_key.py` | Canonical cache/identity key for a dataset + filter combination |
 | `progress_log.py`, `conversion_progress.py` | Streaming progress for `GET /train/logs/{job_id}` |
 | `model_baselines.py` | Non-deep-learning baselines |
@@ -74,9 +74,9 @@ its wrapper and `registry.py` describes the vendor weight sets.
 ### `app/compute/` — shared job machinery
 
 `device_scheduler.py` allocates GPUs and queues work per device;
-`job_lifecycle.py` handles the `queued → running → succeeded/failed`
-transitions; `job_logging.py` and `manifest_io.py` provide the append-only logs
-and atomic manifest writes used by all four job types.
+`job_store.py` is the shared filesystem registry (create/list/logs/status);
+`job_lifecycle.py` handles kill-and-delete; `job_logging.py` and
+`manifest_io.py` provide append-only logs and atomic JSON writes.
 
 ### Common tasks
 

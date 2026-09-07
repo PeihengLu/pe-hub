@@ -28,6 +28,7 @@ import pandas as pd
 from pe_common.data_utils import compute_target_uid
 
 from . import weights_registry
+from .author_folds import deepprime_is_author_train_fold as _is_author_train_fold
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _DEEPPRIME_WORKBOOK = _REPO_ROOT / "datasets" / "raw" / "deepprime" / "deepprime-org.xlsx"
@@ -106,28 +107,6 @@ def _read_sheet(sheet_name: str) -> pd.DataFrame:
         }
     )
     return frame
-
-
-def _is_author_train_fold(value: object) -> bool:
-    """True for DeepPrime train folds (0–4); False for author ``Test`` / -1."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        # No fold label: treat as training (conservative for leak checks).
-        return True
-    if isinstance(value, str):
-        token = value.strip().lower()
-        if token in {"test", "-1"}:
-            return False
-        try:
-            value = float(token)
-        except ValueError:
-            return True
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return True
-    if pd.isna(numeric):
-        return True
-    return numeric != -1.0
 
 
 def _frame_train_rows(frame: pd.DataFrame) -> pd.DataFrame:

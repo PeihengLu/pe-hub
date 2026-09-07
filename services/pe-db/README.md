@@ -86,19 +86,19 @@ Where to look when you need to change something. Full cross-service context is i
 | `seed.py` | Writes the registries into SQL and migrates legacy columns |
 | `initialize.py` | The startup sequence: seed → export → standardize |
 
-### `app/utils/` — the pipeline
+### `app/pipeline/`, `app/studies/`, `app/formats/` — the pipeline
 
 | File | Responsibility |
 |---|---|
-| `standardize_data.py` | Every per-study exporter and standardizer (the largest file in the repo) |
-| `convert_data.py` | Standardized → DeepPrime / PRIDICT / OPED / OptiPrime converters |
+| `pipeline/` | Shared schema, name normalization, study registry, export/standardize orchestration |
+| `studies/` | One module per study: exporters, standardizers, scaffold assignments |
+| `formats/` | Standardized → DeepPrime / PRIDICT / OPED / OptiPrime converters |
+| `utils/standardize_data.py` | Import path for orchestration helpers used by tests |
+| `utils/convert_data.py` | Re-export of `formats/` for tests and MFE workers |
 | `deepspcas9.py` | 30-mer window extraction and SpCas9 score backfill (TensorFlow 1.x) |
 | `json_utils.py` | NaN/Inf-safe JSON encoding for API responses |
 
-`standardize_data.py` is organized by study: shared helpers and the standardized
-column lists first, then one `_export_<study>_datasheets` and one
-`_standardize_<study>_<dataset>` per study. **To trace a single dataset, find its
-pair of functions** — that is the whole story for that dataset.
+Adding a study is: catalog rows in `studies.py`, then a module under `app/studies/` that calls `register_study`. The orchestrator does not grow an `if/elif`.
 
 ### `app/db/` — SQL layer
 
@@ -119,10 +119,10 @@ stable import path, `mfe_worker.py` is the MFE subprocess body, and
 
 | Task | Where |
 |---|---|
-| Add a study or dataset | `app/catalog/studies.py`, then an exporter + standardizer in `app/utils/standardize_data.py` |
-| Add a model output format | `app/utils/convert_data.py`, register in `app/format_registry.py` |
+| Add a study or dataset | Catalog rows in `app/catalog/studies.py`, then exporters/standardizers in `app/studies/<study>.py` |
+| Add a model output format | `app/formats/<name>.py`, register in `app/format_registry.py` |
 | Change filtering or splits | `app/db/repository.py` and `packages/pe-common/pe_common/splits.py` |
-| Add an endpoint | `app/library.py` first, then a thin route in `app/main.py` |
+| Add an endpoint | `app/library.py` first, then a thin route in `app/main.py` (CLI-only admin ops stay on `pedb`) |
 
 ## Data pipeline behaviour
 
@@ -146,8 +146,8 @@ Worth knowing before debugging a missing or wrong-looking datasheet:
   by `standardize_pe_data` after the per-study standardizers finish.
 - **Partially standardizable datasets** (`pridict1/endogenous`,
   `pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`) produce parquet
-  with filter metadata but no sequences, so they work with `/api/data` and not
-  with `format=` exports.
+  with filter metadata but no sequences, so they work with `/api/filter`
+  (`summary_only` / catalog filters) and not with `format=` exports.
 - **Bad coordinates are coerced to 0 with a warning.** If a datasheet's
   sequences look subtly wrong, search the logs for `non-numeric value(s) replaced`
   or `inverted interval` — that points at the upstream standardizer.
@@ -232,8 +232,7 @@ payload = filter_from_params(
 ```
 
 ```bash
-curl -X POST 'http://localhost:8000/api/export'
-curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprime-clinvar&cell_line=hek293t&pe_system=pe2'
+curl 'http://localhost:8000/api/filter?dataset=deepprime-clinvar&format=std&split_strategy=none&summary_only=true'
 ```
 
 ## API
@@ -241,14 +240,12 @@ curl -X POST 'http://localhost:8000/api/convert?study=deepprime&dataset=deepprim
 | Method | Path                | Description                                                               |
 | ------ | ------------------- | ------------------------------------------------------------------------- |
 | GET    | `/api/studies`    | List studies                                                              |
-| GET    | `/api/datasets`   | List datasets (optional`?study=` filter)                                |
+| GET    | `/api/datasets`   | List datasets (optional `?study=` filter)                                 |
 | GET    | `/api/datasheets` | List datasheet catalog entries                                            |
 | GET    | `/api/scaffolds`  | List pegRNA scaffolds                                                     |
-| GET    | `/api/data`       | Load standardized edit records for one datasheet                          |
 | GET    | `/api/filter`     | Filter catalog and/or export model-format data with train/val/test splits |
 | GET    | `/api/statistics` | Aggregate statistics (edit type, length, delivery method, …)             |
-| POST   | `/api/export`     | Export (+ optional standardize)                                           |
-| POST   | `/api/convert`    | Standardize one sheet                                                     |
+| POST   | `/api/plugins/reload` | Reload plugin converters                                               |
 | GET    | `/health`         | Health check                                                              |
 
 ### Filter and export
@@ -336,5 +333,5 @@ Re-standardize after enabling scoring:
 
 ```bash
 PE_DB_FORCE_STANDARDIZE=1 ./scripts/start-pe-db-backend.sh
-# or: curl -X POST 'http://localhost:8000/api/export?study=minsepie&force_standardize=true'
+# or: pedb standardize --study minsepie --force
 ```

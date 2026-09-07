@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..db.models import Dataset, Datasheet
 from ..db.session import get_session
+from .records import DatasheetScaffoldAssignment
 from .scaffolds import (
     MINSEPIE_DATASET_SCAFFOLD_ID,
     SCAFFOLD_ID_CONVENTIONAL,
@@ -25,22 +25,6 @@ from .scaffolds import (
 from .seed import _upsert_studies_and_datasets
 
 logger = logging.getLogger(__name__)
-
-
-# ------------------------------------------------------------------------------
-# Scaffold assignment per exported datasheet
-# ------------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class DatasheetScaffoldAssignment:
-    """Which pegRNA scaffold applies to one exported datasheet."""
-
-    study: str
-    dataset: str
-    cell_line: str
-    pe_system: str
-    scaffold_id: int
-    scaffold_source: str
 
 
 def _normalize_study_key(value: str) -> str:
@@ -155,7 +139,7 @@ def build_deeppe_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
 
 
 def build_minsepie_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
-    from ..utils.standardize_data import iter_minsepie_consolidated_datasheet_specs
+    from ..studies.minsepie import iter_minsepie_consolidated_datasheet_specs
 
     root = data_root or get_settings().data_root
     raw_path = root / "raw" / "minsepie" / "41587_2023_1678_MOESM5_ESM.tsv"
@@ -214,14 +198,17 @@ def build_optiprime_scaffold_assignments() -> list[DatasheetScaffoldAssignment]:
 
 
 def build_scaffold_assignments(data_root: Optional[Path] = None) -> list[DatasheetScaffoldAssignment]:
-    """Infer scaffold_id for every known exported datasheet from raw study metadata."""
-    return (
-        build_deepprime_scaffold_assignments(data_root)
-        + build_deeppe_scaffold_assignments()
-        + build_pridict_scaffold_assignments()
-        + build_minsepie_scaffold_assignments(data_root)
-        + build_optiprime_scaffold_assignments()
-    )
+    """Infer scaffold_id for every known exported datasheet from registered studies."""
+    from ..pipeline.registry import iter_pipelines
+    from ..studies import load_studies
+
+    load_studies()
+    rows: list[DatasheetScaffoldAssignment] = []
+    for pipeline in iter_pipelines():
+        if pipeline.scaffold_assignments is None:
+            continue
+        rows.extend(pipeline.scaffold_assignments(data_root))
+    return rows
 
 
 def _scaffold_assignment_lookup(

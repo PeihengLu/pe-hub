@@ -36,9 +36,9 @@ file:
 | Stage | Written by | Trigger |
 |---|---|---|
 | `raw/` | Humans (committed) | — |
-| `exported/` | `_export_<study>_datasheets` in `services/pe-db/app/utils/standardize_data.py` | Startup, per missing dataset, or `force_reexport` |
-| `standardized/` | `_standardize_<study>_<dataset>` in the same file | Startup, or `force_standardize` |
-| `formatted/` | converters in `services/pe-db/app/utils/convert_data.py` | On demand from `format=` requests, then cached |
+| `exported/` | `app/studies/<study>.py` exporters via `app/pipeline/run.py` | Startup, per missing dataset, or `force_reexport` |
+| `standardized/` | `app/studies/<study>.py` standardizers via `app/pipeline/run.py` | Startup, or `force_standardize` |
+| `formatted/` | converters in `services/pe-db/app/formats/` | On demand from `format=` requests, then cached |
 | `catalog/` | `services/pe-db/app/catalog/seed.py` + `datasheets.py` | Startup |
 
 Export is skipped **per dataset**, not per study, so registering a new dataset
@@ -100,8 +100,8 @@ Registered in `services/pe-db/app/catalog/studies.py`:
 | `minsepie` | `raw/minsepie/` | MinsePIE insert libraries |
 | `deeppe` | `raw/deeppe/` | DeepPE benchmark sets |
 
-Some datasets are **partially standardizable** (metadata-only conversion). See
-`PARTIAL_STANDARDIZABLE_DATASETS` in `services/pe-db/app/utils/standardize_data.py`.
+Some datasets are **partially standardizable** (metadata-only conversion). Set
+`partial=True` on the `DatasetRecord` in `services/pe-db/app/catalog/studies.py`.
 
 ## Model-specific notes
 

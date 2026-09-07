@@ -1,6 +1,7 @@
 """Load active model plugins into the PE Database format registry."""
 from __future__ import annotations
 
+import inspect
 import logging
 from pathlib import Path
 from typing import Callable, List, Optional, Set
@@ -41,11 +42,8 @@ def _call_converter(
     df: pd.DataFrame,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
-    if progress_callback is not None:
-        try:
-            return fn(df, progress_callback=progress_callback)
-        except TypeError:
-            pass
+    if progress_callback is not None and "progress_callback" in inspect.signature(fn).parameters:
+        return fn(df, progress_callback=progress_callback)
     return fn(df)
 
 

@@ -19,7 +19,7 @@ def initialize_database(
     2. **Export** — write ``datasets/exported/`` CSVs from raw sources; index Datasheet rows
     3. **Standardize** — write ``datasets/standardized/`` parquet files from exported CSVs
     """
-    from ..utils.standardize_data import export_original_data, standardize_exported_data
+    from ..pipeline.run import export_original_data, standardize_exported_data
     from .seed import init_catalog
 
     logger.info("PE Database initialization: seeding catalog")

@@ -20,6 +20,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 COMMON="${REPO_ROOT}/packages/pe-common"
 
+# shellcheck source=scripts/python-env.sh
+source "${REPO_ROOT}/scripts/python-env.sh"
+
+if ! PYTHON="$(pe_hub_resolve_python)"; then
+    echo "Error: python3 is not installed" >&2
+    exit 1
+fi
+if ! pe_hub_require_python_version "${PYTHON}" >/dev/null 2>&1; then
+    for candidate in \
+        "${HOME}/miniconda3/envs/pe-hub/bin/python" \
+        "${HOME}/anaconda3/envs/pe-hub/bin/python" \
+        "${REPO_ROOT}/venv/bin/python"
+    do
+        if [[ -x "${candidate}" ]] && pe_hub_require_python_version "${candidate}" >/dev/null 2>&1; then
+            PYTHON="${candidate}"
+            break
+        fi
+    done
+fi
+if ! pe_hub_require_python_version "${PYTHON}"; then
+    exit 1
+fi
+
 INSTALL_DEPS=false
 LIST_ONLY=false
 CHECK_GROUPS=false
@@ -77,7 +100,7 @@ group_description() {
         evaluation) echo "Evaluation, leakage, ensemble fusion, and benchmarks" ;;
         jobs) echo "Job registries, scheduler, and cancel/kill" ;;
         splits) echo "Split assignment and eval-split helpers" ;;
-        utils) echo "Shared pe-common helpers (devices, sequences, cell lines)" ;;
+        utils) echo "Shared pe-common helpers (devices, sequences, cell lines, filter params)" ;;
         *) echo "" ;;
     esac
 }
@@ -153,6 +176,7 @@ services/pe-db/tests/test_formatted_cache.py
 services/pe-db/tests/test_window_geometry.py
 services/pe-db/tests/test_mfe_process_pool.py
 services/pe-db/tests/test_deepspcas9.py
+services/pe-db/tests/test_pipeline_registry.py
 EOF
             ;;
         plugins)
@@ -183,6 +207,7 @@ services/pe-ensemble/tests/test_pridict2_perbase_dtypes.py
 services/pe-ensemble/tests/test_pridict2_vendor_provenance.py
 services/pe-ensemble/tests/test_pridict2_weight_bundles.py
 services/pe-ensemble/tests/test_pridict2_weight_selection.py
+services/pe-ensemble/tests/test_author_folds.py
 EOF
             ;;
         training)
@@ -237,6 +262,7 @@ packages/pe-common/tests/test_devices.py
 packages/pe-common/tests/test_cell_lines.py
 packages/pe-common/tests/test_sequence_utils.py
 packages/pe-common/tests/test_conversion_progress.py
+packages/pe-common/tests/test_filter_params.py
 EOF
             ;;
         *)
@@ -393,22 +419,17 @@ if [[ "${LIST_ONLY}" == true || "${CHECK_GROUPS}" == true ]]; then
     exit 0
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "Error: python3 is not installed" >&2
-    exit 1
-fi
-
 if [[ "${INSTALL_DEPS}" == true ]]; then
     echo "Installing test dependencies (this may take a while)..."
-    python3 -m pip install pytest httpx
-    python3 -m pip install -e "${COMMON}"
-    python3 -m pip install -e "${REPO_ROOT}/services/pe-ensemble"
+    "${PYTHON}" -m pip install pytest httpx
+    "${PYTHON}" -m pip install -e "${COMMON}"
+    "${PYTHON}" -m pip install -e "${REPO_ROOT}/services/pe-ensemble"
     echo "Done."
 fi
 
-if ! python3 -c "import pytest" >/dev/null 2>&1; then
+if ! "${PYTHON}" -c "import pytest" >/dev/null 2>&1; then
     echo "Error: pytest is not installed. Run: $(basename "$0") --install" >&2
-    echo "       (or: python3 -m pip install pytest)" >&2
+    echo "       (or: ${PYTHON} -m pip install pytest)" >&2
     exit 1
 fi
 
@@ -475,7 +496,7 @@ for suite in "${SUITES[@]}"; do
     echo "=================================================================="
 
     PYTHONPATH="${extra_path}${PYTHONPATH:+:${PYTHONPATH}}" \
-        python3 -m pytest "${suite_targets[@]}" --continue-on-collection-errors \
+        "${PYTHON}" -m pytest "${suite_targets[@]}" --continue-on-collection-errors \
         ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}
     code=$?
 

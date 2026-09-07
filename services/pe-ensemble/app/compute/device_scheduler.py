@@ -1,12 +1,12 @@
 """Per-device compute queue for training, evaluation, and ensemble jobs."""
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Deque, Dict, List, Literal, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Deque, Dict, List, Literal, Optional, Tuple
 
 from pe_common.devices import AUTO_DEVICE, list_accelerator_ids, list_device_ids, resolve_device_id
 
@@ -17,32 +17,17 @@ from .job_cancel import (
     register_cancel_event,
     request_cancel,
 )
-from ..ensemble.jobs import get_job as get_ensemble_job
-from ..ensemble.jobs import mark_cancelled as mark_ensemble_cancelled
-from ..ensemble.jobs import mark_failed as mark_ensemble_failed
-from ..ensemble.jobs import mark_stopping as mark_ensemble_stopping
-from ..ensemble.jobs import update_job as update_ensemble_job
+from .job_store import JobStore
+from ..ensemble.jobs import store as ensemble_store
 from ..ensemble.runner import execute_ensemble
 from ..ensemble.schemas import EnsembleRequest
-from ..evaluation.jobs import get_job as get_eval_job
-from ..evaluation.jobs import mark_cancelled as mark_eval_cancelled
-from ..evaluation.jobs import mark_failed as mark_eval_failed
-from ..evaluation.jobs import mark_stopping as mark_eval_stopping
-from ..evaluation.jobs import update_job as update_eval_job
+from ..evaluation.jobs import store as eval_store
 from ..evaluation.runner import execute_evaluation
 from ..evaluation.schemas import EvaluationRequest
-from ..training.jobs import get_job as get_train_job
-from ..training.jobs import mark_cancelled as mark_train_cancelled
-from ..training.jobs import mark_failed as mark_train_failed
-from ..training.jobs import mark_stopping as mark_train_stopping
-from ..training.jobs import update_job as update_train_job
+from ..training.jobs import store as train_store
 from ..training.runner import execute_training
 from ..training.schemas import TrainingRequest
-from ..training.tune_jobs import get_job as get_tune_job
-from ..training.tune_jobs import mark_cancelled as mark_tune_cancelled
-from ..training.tune_jobs import mark_failed as mark_tune_failed
-from ..training.tune_jobs import mark_stopping as mark_tune_stopping
-from ..training.tune_jobs import update_job as update_tune_job
+from ..training.tune_jobs import store as tune_store
 from ..training.tune_study import execute_tuning
 from ..training.tuning_schemas import TuningRequest
 
@@ -52,58 +37,41 @@ JobKind = Literal["train", "evaluate", "ensemble", "tune"]
 QueuedJob = Tuple[JobKind, str]
 
 
+@dataclass(frozen=True)
+class _KindOps:
+    store: JobStore
+    request_type: type
+    execute: Callable[..., Any]
+
+
+def _kind_ops(kind: JobKind) -> _KindOps:
+    # Built at call time so tests can monkeypatch execute_* on this module.
+    return {
+        "train": _KindOps(train_store, TrainingRequest, execute_training),
+        "evaluate": _KindOps(eval_store, EvaluationRequest, execute_evaluation),
+        "ensemble": _KindOps(ensemble_store, EnsembleRequest, execute_ensemble),
+        "tune": _KindOps(tune_store, TuningRequest, execute_tuning),
+    }[kind]
+
+
 def _get_job_manifest(kind: JobKind, job_id: str) -> Dict[str, object]:
-    if kind == "train":
-        return get_train_job(job_id)
-    if kind == "ensemble":
-        return get_ensemble_job(job_id)
-    if kind == "tune":
-        return get_tune_job(job_id)
-    return get_eval_job(job_id)
+    return _kind_ops(kind).store.get(job_id)
 
 
 def _update_job(kind: JobKind, job_id: str, **fields: object) -> None:
-    if kind == "train":
-        update_train_job(job_id, **fields)
-    elif kind == "ensemble":
-        update_ensemble_job(job_id, **fields)
-    elif kind == "tune":
-        update_tune_job(job_id, **fields)
-    else:
-        update_eval_job(job_id, **fields)
+    _kind_ops(kind).store.update(job_id, **fields)
 
 
 def _mark_cancelled(kind: JobKind, job_id: str) -> None:
-    if kind == "train":
-        mark_train_cancelled(job_id)
-    elif kind == "ensemble":
-        mark_ensemble_cancelled(job_id)
-    elif kind == "tune":
-        mark_tune_cancelled(job_id)
-    else:
-        mark_eval_cancelled(job_id)
+    _kind_ops(kind).store.mark_cancelled(job_id)
 
 
 def _mark_failed(kind: JobKind, job_id: str, error: str) -> None:
-    if kind == "train":
-        mark_train_failed(job_id, error)
-    elif kind == "ensemble":
-        mark_ensemble_failed(job_id, error)
-    elif kind == "tune":
-        mark_tune_failed(job_id, error)
-    else:
-        mark_eval_failed(job_id, error)
+    _kind_ops(kind).store.mark_failed(job_id, error)
 
 
 def _mark_stopping(kind: JobKind, job_id: str) -> None:
-    if kind == "train":
-        mark_train_stopping(job_id)
-    elif kind == "ensemble":
-        mark_ensemble_stopping(job_id)
-    elif kind == "tune":
-        mark_tune_stopping(job_id)
-    else:
-        mark_eval_stopping(job_id)
+    _kind_ops(kind).store.mark_stopping(job_id)
 
 
 class ComputeDeviceScheduler:
@@ -251,15 +219,9 @@ class ComputeDeviceScheduler:
         try:
             if is_cancel_requested(kind, job_id):
                 raise JobCancelledError(f"Job {job_id} cancelled before start")
-            request = _load_request(kind, job_id)
-            if kind == "train":
-                execute_training(request, job_id=job_id, device_id=device_id)
-            elif kind == "ensemble":
-                execute_ensemble(request, job_id=job_id, device_id=device_id)
-            elif kind == "tune":
-                execute_tuning(request, job_id=job_id, device_id=device_id)
-            else:
-                execute_evaluation(request, job_id=job_id, device_id=device_id)
+            ops = _kind_ops(kind)
+            request = ops.request_type.model_validate(ops.store.load_request_json(job_id))
+            ops.execute(request, job_id=job_id, device_id=device_id)
         except JobCancelledError:
             logger.info("%s job %s cancelled on %s", kind, job_id, device_id)
             try:
@@ -327,37 +289,6 @@ class ComputeDeviceScheduler:
             for kind, job_id in list(self._job_device.keys()):
                 request_cancel(kind, job_id)
         self._executor.shutdown(wait=wait, cancel_futures=not wait)
-
-
-def _load_request(
-    kind: JobKind,
-    job_id: str,
-) -> TrainingRequest | EvaluationRequest | EnsembleRequest | TuningRequest:
-    if kind == "train":
-        from ..training.config import jobs_root
-
-        request_path = jobs_root() / job_id / "request.json"
-    elif kind == "ensemble":
-        from ..ensemble.config import ensemble_jobs_root
-
-        request_path = ensemble_jobs_root() / job_id / "request.json"
-    elif kind == "tune":
-        from ..training.config import tune_jobs_root
-
-        request_path = tune_jobs_root() / job_id / "request.json"
-    else:
-        from ..evaluation.config import eval_jobs_root
-
-        request_path = eval_jobs_root() / job_id / "request.json"
-    with open(request_path, encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if kind == "train":
-        return TrainingRequest.model_validate(payload)
-    if kind == "ensemble":
-        return EnsembleRequest.model_validate(payload)
-    if kind == "tune":
-        return TuningRequest.model_validate(payload)
-    return EvaluationRequest.model_validate(payload)
 
 
 _scheduler: Optional[ComputeDeviceScheduler] = None

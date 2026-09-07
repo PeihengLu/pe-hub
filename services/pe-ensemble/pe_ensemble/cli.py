@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pe_common.devices import format_devices_for_cli
+from pe_common.filter_params import add_filter_arguments, filter_kwargs_from_namespace
 
 from pe_ensemble._bootstrap import ensure_service_root_on_path
 
@@ -93,10 +94,6 @@ def _parse_json_object(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     return value
 
 
-def _optional_list(values: List[Any]) -> Optional[List[Any]]:
-    return values or None
-
-
 def _add_split_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--split-strategy",
@@ -124,18 +121,7 @@ def _add_split_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_filter_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dataset", action="append", default=[])
-    parser.add_argument("--study", action="append", default=[])
-    parser.add_argument("--cell-line", action="append", default=[])
-    parser.add_argument("--pe-system", action="append", default=[])
-    parser.add_argument("--edit-type", action="append", default=[])
-    parser.add_argument("--edit-length", action="append", type=int, default=[])
-    parser.add_argument("--edit-scope", action="append", default=[])
-    parser.add_argument("--experimental-method", action="append", default=[])
-    parser.add_argument("--target-context", action="append", default=[])
-    parser.add_argument("--scaffold-name", action="append", default=[])
-    parser.add_argument("--edit-efficiency-min", type=float, default=None)
-    parser.add_argument("--edit-efficiency-max", type=float, default=None)
+    add_filter_arguments(parser)
 
 
 def _add_architecture_flags(parser: argparse.ArgumentParser) -> None:
@@ -231,18 +217,7 @@ def build_training_request(args: argparse.Namespace) -> TrainingRequest:
         hyperparameters=hyperparameters or None,
         hyperparameter_mode=getattr(args, "hyperparameter_mode", "merge"),
         split=_build_split(args),
-        study=_optional_list(args.study),
-        dataset=_optional_list(args.dataset),
-        cell_line=_optional_list(args.cell_line),
-        pe_system=_optional_list(args.pe_system),
-        edit_type=_optional_list(args.edit_type),
-        edit_length=_optional_list(args.edit_length),
-        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
-        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
-        edit_scope=_optional_list(args.edit_scope),
-        experimental_method=_optional_list(args.experimental_method),
-        target_context=_optional_list(args.target_context),
-        scaffold_name=_optional_list(args.scaffold_name),
+        **filter_kwargs_from_namespace(args),
         model_kwargs=_parse_json_object(getattr(args, "model_kwargs_json", None)),
         notes=getattr(args, "notes", None),
         device=args.device,
@@ -258,18 +233,7 @@ def build_tuning_request(args: argparse.Namespace) -> TuningRequest:
         hyperparameters=fixed or None,
         hyperparameter_mode="replace",
         split=_build_split(args),
-        study=_optional_list(args.study),
-        dataset=_optional_list(args.dataset),
-        cell_line=_optional_list(args.cell_line),
-        pe_system=_optional_list(args.pe_system),
-        edit_type=_optional_list(args.edit_type),
-        edit_length=_optional_list(args.edit_length),
-        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
-        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
-        edit_scope=_optional_list(args.edit_scope),
-        experimental_method=_optional_list(args.experimental_method),
-        target_context=_optional_list(args.target_context),
-        scaffold_name=_optional_list(args.scaffold_name),
+        **filter_kwargs_from_namespace(args),
         model_kwargs=_parse_json_object(getattr(args, "model_kwargs_json", None)),
         notes=getattr(args, "notes", None),
         device=args.device,
@@ -292,18 +256,7 @@ def build_evaluation_request(args: argparse.Namespace) -> EvaluationRequest:
         benchmark_name=args.benchmark_name,
         weights=args.weights,
         split=_build_split(args),
-        study=_optional_list(args.study),
-        dataset=_optional_list(args.dataset),
-        cell_line=_optional_list(args.cell_line),
-        pe_system=_optional_list(args.pe_system),
-        edit_type=_optional_list(args.edit_type),
-        edit_length=_optional_list(args.edit_length),
-        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
-        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
-        edit_scope=_optional_list(args.edit_scope),
-        experimental_method=_optional_list(args.experimental_method),
-        target_context=_optional_list(args.target_context),
-        scaffold_name=_optional_list(args.scaffold_name),
+        **filter_kwargs_from_namespace(args),
         device=args.device,
         auto_training_benchmark=not args.custom_benchmark,
         allow_data_leak=args.allow_data_leak,
@@ -333,18 +286,7 @@ def build_ensemble_request(args: argparse.Namespace) -> EnsembleRequest:
         combine_options=combine_options,
         members=[parse_ensemble_member(raw) for raw in args.member],
         split=_build_split(args),
-        study=_optional_list(args.study),
-        dataset=_optional_list(args.dataset),
-        cell_line=_optional_list(args.cell_line),
-        pe_system=_optional_list(args.pe_system),
-        edit_type=_optional_list(args.edit_type),
-        edit_length=_optional_list(args.edit_length),
-        edit_efficiency_min=getattr(args, "edit_efficiency_min", None),
-        edit_efficiency_max=getattr(args, "edit_efficiency_max", None),
-        edit_scope=_optional_list(args.edit_scope),
-        experimental_method=_optional_list(args.experimental_method),
-        target_context=_optional_list(args.target_context),
-        scaffold_name=_optional_list(args.scaffold_name),
+        **filter_kwargs_from_namespace(args),
         device=args.device,
         allow_data_leak=bool(getattr(args, "allow_data_leak", False)),
     )

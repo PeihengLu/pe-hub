@@ -6,17 +6,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
+from pe_common.filter_params import FILTER_LIST_FIELDS, coerce_list_param
 from .conversion_progress import pe_db_filter_progress
 from .pe_db_access import fetch_pe_db_filter
-from .schemas import FilterScalar, FilterValue, SplitQueryParams, TrainingRequest
+from .schemas import FilterValue, SplitQueryParams, TrainingRequest
 
-
-def normalize_filter_param(value: Optional[FilterValue]) -> Optional[List[FilterScalar]]:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return value or None
-    return [value]
+normalize_filter_param = coerce_list_param
 
 
 def build_pe_db_filter_params(
@@ -53,19 +48,20 @@ def build_pe_db_filter_params(
         params["test_pct"] = split.test_pct
     if split.cv_folds is not None:
         params["cv_folds"] = split.cv_folds
-    for name, value in (
-        ("study", study),
-        ("dataset", dataset),
-        ("cell_line", cell_line),
-        ("pe_system", pe_system),
-        ("edit_type", edit_type),
-        ("edit_length", edit_length),
-        ("edit_scope", edit_scope),
-        ("experimental_method", experimental_method),
-        ("target_context", target_context),
-        ("scaffold_name", scaffold_name),
-    ):
-        normalized = normalize_filter_param(value)
+    values = {
+        "study": study,
+        "dataset": dataset,
+        "cell_line": cell_line,
+        "pe_system": pe_system,
+        "edit_type": edit_type,
+        "edit_length": edit_length,
+        "edit_scope": edit_scope,
+        "experimental_method": experimental_method,
+        "target_context": target_context,
+        "scaffold_name": scaffold_name,
+    }
+    for name in FILTER_LIST_FIELDS:
+        normalized = coerce_list_param(values[name])
         if normalized is not None:
             params[name] = normalized
     if edit_efficiency_min is not None:

@@ -1,16 +1,13 @@
-"""HTTP smoke tests for every PE-DB FastAPI route.
+"""HTTP smoke tests for PE-DB FastAPI routes used by PE Hub and PE-Ensemble.
 
-Each public (method, path) pair is exercised once so a refactor that drops or
-renames an endpoint fails here before it reaches the CLI or PE Hub UI.
-Heavy pipeline work (export / convert / parquet load) is stubbed; catalog
-reads hit an isolated seeded sqlite database.
+Admin pipeline commands (init / export / convert) are CLI-only. Heavy pipeline
+work is stubbed; catalog reads hit an isolated seeded sqlite database.
 """
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from typing import Any, Callable
 
-import pandas as pd
 import pytest
 
 pytest.importorskip("httpx")
@@ -54,41 +51,11 @@ ROUTE_CASES: dict[tuple[str, str], tuple[RouteCall, int]] = {
     ),
     ("GET", "/api/datasheets"): (lambda c: c.get("/api/datasheets"), 200),
     ("GET", "/api/scaffolds"): (lambda c: c.get("/api/scaffolds"), 200),
-    ("GET", "/api/scaffolds/{scaffold_id}"): (lambda c: c.get("/api/scaffolds/1"), 200),
     ("GET", "/api/filter"): (
         lambda c: c.get("/api/filter", params={"study": "deepprime"}),
         200,
     ),
-    ("GET", "/api/data"): (
-        lambda c: c.get(
-            "/api/data",
-            params={
-                "study": "deepprime",
-                "dataset": "library2",
-                "cell_line": "HEK293T",
-                "pe_system": "PE2max",
-                "limit": 1,
-            },
-        ),
-        200,
-    ),
     ("GET", "/api/statistics"): (lambda c: c.get("/api/statistics"), 200),
-    ("POST", "/api/export"): (
-        lambda c: c.post("/api/export", params={"study": "deepprime"}),
-        200,
-    ),
-    ("POST", "/api/convert"): (
-        lambda c: c.post(
-            "/api/convert",
-            params={
-                "study": "deepprime",
-                "dataset": "library2",
-                "cell_line": "HEK293T",
-                "pe_system": "PE2max",
-            },
-        ),
-        200,
-    ),
     ("POST", "/api/plugins/reload"): (lambda c: c.post("/api/plugins/reload"), 200),
 }
 
@@ -96,32 +63,6 @@ ROUTE_CASES: dict[tuple[str, str], tuple[RouteCall, int]] = {
 @pytest.fixture
 def pe_db_client(seeded_catalog, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from app.main import app
-
-    monkeypatch.setattr(
-        "app.main.library_run_export",
-        lambda **kwargs: {
-            "status": "success",
-            "study": kwargs.get("study") or "all",
-            "force_reexport": bool(kwargs.get("force_reexport")),
-            "standardized": bool(kwargs.get("standardize", True)),
-            "datasheets_in_catalog": 0,
-        },
-    )
-    monkeypatch.setattr(
-        "app.main.run_convert_sheet",
-        lambda **kwargs: {
-            "status": "success",
-            "message": "stub",
-            "records_converted": 0,
-            "output_columns": [],
-        },
-    )
-    monkeypatch.setattr(
-        "app.main.loader.load_data",
-        lambda **kwargs: pd.DataFrame(
-            {"edit_len": [1], "editing_efficiency": [0.25]}
-        ),
-    )
 
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan
@@ -154,6 +95,8 @@ def test_root_lists_catalog_endpoints(pe_db_client: TestClient):
     payload = pe_db_client.get("/").json()
     assert payload["name"] == "PE Database API"
     assert payload["endpoints"]["filter"] == "/api/filter"
+    assert "data" not in payload["endpoints"]
+    assert "export" not in payload["endpoints"]
 
 
 def test_health_reports_isolated_catalog(pe_db_client: TestClient, seeded_catalog):
@@ -167,11 +110,6 @@ def test_studies_include_builtins(pe_db_client: TestClient):
     names = {row["name"] for row in pe_db_client.get("/api/studies").json()}
     assert "deepprime" in names
     assert "pridict1" in names
-
-
-def test_scaffold_not_found(pe_db_client: TestClient):
-    response = pe_db_client.get("/api/scaffolds/99999")
-    assert response.status_code == 404
 
 
 def test_filter_catalog_only_returns_datasheets(pe_db_client: TestClient):
@@ -206,46 +144,6 @@ def test_filter_summary_only_defaults_format(pe_db_client: TestClient):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "success"
-
-
-def test_data_requires_study(pe_db_client: TestClient):
-    response = pe_db_client.get(
-        "/api/data",
-        params={"dataset": "library2", "cell_line": "HEK293T", "pe_system": "PE2max"},
-    )
-    assert response.status_code == 422
-
-
-def test_data_legacy_source_model(pe_db_client: TestClient):
-    response = pe_db_client.get(
-        "/api/data",
-        params={
-            "source_model": "dp",
-            "dataset": "library2",
-            "cell_line": "HEK293T",
-            "pe_system": "PE2max",
-            "limit": 1,
-        },
-    )
-    assert response.status_code == 200
-    assert response.json()["metadata"]["study"] == "deepprime"
-
-
-def test_data_file_not_found(pe_db_client: TestClient, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        "app.main.loader.load_data",
-        lambda **kwargs: (_ for _ in ()).throw(FileNotFoundError("missing parquet")),
-    )
-    response = pe_db_client.get(
-        "/api/data",
-        params={
-            "study": "deepprime",
-            "dataset": "library2",
-            "cell_line": "HEK293T",
-            "pe_system": "PE2max",
-        },
-    )
-    assert response.status_code == 404
 
 
 def test_statistics_empty_catalog_shape(pe_db_client: TestClient):

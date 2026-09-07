@@ -5,49 +5,10 @@ Should be refactored to be more extensible if the study count grows.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-
-@dataclass(frozen=True)
-class StudyRecord:
-    key: str
-    display_name: str
-    publication_date: Optional[date]
-    authors: str
-
-
-@dataclass(frozen=True)
-class DatasetRecord:
-    """Catalog metadata for a dataset within a study.
-
-    Field semantics:
-      - ``pegRNA_delivery_method`` / ``pe_delivery_method``: how each component
-        reaches cells (often different, e.g. lentiviral pegRNA + transfected PE).
-      - ``edit_scope``: intended vs off-target editing readout (on_target / off_target).
-      - ``experimental_method``: where editing is measured (in_vitro / in_vivo).
-      - ``target_context``: where the edit is measured — ``endogenous`` (native
-        chromosomal locus) vs ``non_endogenous`` (synthetic target on plasmid or
-        lentiviral self-targeting cassette; not the patient's genomic allele).
-      - ``standardizable``: standardization support level for this dataset.
-        ``True`` means full conversion to the shared standardized format.
-        ``False`` means partial-support conversion (entry-level fields only).
-    """
-
-    study_key: str
-    name: str
-    description: str
-    pegRNA_delivery_method: str
-    pe_delivery_method: str
-    edit_scope: str
-    experimental_method: str
-    target_context: str
-    standardizable: bool = True
-
-
-def _canonical_dataset_name(value: str) -> str:
-    return str(value).strip().lower().replace("_", "-")
+from .records import DatasetRecord, StudyRecord, canonical_dataset_name as _canonical_dataset_name
 
 
 STUDY_REGISTRY: tuple[StudyRecord, ...] = (
@@ -148,6 +109,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         experimental_method="in_vitro",
         target_context="non_endogenous",
         standardizable=False,
+        partial=True,
     ),
     DatasetRecord(
         study_key="pridict1",
@@ -205,6 +167,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         experimental_method="in_vitro",
         target_context="endogenous",
         standardizable=False,
+        partial=True,
     ),
     DatasetRecord(
         study_key="pridict2",
@@ -247,6 +210,7 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         experimental_method="in_vitro",
         target_context="endogenous",
         standardizable=False,
+        partial=True,
     ),
     DatasetRecord(
         study_key="minsepie",

@@ -11,10 +11,11 @@ from typing import Any, List, Optional
 
 import pandas as pd
 
+from pe_common.filter_params import add_filter_arguments, filter_kwargs_from_namespace
 from pe_db.library import (
     PeDbLibraryError,
     catalog_statistics,
-    filter_data,
+    filter_from_params,
     list_datasheets,
     list_datasets,
     list_output_formats,
@@ -54,26 +55,7 @@ def _build_filter_parser(sub: argparse._SubParsersAction) -> None:
     parser.add_argument("--split-random-state", type=int, default=42)
     parser.add_argument("--merge", action="store_true")
     parser.add_argument("--summary-only", action="store_true")
-    for name in (
-        "study",
-        "dataset",
-        "cell-line",
-        "pe-system",
-        "edit-type",
-        "edit-scope",
-        "experimental-method",
-        "target-context",
-        "scaffold-name",
-    ):
-        parser.add_argument(
-            f"--{name}",
-            action="append",
-            default=[],
-            dest=name.replace("-", "_"),
-        )
-    parser.add_argument("--edit-length", action="append", type=int, default=[])
-    parser.add_argument("--edit-efficiency-min", type=float, default=None)
-    parser.add_argument("--edit-efficiency-max", type=float, default=None)
+    add_filter_arguments(parser)
     parser.add_argument(
         "--out",
         default=None,
@@ -237,36 +219,22 @@ def cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
-def _optional_list(values: List[Any]) -> Optional[List[Any]]:
-    return values or None
-
-
 def cmd_filter(args: argparse.Namespace) -> int:
-    result = filter_data(
-        study=_optional_list(args.study),
-        dataset=_optional_list(args.dataset),
-        cell_line=_optional_list(args.cell_line),
-        pe_system=_optional_list(args.pe_system),
-        edit_type=_optional_list(args.edit_type),
-        edit_length=_optional_list(args.edit_length),
-        edit_efficiency_min=args.edit_efficiency_min,
-        edit_efficiency_max=args.edit_efficiency_max,
-        edit_scope=_optional_list(args.edit_scope),
-        experimental_method=_optional_list(args.experimental_method),
-        target_context=_optional_list(args.target_context),
-        scaffold_name=_optional_list(args.scaffold_name),
-        format_=args.format_,
-        split_strategy=args.split_strategy,
-        train_pct=args.train_pct,
-        val_pct=args.val_pct,
-        test_pct=args.test_pct,
-        cv_folds=args.cv_folds,
-        use_original_fold=args.use_original_fold,
-        original_fold_test_value=args.original_fold_test_value,
-        split_random_state=args.split_random_state,
-        merge=args.merge,
-        summary_only=args.summary_only,
-    )
+    params = {
+        **filter_kwargs_from_namespace(args),
+        "format": args.format_,
+        "split_strategy": args.split_strategy,
+        "train_pct": args.train_pct,
+        "val_pct": args.val_pct,
+        "test_pct": args.test_pct,
+        "cv_folds": args.cv_folds,
+        "use_original_fold": args.use_original_fold,
+        "original_fold_test_value": args.original_fold_test_value,
+        "split_random_state": args.split_random_state,
+        "merge": args.merge,
+        "summary_only": args.summary_only,
+    }
+    result = filter_from_params(params)
     if args.out:
         _write_filter_output(result, Path(args.out))
     else:

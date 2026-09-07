@@ -5,12 +5,10 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from .utils.convert_data import (
-    standardized_to_deepprime_dataframe,
-    standardized_to_oped_dataframe,
-    standardized_to_optiprime_dataframe,
-    standardized_to_pridict_dataframe,
-)
+from .formats.deepprime import standardized_to_deepprime_dataframe
+from .formats.oped import standardized_to_oped_dataframe
+from .formats.optiprime import standardized_to_optiprime_dataframe
+from .formats.pridict import standardized_to_pridict_dataframe
 
 ProgressCallback = Callable[[str], None]
 FormatConverter = Callable[..., pd.DataFrame]

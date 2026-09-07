@@ -392,12 +392,6 @@ def test_oped_rt_drops_alignment_pads():
     assert out["RT"].iloc[0] == "CCCC"
 
 
-def test_legacy_edit_length_column_still_supported():
-    df = _standardized_df("edit_length")
-    out = standardized_to_deepprime_dataframe(df)
-    assert out["Edit_len"].tolist() == [1, 3]
-
-
 def test_original_fold_unknown_is_nan():
     assert _coerce_original_fold(None, length=3).isna().all()
     partial = pd.Series([0.0, None, 2.0])

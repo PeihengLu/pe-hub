@@ -65,7 +65,7 @@ Adding a model today requires editing ~9 hardcoded locations that must agree:
 
 | Location                    | Constant / code                                                           |
 | --------------------------- | ------------------------------------------------------------------------- |
-| `app/utils/convert_data.py` | `standardized_to_*_dataframe()` functions                                 |
+| `app/formats/<name>.py` | `standardized_to_*_dataframe()` functions |
 | `app/converter.py:123`      | if/elif format dispatch                                                   |
 | `app/formatted_cache.py:15` | `FORMATTED_MODEL_FORMATS` frozenset                                       |
 | `app/main.py:219`           | `Literal["std","oped","deepprime","pridict","pridict2"]` on `/api/filter` |
@@ -197,7 +197,7 @@ def convert(std_df: pd.DataFrame) -> pd.DataFrame:
 ```
 
 This is the same shape as the existing `standardized_to_*_dataframe()` functions
-in `app/utils/convert_data.py`; row-order preservation is the one hard rule
+in `app/formats/`; row-order preservation is the one hard rule
 (because `/api/filter` converts the full datasheet then subsets by index at
 `repository.py:430`).
 
@@ -362,9 +362,9 @@ model-facing service). New endpoints, multipart where files are involved:
 
 Implementation notes:
 
-- Reuse the filesystem-job pattern (`jobs/`, `eval_jobs/`): validation can run
-through the existing device scheduler on CPU so long imports/training don't
-block the event loop, streaming a `validation.log` like training jobs.
+- Reuse `app/compute/job_store.py` for validation job state (`validation_jobs/`):
+validation can run through the plugin scheduler, streaming a `validation.log`
+like other jobs.
 - For the `format` half, PE Ensemble writes the bundle to the **shared**
 `PLUGINS_ROOT`; PE Database picks up `convert.py` from the same directory.
 Activation triggers a lightweight "reload plugins" call to PE Database

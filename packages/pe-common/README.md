@@ -26,6 +26,7 @@ pip install -e packages/pe-common
 | `plugins.py` | Plugin manifest discovery and loading | free |
 | `plugin_validation.py` | Validates a plugin against the contract | free |
 | `conversion_progress.py` | Progress callbacks for long conversions | free |
+| `filter_params.py` | Catalog/edit filter field names for CLI, HTTP, and `filter_from_params` | free |
 | `training.py` | Training loops, Lightning glue, seeding, metrics | needs PyTorch (lazy) |
 | `features.py` | MFE, melting temperature, GC content | needs ViennaRNA (lazy) |
 
@@ -74,6 +75,15 @@ df = assign_splits(df, config, group_col="group_id")
 
 Strategies: `none`, `holdout_2`, `holdout_3`, `cv`. Supports author `original_fold`
 columns and grouped k-fold by `group_id`.
+
+### Filter params (`pe_common.filter_params`)
+
+The catalog/edit query keys shared by `pedb filter`, `peen` train/eval flags,
+and PE-DB `filter_from_params` (HTTP `GET /api/filter` uses the same names):
+
+```python
+from pe_common.filter_params import FILTER_LIST_FIELDS, coerce_list_param, add_filter_arguments
+```
 
 ### Sequence utilities (`pe_common.sequence_utils`)
 
@@ -126,7 +136,7 @@ Abstract `BasePEModel` contract implemented by Ensemble wrappers (`load_model`,
 ## Design note
 
 Standardized → model-format conversion lives in the **PE-DB** service
-(`services/pe-db/app/utils/convert_data.py`, exposed via `GET /api/filter`).
+(`services/pe-db/app/formats/`, exposed via `GET /api/filter`).
 `pe-common` intentionally stays free of model-specific conversion logic.
 
 ## Usage

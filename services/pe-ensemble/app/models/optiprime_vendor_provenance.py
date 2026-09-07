@@ -37,6 +37,7 @@ import pandas as pd
 from pe_common.data_utils import TARGET_UID_COLUMN, compute_target_uid, target_uid_series
 
 from . import weights_registry
+from .author_folds import optiprime_is_author_train_fold as _is_author_train_fold
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _STANDARDIZED = _REPO_ROOT / "datasets" / "standardized"
@@ -59,19 +60,6 @@ _DATASET_SPECS: tuple[_DatasetSpec, ...] = (
     _DatasetSpec("deepprime", "deepprime_clinvar", "deepprime-clinvar", train_folds_only=True),
     _DatasetSpec("pridict2", "library_diverse", "library-diverse"),
 )
-
-
-def _is_author_train_fold(value: object) -> bool:
-    """True for labeled train folds (0, 1, …); False for author test (-1)."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return True
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return True
-    if pd.isna(numeric):
-        return True
-    return numeric != -1.0
 
 
 def _sheet_target_uids(path: Path, *, train_folds_only: bool = False) -> set[str]:

@@ -20,23 +20,11 @@ import pandas as pd
 from pe_common.data_utils import TARGET_UID_COLUMN, target_uid_series
 
 from . import weights_registry
+from .author_folds import oped_is_author_train_fold as _is_author_train_fold
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _STANDARDIZED = _REPO_ROOT / "datasets" / "standardized" / "deeppe"
 _WEIGHT_ID = "pegRNA_Model_Merged_saved.order3_decoder_weights"
-
-
-def _is_author_train_fold(value: object) -> bool:
-    """True only for labeled train folds (0, 1, …); False for test (-1) and NaN."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return False
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return False
-    if pd.isna(numeric):
-        return False
-    return numeric != -1.0
 
 
 def _sheet_train_target_uids(path: Path) -> set[str]:

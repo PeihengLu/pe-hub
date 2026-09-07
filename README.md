@@ -231,16 +231,16 @@ Edit-level measurements are **not** stored in SQL. They are loaded with Pandas f
 
 Supported studies include DeepPrime, DeepPE, PRIDICT1, PRIDICT2, MinsePIE, and OptiPrime (see [`app/catalog/studies.py`](services/pe-db/app/catalog/studies.py)).
 
-A few datasets are only *partially* standardizable (`pridict1/endogenous`,
-`pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`): their parquet files
+- **Some datasets are only partially standardizable.** `pridict1/endogenous`,
+`pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`: their parquet files
 carry filter metadata but no sequence or coordinate columns, so they are readable
-via `/api/data` but cannot be exported in a model format.
+via `/api/filter` but cannot be exported in a model format.
 
 ### Output formats
 
 | Format                     | Use                                                     |
 | -------------------------- | ------------------------------------------------------- |
-| `std`                    | Shared standardized schema (default for`/api/data`)   |
+| `std`                    | Shared standardized schema (use `format=std` on `/api/filter`) |
 | `deepprime`              | DeepPrime native columns                                |
 | `pridict` / `pridict2` | PRIDICT native columns (both run the PRIDICT2 feature pipeline) |
 | `oped`                   | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
@@ -256,11 +256,9 @@ Active plugins can register additional formats. Model-format conversion is owned
 | GET    | `/api/datasets`   | List datasets                                              |
 | GET    | `/api/datasheets` | List datasheet catalog entries                             |
 | GET    | `/api/scaffolds`  | List pegRNA scaffolds                                      |
-| GET    | `/api/data`       | Load standardized rows for one datasheet                   |
 | GET    | `/api/filter`     | Filter catalog and/or export model-format data with splits |
 | GET    | `/api/statistics` | Aggregate edit statistics                                  |
-| POST   | `/api/export`     | Re-export and/or re-standardize                            |
-| POST   | `/api/convert`    | Standardize one sheet                                      |
+| POST   | `/api/plugins/reload` | Reload plugin converters                               |
 | GET    | `/health`         | Health check                                               |
 
 ### Examples
@@ -270,8 +268,8 @@ Active plugins can register additional formats. Model-format conversion is owned
 curl "http://localhost:8000/api/studies"
 curl "http://localhost:8000/api/datasets?study=deepprime"
 
-# Standardized rows for one datasheet
-curl "http://localhost:8000/api/data?study=deepprime&dataset=deepprime-clinvar&cell_line=HEK293T&pe_system=PE2max"
+# Standardized rows for one datasheet (via filter; admin export/convert is CLI-only)
+curl "http://localhost:8000/api/filter?format=std&study=deepprime&dataset=deepprime-clinvar&cell_line=HEK293T&pe_system=PE2max&split_strategy=none"
 
 # Export DeepPrime-format training data with an 80/20 holdout split
 curl "http://localhost:8000/api/filter?format=deepprime&study=pridict1&dataset=library2&cell_line=HEK293T&pe_system=PE2max&split_strategy=holdout_2&train_pct=0.8&test_pct=0.2"
@@ -379,8 +377,9 @@ Re-export or re-standardize data:
 
 ```bash
 PE_DB_FORCE_EXPORT=1 ./scripts/start-pe-db-backend.sh
-# or
-curl -X POST 'http://localhost:8000/api/export?force_standardize=true'
+# or, without HTTP:
+pedb export --force-reexport
+pedb standardize --force
 ```
 
 ## Contributing data
@@ -389,7 +388,7 @@ Although I am trying my best to scour the internet for all the relevant data, I 
 
 ### Catalog metadata
 
-Register the study and dataset(s) in [`services/pe-db/app/catalog/studies.py`](services/pe-db/app/catalog/studies.py), and place raw source files under `datasets/raw/<study>/`.
+Register the study and dataset(s) in [`services/pe-db/app/catalog/studies.py`](services/pe-db/app/catalog/studies.py), add exporters and standardizers in [`services/pe-db/app/studies/<study>.py`](services/pe-db/app/studies/) (`register_study(...)` plus one import in `load_studies()`), and place raw source files under `datasets/raw/<study>/`.
 
 **Study**
 
@@ -407,6 +406,7 @@ Register the study and dataset(s) in [`services/pe-db/app/catalog/studies.py`](s
 - `experimental_method` — `in_vitro` or `in_vivo`
 - `target_context` — `endogenous` (native chromosomal locus) or `non_endogenous` (synthetic reporter / cassette)
 - `standardizable` — `True` when rows can be fully converted to the shared schema below
+- `partial` — `True` for filter-only parquet (metadata, no model-format export)
 
 Each datasheet is identified by `{cell_line}-{pe_system}` under the dataset (e.g. `hek293t-pe2`).
 
