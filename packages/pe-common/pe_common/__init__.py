@@ -85,8 +85,11 @@ __all__ = [
     "resolve_train_val_from_splits",
     "resolve_final_train_val_for_cv_export",
     # Training utilities (lazy-loaded — requires torch)
+    "DEFAULT_TRAINING_SEED",
     "EarlyStopping",
     "LightningTrainerConfig",
+    "resolve_training_seed",
+    "seed_training_run",
     "clip_gradients",
     "apply_fine_tune_freezing",
     "build_lr_scheduler",
@@ -106,8 +109,11 @@ __all__ = [
 ]
 
 _TRAINING_EXPORTS = {
+    "DEFAULT_TRAINING_SEED",
     "EarlyStopping",
     "LightningTrainerConfig",
+    "resolve_training_seed",
+    "seed_training_run",
     "clip_gradients",
     "apply_fine_tune_freezing",
     "build_lr_scheduler",

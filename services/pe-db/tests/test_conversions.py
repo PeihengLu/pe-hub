@@ -25,6 +25,7 @@ from app.utils.convert_data import (  # noqa: E402
 from app.utils.standardize_data import (  # noqa: E402
     _build_standardized_output_df,
     _coerce_original_fold,
+    _drop_unmeasured_efficiency_rows,
     _locate_optiprime_protospacer,
     _optiprime_homology_end,
 )
@@ -606,3 +607,63 @@ def test_oped_left_pads_instead_of_recentering_short_targets():
     assert out["Target(47bp)"].str.len().eq(47).all()
     assert out["Target(47bp)"].str.startswith("AAAA").all()
     assert out["Target(47bp)"].str.slice(4, 24).eq(spacer).all()
+
+
+# --- Unmeasured efficiency labels -------------------------------------------
+# An edit that was never measured in a cell line is not an edit with efficiency
+# zero. Standardization drops those rows; converters must not resurrect them by
+# substituting 0.0, or a model would be trained to predict zero for them.
+
+
+def test_standardization_drops_rows_without_efficiency_measurement():
+    df = _standardized_df()
+    df.loc[0, "editing_efficiency"] = None
+
+    kept, n_dropped = _drop_unmeasured_efficiency_rows(df, label="unit/test")
+
+    assert n_dropped == 1
+    assert len(kept) == 1
+    assert kept["editing_efficiency"].tolist() == [0.7]
+    # Index is reset so positional column attachment downstream stays valid.
+    assert kept.index.tolist() == [0]
+
+
+def test_standardization_keeps_genuine_zero_efficiency():
+    df = _standardized_df()
+    df["editing_efficiency"] = [0.0, 0.7]
+
+    kept, n_dropped = _drop_unmeasured_efficiency_rows(df, label="unit/test")
+
+    assert n_dropped == 0
+    assert kept["editing_efficiency"].tolist() == [0.0, 0.7]
+
+
+def test_standardization_efficiency_drop_is_noop_without_the_column():
+    df = _standardized_df().drop(columns=["editing_efficiency"])
+
+    kept, n_dropped = _drop_unmeasured_efficiency_rows(df, label="unit/test")
+
+    assert n_dropped == 0
+    assert len(kept) == 2
+
+
+@pytest.mark.parametrize(
+    "converter, label_column",
+    [
+        (standardized_to_deepprime_dataframe, "Efficiency"),
+        (standardized_to_oped_dataframe, "Efficiency"),
+        (standardized_to_pridict_dataframe, "averageedited"),
+        (standardized_to_optiprime_dataframe, "edited_frac"),
+    ],
+)
+def test_converters_do_not_impute_missing_efficiency_as_zero(converter, label_column):
+    df = _standardized_df()
+    df.loc[0, "editing_efficiency"] = None
+
+    out = converter(df)
+
+    assert label_column in out.columns
+    assert out[label_column].isna().sum() == 1, (
+        f"{label_column} must stay NaN so model wrappers can reject the row"
+    )
+    assert not (out[label_column] == 0.0).any()

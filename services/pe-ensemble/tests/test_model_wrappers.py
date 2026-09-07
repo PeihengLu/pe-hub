@@ -150,7 +150,12 @@ class TestWeightSelection:
 
         names = PRIDICT2ModelWrapper.list_available_weights()
         assert isinstance(names, list) and len(names) > 0
-        assert all("__HEK" in n or "__K562" in n or n.endswith("__HEK") or n.endswith("__K562") for n in names)
+        # Only the vendor checkpoints are head-split. Locally registered weight
+        # sets are also listed here, so scope the assertion to vendor entries
+        # rather than requiring every id to carry a head suffix.
+        vendor_names = [n for n in names if n.startswith("pridict1_")]
+        assert vendor_names
+        assert all(n.endswith("__HEK") or n.endswith("__K562") for n in vendor_names)
 
     @pytest.mark.skipif(
         not VENDOR_MODELS.joinpath("pridict2", "trained_models").is_dir(),

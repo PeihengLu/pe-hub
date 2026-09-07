@@ -22,7 +22,10 @@ TERMINAL_JOB_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Millisecond precision, not whole seconds: job listings sort on this
+    # string, and two jobs submitted in the same second would otherwise tie
+    # and come back in arbitrary directory order.
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _job_dir(job_id: str) -> Path:

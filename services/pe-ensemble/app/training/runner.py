@@ -56,6 +56,27 @@ def _extract_training_provenance(train_df) -> tuple[list[str], Dict[str, Any]]:
     return loci, provenance
 
 
+def _cv_metric_summary(cv_result: Any) -> Dict[str, Any]:
+    """Reduce a wrapper's cross-validation block to its aggregate scores.
+
+    Kept out of the weight manifest verbatim because PRIDICT2's block embeds a
+    full per-epoch history for every fold.
+    """
+    if isinstance(cv_result, dict):
+        aggregates = {
+            key: value
+            for key, value in cv_result.items()
+            if key.startswith("mean_") or key.startswith("std_")
+        }
+        folds = cv_result.get("folds")
+        if isinstance(folds, list):
+            aggregates["n_folds"] = len(folds)
+        return aggregates
+    if isinstance(cv_result, list):
+        return {"n_folds": len(cv_result)}
+    return {}
+
+
 def _training_metadata_from_request(
     request: TrainingRequest,
     *,
@@ -81,6 +102,10 @@ def _training_metadata_from_request(
     }
     filters = {k: v for k, v in filters.items() if v is not None}
     metrics: Dict[str, Any] = {}
+    # Each wrapper reports validation differently: PRIDICT2 emits a nested
+    # `validation_metrics` block (keys are prefixed per outcome), OPED and
+    # DeepPrime emit flat correlations. Fall back to the loss summary so a
+    # manifest is never written with an empty `metrics` block.
     if "validation_metrics" in train_result:
         metrics["validation"] = train_result["validation_metrics"]
     elif "val_pearson" in train_result:
@@ -88,6 +113,15 @@ def _training_metadata_from_request(
             "pearson": train_result.get("val_pearson"),
             "spearman": train_result.get("val_spearman"),
         }
+    elif "final_val_loss" in train_result or "best_val_loss" in train_result:
+        metrics["validation"] = {
+            key: train_result[key]
+            for key in ("best_val_loss", "final_val_loss", "final_train_loss")
+            if key in train_result
+        }
+    cv_result = train_result.get("cross_validation")
+    if cv_result is not None:
+        metrics["cross_validation"] = _cv_metric_summary(cv_result)
     training: Dict[str, Any] = {
         "dataset_source": request.dataset_source,
         "dataset_name": request.dataset_name,
@@ -217,6 +251,26 @@ def execute_training(
                 weights_label = entry.get("label")
             else:
                 entry = {}
+
+            payload = {
+                "model": model_name,
+                "status": "success",
+                "split_strategy": request.split.split_strategy,
+                "n_rows": int(len(train_df)),
+                "device": resolved_device_id,
+                "weights_id": weights_id,
+                "weights_label": weights_label,
+                "result": result,
+            }
+            if weights_id:
+                _log(f"Training succeeded; weights_id={weights_id}")
+            else:
+                _log("Training succeeded (weights not registered).")
+            # Inside the try so a failure to persist the terminal state is
+            # reported as a failed job rather than leaving it stuck in
+            # "running" while the weights already exist on disk.
+            if job_id:
+                mark_succeeded(job_id, payload)
         except JobCancelledError:
             if job_id:
                 mark_cancelled(job_id)
@@ -226,22 +280,6 @@ def execute_training(
                 mark_failed(job_id, str(exc))
             raise
 
-        payload = {
-            "model": model_name,
-            "status": "success",
-            "split_strategy": request.split.split_strategy,
-            "n_rows": int(len(train_df)),
-            "device": resolved_device_id,
-            "weights_id": weights_id,
-            "weights_label": weights_label,
-            "result": result,
-        }
-        if weights_id:
-            _log(f"Training succeeded; weights_id={weights_id}")
-        else:
-            _log("Training succeeded (weights not registered).")
-        if job_id:
-            mark_succeeded(job_id, payload)
         return payload
 
 

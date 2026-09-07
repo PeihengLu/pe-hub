@@ -13,6 +13,8 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The k-fold mean is a stable enough score to publish the best trial's weights.
+REGISTER_BEST_WEIGHTS_DEFAULT=1
 # shellcheck source=./_common.sh
 source "${SCRIPT_DIR}/_common.sh"
 require_peen
@@ -72,9 +74,9 @@ TUNE_ARGS=(
     --split-random-state "${SPLIT_RANDOM_STATE}"
     --n-trials "${N_TRIALS}"
     --device "${DEVICE}"
-    --register-best-weights
     --notes "experiment: ${CV_FOLDS}-fold CV + test_pct=${TEST_PCT} HPO"
 )
+append_register_best_weights TUNE_ARGS
 
 if [[ -n "${STUDY_NAME}" ]]; then
     TUNE_ARGS+=(--study-name "${STUDY_NAME}")

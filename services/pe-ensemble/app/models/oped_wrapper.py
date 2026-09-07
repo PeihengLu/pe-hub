@@ -26,6 +26,8 @@ from pe_common.training import (
     LightningTrainerConfig,
     pearson_spearman,
     regression_metrics,
+    resolve_training_seed,
+    seed_training_run,
 )
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -107,6 +109,7 @@ class _OPEDLightningRegressor(pl.LightningModule):
             optimizer,
             scheduler_name=self.hparams_map.get("scheduler", "step"),
             scheduler_kwargs=self.hparams_map.get("scheduler_kwargs", {"step_size": 10, "gamma": 0.95}),
+            max_epochs=int(self.hparams_map.get("epoch_num", self.hparams_map.get("epochs", 100))),
         )
         if scheduler is None:
             return optimizer
@@ -570,10 +573,19 @@ class OPEDModelWrapper(BasePEModel):
             # alignment via to_numpy().
             encoded_full = self._to_oped_numeric_df(df)
             if "Efficiency" in df.columns:
-                encoded_full["Efficiency"] = (
-                    pd.to_numeric(df["Efficiency"], errors="coerce").fillna(0.0).to_numpy()
-                )
+                efficiency = pd.to_numeric(df["Efficiency"], errors="coerce")
+                n_missing = int(efficiency.isna().sum())
+                if n_missing:
+                    raise ValueError(
+                        f"{n_missing} row(s) have a missing/non-numeric 'Efficiency' "
+                        "label. Filter these rows out upstream rather than training on "
+                        "them; imputing them as 0 would teach the model that unmeasured "
+                        "edits are inefficient."
+                    )
+                encoded_full["Efficiency"] = efficiency.to_numpy()
             else:
+                # Prediction-only frames carry no label; keep the column so the
+                # vendor batch builders find a consistent schema.
                 encoded_full["Efficiency"] = np.zeros(len(df), dtype=float)
             for meta_col in ("split", "split_source", "original_fold"):
                 if meta_col in df.columns:
@@ -738,6 +750,7 @@ class OPEDModelWrapper(BasePEModel):
                 min_delta=early_stopping_delta,
                 enable_progress_bar=bool(hparams.get("progress_bar", False)),
                 log_every_n_steps=int(hparams.get("log_every_n_steps", 25)),
+                seed=resolve_training_seed(hparams),
             ),
             on_epoch_end=make_epoch_logger(
                 progress_log,
@@ -810,6 +823,7 @@ class OPEDModelWrapper(BasePEModel):
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         if hyperparameters:
             default_params.update(hyperparameters)
+        seed_training_run(default_params)
 
         freezing = bool(default_params.get("freezing", freezing))
 

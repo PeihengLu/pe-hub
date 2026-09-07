@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import pickle
 import sys
+import tempfile
+import uuid
 from pathlib import Path
 from typing import (
     Any,
@@ -33,6 +35,8 @@ from pe_common.training import (
     LightningTrainerConfig,
     regression_metrics,
     resolve_dataloader_num_workers,
+    resolve_training_seed,
+    seed_training_run,
 )
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -374,6 +378,7 @@ class _PRIDICT2LightningModule(pl.LightningModule):
                 Optional[Dict[str, Any]],
                 self.hparams_map.get("scheduler_kwargs"),
             ),
+            max_epochs=int(self.hparams_map.get("num_epochs", 20)),
         )
         if scheduler is None:
             return optimizer
@@ -502,6 +507,7 @@ def train_pridict2_with_lightning(
             min_delta=float(hyperparameters.get("early_stopping_min_delta", 0.0)),
             enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
             log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
+            seed=resolve_training_seed(hyperparameters),
         ),
         on_epoch_end=make_epoch_logger(
             progress_log,
@@ -512,6 +518,12 @@ def train_pridict2_with_lightning(
     # Encoder modules keep an explicit ``.device`` attribute used for masks.
     model.set_device(device)
     model.to(device)
+    if int(metrics["best_epoch"]) < 0 or not np.isfinite(float(metrics["best_val_loss"])):
+        raise ValueError(
+            "PRIDICT2 training finished without a finite validation loss "
+            f"(history_epochs={len(metrics.get('history') or [])}). "
+            "Check for non-finite features or labels in the training split."
+        )
     log_training_best(
         progress_log,
         best_epoch=int(metrics["best_epoch"]),
@@ -1320,6 +1332,26 @@ class PRIDICT2ModelWrapper(BasePEModel):
             fold_metrics.update(regression_metrics(y_true, y_pred, prefix=outcome))
         return fold_metrics
 
+    @staticmethod
+    def _resolve_run_output_dir(hyperparameters: Dict[str, Any]) -> str:
+        """Resolve the scratch directory for this run's intermediate artifacts.
+
+        PRIDICT2 is the only wrapper that has to round-trip its model through
+        disk (the vendor saver owns the state_dict + config layout), so it needs
+        somewhere to write before ``save_to_registry`` copies the run into the
+        weights registry.
+
+        The directory is made unique per run because a shared relative path
+        would let two concurrent jobs write the same ``final/`` and ``cv_*``
+        trees and copy each other's weights into their registry entries.
+        """
+        explicit = hyperparameters.get("output_dir")
+        if explicit:
+            return str(explicit)
+        root = os.getenv("PRIDICT2_SCRATCH_ROOT")
+        base = Path(root).expanduser() if root else Path(tempfile.gettempdir()) / "pe-ensemble"
+        return str(base / f"pridict2_train_{uuid.uuid4().hex[:8]}")
+
     def _run_train_val_once(
         self,
         *,
@@ -1439,6 +1471,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(
             hyperparameters
         )
+        seed_training_run(hyperparameters)
         self._last_loss_func = str(hyperparameters.get("loss_func", "MSEloss"))
         train_native, val_native = resolve_train_val_from_splits(train_data, val_data)
         train_df = self._to_pridict_dataframe(train_native)

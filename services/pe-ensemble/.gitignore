@@ -10,9 +10,11 @@ weights/local_registry.json
 # Vendor pridict IDs use only two "__" segments and remain tracked.
 weights/*/*__*__*__*/
 
-# Training / eval / ensemble / validation job state and logs (runtime artifacts)
+# Training / tuning / eval / ensemble / validation job state and logs (runtime artifacts)
 jobs/**
 !jobs/README.md
+tune_jobs/**
+!tune_jobs/README.md
 eval_jobs/**
 !eval_jobs/README.md
 ensemble_jobs/**

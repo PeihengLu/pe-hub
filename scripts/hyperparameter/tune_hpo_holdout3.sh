@@ -87,6 +87,9 @@ TUNE_ARGS=(
     --device "${DEVICE}"
     --notes "experiment: holdout_3 HPO (train=${TRAIN_PCT} val=${VAL_PCT} test=${TEST_PCT})"
 )
+# Off by default here: a single val split is a noisy basis for publishing
+# weights. Set REGISTER_BEST_WEIGHTS=1 to opt in.
+append_register_best_weights TUNE_ARGS
 
 if [[ -n "${STUDY_NAME}" ]]; then
     TUNE_ARGS+=(--study-name "${STUDY_NAME}")

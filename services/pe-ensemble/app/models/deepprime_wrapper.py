@@ -1,5 +1,6 @@
 # pyright: reportAttributeAccessIssue=false, reportArgumentType=false
 import sys
+import json
 import os
 import math
 from typing import List, Dict, Any, Optional, Tuple, cast
@@ -28,6 +29,8 @@ from pe_common.training import (
     fit_lightning_module,
     LightningTrainerConfig,
     regression_metrics,
+    resolve_training_seed,
+    seed_training_run,
 )
 from pe_common.splits import (
     has_assigned_cv_folds,
@@ -87,6 +90,7 @@ class _DeepPrimeLightningRegressor(pl.LightningModule):
             optimizer,
             scheduler_name=str(self.hparams_map.get("scheduler", "none")),
             scheduler_kwargs=cast(Optional[Dict[str, Any]], self.hparams_map.get("scheduler_kwargs")),
+            max_epochs=int(self.hparams_map.get("epochs", 5)),
         )
         if scheduler is None:
             return optimizer
@@ -102,6 +106,10 @@ class DeepPrimeModelWrapper(BasePEModel):
         'Tm2new', 'Tm3', 'Tm4', 'TmD', 'nGCcnt1', 'nGCcnt2', 'nGCcnt3',
         'fGCcont1', 'fGCcont2', 'fGCcont3', 'MFE3', 'MFE4', 'DeepSpCas9_score',
     }
+
+    # Architecture of every DeepPrime vendor checkpoint.
+    DEFAULT_ARCHITECTURE: Dict[str, int] = {"hidden_size": 128, "num_layers": 1}
+    ARCHITECTURE_FILENAME = "architecture.json"
     
     def __init__(
         self,
@@ -128,6 +136,10 @@ class DeepPrimeModelWrapper(BasePEModel):
         self.models = []
         self.mean: Optional[pd.Series] = None
         self.std: Optional[pd.Series] = None
+        # Constructor kwargs for GeneInteractionModel. Vendor checkpoints all use
+        # the defaults below; from-scratch runs may override them, so they are
+        # persisted with the checkpoint and read back on load.
+        self.architecture: Dict[str, int] = dict(self.DEFAULT_ARCHITECTURE)
         self._last_training_history: List[Dict[str, float]] = []
 
     def _to_deepprime_feature_df(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -148,15 +160,36 @@ class DeepPrimeModelWrapper(BasePEModel):
 
     @staticmethod
     def _extract_targets(source_df: pd.DataFrame, feature_df: pd.DataFrame, split_name: str) -> np.ndarray:
+        """Read measured editing efficiency for a split, in its original units."""
         if "editing_efficiency" in source_df.columns:
             series = pd.Series(pd.to_numeric(source_df["editing_efficiency"], errors="coerce"), index=source_df.index)
-            return series.fillna(0.0).to_numpy(dtype=np.float32)
-        if "Efficiency" in feature_df.columns:
+        elif "Efficiency" in feature_df.columns:
             series = pd.Series(pd.to_numeric(feature_df["Efficiency"], errors="coerce"), index=feature_df.index)
-            return series.fillna(0.0).to_numpy(dtype=np.float32)
-        raise ValueError(
-            f"{split_name} data must include 'editing_efficiency' or 'Efficiency' column."
-        )
+        else:
+            raise ValueError(
+                f"{split_name} data must include 'editing_efficiency' or 'Efficiency' column."
+            )
+        n_missing = int(series.isna().sum())
+        if n_missing:
+            raise ValueError(
+                f"{split_name} data has {n_missing} row(s) with a missing/non-numeric "
+                "efficiency label. Filter these rows out upstream rather than training "
+                "on them; imputing them as 0 would teach the model that unmeasured "
+                "edits are inefficient."
+            )
+        return series.to_numpy(dtype=np.float32)
+
+    @staticmethod
+    def _to_model_space(efficiency: np.ndarray) -> np.ndarray:
+        """Map measured efficiency into the space DeepPrime checkpoints regress on.
+
+        Vendor inference ends with ``exp(pred) - 1`` (``vendor/models/deepprime``,
+        ``src/dprime.py``), so the published checkpoints emit ``log1p(efficiency)``.
+        Training must use the same target space, otherwise fine-tuning drags a
+        pretrained head off its output scale and ``predict`` exponentiates a value
+        that is already in efficiency units.
+        """
+        return np.log1p(np.clip(efficiency, 0.0, None)).astype(np.float32)
 
     def _init_trainable_models(self, hyperparameters: Dict[str, Any]) -> None:
         load_pretrained = bool(hyperparameters.get("load_pretrained", False))
@@ -175,7 +208,31 @@ class DeepPrimeModelWrapper(BasePEModel):
             GeneInteractionModel(hidden_size=hidden_size, num_layers=num_layers).to(self.device)
         ]
         self.model = self.models
+        self.architecture = {"hidden_size": hidden_size, "num_layers": num_layers}
+        # Drop any stats carried over from a previous fit so each from-scratch
+        # run refits normalization on its own train split (CV folds included).
+        self.mean = None
+        self.std = None
         self.is_trained = True
+
+    def _fit_feature_normalization(self, train_feature_df: pd.DataFrame) -> None:
+        """Fit tabular-feature z-scoring statistics on a training split.
+
+        ``prepare_data`` z-scores the tabular features whenever ``mean``/``std``
+        are set, and vendor checkpoints ship ``mean.csv``/``std.csv`` for exactly
+        that reason. Training from scratch has no vendor stats file, so the
+        statistics are derived here from the *training* split only (never val or
+        test) and then persisted next to the checkpoint by ``save_model``.
+        Without this, a from-scratch model trains on raw features but later
+        reloads against DeepPrime's vendor stats, silently z-scoring inputs with
+        statistics that were never applied during training.
+        """
+        from deepprime.src.utils import select_cols
+
+        x_features = select_cols(train_feature_df).astype(float)
+        self.mean = x_features.mean().astype(float)
+        # Zero-variance columns would divide by zero; keep them as pass-through.
+        self.std = x_features.std().replace(0.0, 1.0).fillna(1.0).astype(float)
 
     def _fit_models_on_split(
         self,
@@ -186,7 +243,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         progress_log: Any,
         cancel_check: Any,
         run_label: str,
-    ) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
+    ) -> Tuple[List[Dict[str, float]], List[Dict[str, float]], Dict[str, float]]:
         epochs = int(hyperparameters.get("epochs", 5))
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
@@ -198,11 +255,14 @@ class DeepPrimeModelWrapper(BasePEModel):
         early_stopping_patience = int(hyperparameters.get("early_stopping_patience", 10))
         early_stopping_min_delta = float(hyperparameters.get("early_stopping_min_delta", 0.0))
         reshuffle_each_epoch = bool(hyperparameters.get("reshuffle_each_epoch", True))
+        seed = resolve_training_seed(hyperparameters)
 
         train_feature_df = self._to_deepprime_feature_df(train_source)
         val_feature_df = self._to_deepprime_feature_df(val_source)
         y_train = self._extract_targets(train_source, train_feature_df, "Training")
         y_val = self._extract_targets(val_source, val_feature_df, "Validation")
+        if self.mean is None or self.std is None:
+            self._fit_feature_normalization(train_feature_df)
         train_inputs = self.prepare_data(train_feature_df)
         val_inputs = self.prepare_data(val_feature_df)
         loader_kwargs = dataloader_kwargs(
@@ -210,14 +270,18 @@ class DeepPrimeModelWrapper(BasePEModel):
             pin_memory=self.device.type == "cuda",
         )
         train_loader = DataLoader(
-            _DeepPrimeTensorDataset(train_inputs["g"], train_inputs["x"], y_train),
+            _DeepPrimeTensorDataset(
+                train_inputs["g"], train_inputs["x"], self._to_model_space(y_train)
+            ),
             batch_size=batch_size,
             shuffle=reshuffle_each_epoch,
             drop_last=False,
             **loader_kwargs,
         )
         val_loader = DataLoader(
-            _DeepPrimeTensorDataset(val_inputs["g"], val_inputs["x"], y_val),
+            _DeepPrimeTensorDataset(
+                val_inputs["g"], val_inputs["x"], self._to_model_space(y_val)
+            ),
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
@@ -247,6 +311,9 @@ class DeepPrimeModelWrapper(BasePEModel):
                     min_delta=early_stopping_min_delta,
                     enable_progress_bar=bool(hyperparameters.get("progress_bar", False)),
                     log_every_n_steps=int(hyperparameters.get("log_every_n_steps", 25)),
+                    # Offset per ensemble member so a from-scratch ensemble still
+                    # gets diverse initializations under a fixed seed.
+                    seed=seed + model_idx if seed is not None else None,
                 ),
                 on_epoch_end=make_epoch_logger(
                     progress_log,
@@ -254,6 +321,13 @@ class DeepPrimeModelWrapper(BasePEModel):
                     cancel_check=cancel_check,
                 ),
             )
+            if int(metrics["best_epoch"]) < 0 or not np.isfinite(float(metrics["best_val_loss"])):
+                raise ValueError(
+                    "DeepPrime training finished without a finite validation loss "
+                    f"for model {model_idx} "
+                    f"(history_epochs={len(metrics.get('history') or [])}). "
+                    "Check for non-finite features or labels in the training split."
+                )
             log_training_best(
                 progress_log,
                 best_epoch=int(metrics["best_epoch"]),
@@ -270,7 +344,11 @@ class DeepPrimeModelWrapper(BasePEModel):
                     "n_epochs_ran": float(metrics["n_epochs_ran"]),
                 }
             )
-        return history, model_summaries
+
+        # Score the ensemble in efficiency units so the numbers are comparable
+        # with OPED/PRIDICT2 and with `evaluate()` on the registered weights.
+        val_metrics = regression_metrics(y_val, np.asarray(self.predict(val_inputs), dtype=float))
+        return history, model_summaries, val_metrics
 
     def load_model(self, model_path: Optional[str] = None) -> None:
         """
@@ -328,9 +406,10 @@ class DeepPrimeModelWrapper(BasePEModel):
                 f"No model files found for DeepPrime weights at {model_path}"
             )
 
+        self.architecture = self._read_architecture(Path(str(model_files[0])).parent)
         self.models = []
         for m_path in model_files:
-            model = GeneInteractionModel(hidden_size=128, num_layers=1).to(self.device)
+            model = GeneInteractionModel(**self.architecture).to(self.device)
             model.load_state_dict(
                 torch.load(m_path, map_location=torch.device(self.device))
             )
@@ -340,6 +419,22 @@ class DeepPrimeModelWrapper(BasePEModel):
         self.model = self.models
         self.is_trained = True
     
+    @classmethod
+    def _read_architecture(cls, entry_dir: Path) -> Dict[str, int]:
+        """Read persisted constructor kwargs, falling back to the vendor defaults."""
+        arch_path = entry_dir / cls.ARCHITECTURE_FILENAME
+        if not arch_path.is_file():
+            return dict(cls.DEFAULT_ARCHITECTURE)
+        try:
+            with open(arch_path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Unreadable {arch_path}: {exc}") from exc
+        return {
+            key: int(payload.get(key, default))
+            for key, default in cls.DEFAULT_ARCHITECTURE.items()
+        }
+
     @staticmethod
     def list_available_weights() -> List[str]:
         """List registered DeepPrime weight set IDs."""
@@ -422,21 +517,25 @@ class DeepPrimeModelWrapper(BasePEModel):
         # Permute gene features for conv2d input
         g_tensor = g_tensor.permute((0, 3, 1, 2))
         
-        # Collect predictions from ensemble
+        # Collect predictions from ensemble. eval() matters when predicting right
+        # after a fit, since Lightning leaves the module in training mode and
+        # DeepPrime's head contains dropout.
         preds = []
         for model in self.models:
+            model.eval()
             with torch.no_grad():
                 pred = model(g_tensor, x_tensor).detach().cpu().numpy()
             preds.append(pred)
         
-        # Average ensemble predictions
-        preds = np.squeeze(np.array(preds))
-        preds = np.mean(preds, axis=0)
-        
-        # Transform predictions (softplus inverse)
-        preds = np.exp(preds) - 1
-        
-        return preds.tolist() if isinstance(preds, np.ndarray) else [preds]
+        # Average over the ensemble axis only. Reshaping to (n_models, n_rows)
+        # first is deliberate: np.squeeze() would drop the model axis for a
+        # single-model ensemble (the from-scratch training case) and collapse the
+        # per-row means into one scalar.
+        stacked = np.asarray(preds, dtype=float).reshape(len(self.models), -1)
+        mean_preds = stacked.mean(axis=0)
+
+        # Invert the log1p target transform the checkpoints were trained on.
+        return (np.exp(mean_preds) - 1).tolist()
     
     def train(self, train_data: pd.DataFrame, val_data: Optional[pd.DataFrame] = None,
               hyperparameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -448,6 +547,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         schema (fetch model-format data from PE-DB: /api/filter?...&format=deepprime).
         """
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
+        seed_training_run(hyperparameters)
         epochs = int(hyperparameters.get("epochs", 5))
         batch_size = int(hyperparameters.get("batch_size", 128))
         lr = float(hyperparameters.get("lr", 1e-4))
@@ -463,7 +563,7 @@ class DeepPrimeModelWrapper(BasePEModel):
                 if cancel_check is not None:
                     cancel_check()
                 self._init_trainable_models(hyperparameters)
-                _, fold_summaries = self._fit_models_on_split(
+                _, fold_summaries, fold_val_metrics = self._fit_models_on_split(
                     train_source=fold_train,
                     val_source=fold_val,
                     hyperparameters=hyperparameters,
@@ -481,13 +581,15 @@ class DeepPrimeModelWrapper(BasePEModel):
                         "best_val_loss": float(sum(fold_losses) / len(fold_losses))
                         if fold_losses
                         else float("nan"),
+                        "val_pearson": float(fold_val_metrics["pearson"]),
+                        "val_spearman": float(fold_val_metrics["spearman"]),
                         "model_summaries": fold_summaries,
                     }
                 )
 
         train_source, val_source = resolve_train_val_from_splits(source_df, val_data)
         self._init_trainable_models(hyperparameters)
-        history, model_summaries = self._fit_models_on_split(
+        history, model_summaries, val_metrics = self._fit_models_on_split(
             train_source=train_source,
             val_source=val_source,
             hyperparameters=hyperparameters,
@@ -513,6 +615,9 @@ class DeepPrimeModelWrapper(BasePEModel):
             "final_train_loss": final.get("train_loss"),
             "final_val_loss": final.get("val_loss"),
             "model_summaries": model_summaries,
+            "val_pearson": float(val_metrics["pearson"]),
+            "val_spearman": float(val_metrics["spearman"]),
+            "validation_metrics": val_metrics,
         }
         if cv_reports:
             losses = [
@@ -521,9 +626,21 @@ class DeepPrimeModelWrapper(BasePEModel):
                 if row.get("best_val_loss") is not None
                 and not math.isnan(float(row["best_val_loss"]))
             ]
+            spearmans = [
+                float(row["val_spearman"])
+                for row in cv_reports
+                if not math.isnan(float(row.get("val_spearman", float("nan"))))
+            ]
+            pearsons = [
+                float(row["val_pearson"])
+                for row in cv_reports
+                if not math.isnan(float(row.get("val_pearson", float("nan"))))
+            ]
             result["cross_validation"] = {
                 "folds": cv_reports,
                 "mean_best_val_loss": float(sum(losses) / len(losses)) if losses else float("nan"),
+                "mean_val_pearson": float(sum(pearsons) / len(pearsons)) if pearsons else float("nan"),
+                "mean_val_spearman": float(sum(spearmans) / len(spearmans)) if spearmans else float("nan"),
             }
         return result
     
@@ -574,12 +691,22 @@ class DeepPrimeModelWrapper(BasePEModel):
         for idx, model in enumerate(self.models):
             save_path = os.path.join(model_path, f'model_{idx}.pt')
             torch.save(model.state_dict(), save_path)
-        
-        # Save normalization parameters
-        if self.mean is not None:
-            self.mean.to_csv(os.path.join(model_path, 'mean.csv'))
-        if self.std is not None:
-            self.std.to_csv(os.path.join(model_path, 'std.csv'))
+
+        # ``load_model`` needs both files to rebuild the exact feature scaling and
+        # layer shapes this checkpoint was trained with.
+        if self.mean is None or self.std is None:
+            raise ValueError(
+                "Refusing to save DeepPrime weights without feature normalization "
+                "statistics: prepare_data() would z-score inference inputs with "
+                "statistics that were never applied during training."
+            )
+        self.mean.to_csv(os.path.join(model_path, 'mean.csv'), header=False)
+        self.std.to_csv(os.path.join(model_path, 'std.csv'), header=False)
+        with open(
+            os.path.join(model_path, self.ARCHITECTURE_FILENAME), "w", encoding="utf-8"
+        ) as handle:
+            json.dump(self.architecture, handle, indent=2, sort_keys=True)
+            handle.write("\n")
 
     def save_to_registry(self, dest_dir) -> str:
         self.save_model(str(dest_dir))

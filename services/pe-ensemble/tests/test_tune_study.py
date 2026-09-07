@@ -119,7 +119,9 @@ def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: py
     )
     monkeypatch.setattr("app.training.tune_study.execute_training", lambda *args, **kwargs: {})
 
-    request = _request()
+    # The shared helper suppresses preset writing; this test is about the
+    # written preset, so opt back in (TRAINING_PRESETS_ROOT is a tmp dir).
+    request = _request(no_write_preset=False)
     request.training.study = ["pridict1", "deepprime"]
     request.training.dataset = ["library1", "deepprime-clinvar"]
     request.training.cell_line = "hek293t"
@@ -131,6 +133,7 @@ def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: py
         "pridict1/library1+deepprime/deepprime_clinvar/hek293t/pe2"
     )
     assert summary["preset_path"] is not None
+    assert Path(summary["preset_path"]).is_file()
 
 
 def test_register_best_weights_keeps_training_hyperparameter_mode(

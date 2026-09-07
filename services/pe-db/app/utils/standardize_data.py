@@ -86,6 +86,37 @@ def is_partially_standardizable(study: str, dataset: str) -> bool:
     return (_normalize_name(study), _normalize_name(dataset)) in PARTIAL_STANDARDIZABLE_DATASETS
 
 
+def _missing_exported_datasets(study_name: str) -> list[str]:
+    """Return registered dataset names that have no exported CSVs yet.
+
+    The export step used to skip a study whenever ``datasets/exported/{study}/``
+    existed at all. That made a newly registered dataset, or a study whose
+    exporter died partway through, permanently invisible until someone passed
+    ``force_reexport``. Comparing against the dataset registry keeps the cheap
+    skip for fully exported studies while still picking up gaps.
+    """
+    from ..catalog.studies import DATASET_REGISTRY
+
+    study_dir = DATA_ROOT / "exported" / study_name
+    if not study_dir.is_dir():
+        return sorted(
+            {d.name for d in DATASET_REGISTRY if d.study_key == study_name}
+        ) or ["<all>"]
+
+    missing: list[str] = []
+    for record in DATASET_REGISTRY:
+        if record.study_key != study_name:
+            continue
+        # Exporters normalize dataset directory names, so accept either spelling.
+        candidates = {record.name, _normalize_name(record.name)}
+        if not any(
+            (study_dir / candidate).is_dir() and any((study_dir / candidate).glob("*.csv"))
+            for candidate in candidates
+        ):
+            missing.append(record.name)
+    return sorted(missing)
+
+
 def export_original_data(study: Optional[str] = None, force_reexport: bool = False) -> None:
     """
     Export raw study files into standardized exported datasheets.
@@ -120,9 +151,16 @@ def export_original_data(study: Optional[str] = None, force_reexport: bool = Fal
     for study_name in target_studies:
         if study_name not in exporters:
             raise ValueError(f"Study={study_name} not supported")
-        exported_marker = DATA_ROOT / "exported" / study_name
-        if force_reexport or not exported_marker.exists():
-            logger.info("Exporting study=%s", study_name)
+        missing = _missing_exported_datasets(study_name)
+        if force_reexport or missing:
+            if missing and not force_reexport:
+                logger.info(
+                    "Exporting study=%s (missing dataset(s): %s)",
+                    study_name,
+                    ", ".join(missing),
+                )
+            else:
+                logger.info("Exporting study=%s", study_name)
             for exporter in exporters[study_name]:
                 exporter()
         else:
@@ -156,6 +194,7 @@ def standardize_exported_data(
 
         clear_formatted_cache(study=study)
     count = 0
+    failures: list[str] = []
     for study_key in studies:
         study_dir = exported_root / study_key
         if not study_dir.is_dir():
@@ -201,6 +240,9 @@ def standardize_exported_data(
                     pe_system=pe_system,
                 )
             except Exception as exc:
+                # One malformed sheet must not abort the whole pipeline (this runs
+                # on service startup), but the failures are collected and
+                # re-reported below so they are not lost in the log stream.
                 logger.error(
                     "Failed to standardize %s/%s %s-%s: %s",
                     study_key,
@@ -209,9 +251,18 @@ def standardize_exported_data(
                     pe_system,
                     exc,
                 )
+                failures.append(f"{study_key}/{dataset_name} {cell_line}-{pe_system}: {exc}")
                 continue
             count += 1
-    logger.info("Standardized %s exported datasheet(s)", count)
+    if failures:
+        logger.error(
+            "Standardized %s datasheet(s); %s failed:\n  %s",
+            count,
+            len(failures),
+            "\n  ".join(failures),
+        )
+    else:
+        logger.info("Standardized %s exported datasheet(s)", count)
     return count
 
 def _clean_deeppe_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -2434,6 +2485,37 @@ def _standardize_minsepie(
     logger.info("Saved standardized MinSePIE data: %s", output_path)
 
 
+def _drop_unmeasured_efficiency_rows(
+    df: pd.DataFrame, *, label: str
+) -> tuple[pd.DataFrame, int]:
+    """Drop rows whose ``editing_efficiency`` label is missing.
+
+    A blank or non-numeric efficiency cell means the edit was never measured in
+    this cell line, which is not the same as an efficiency of zero. Such rows
+    cannot be supervised on, and every downstream consumer coerces a missing
+    label to ``0.0`` (see ``convert_data._safe_float_series``), which would
+    quietly teach models that unmeasured edits are inefficient. Removing them
+    here keeps the standardized parquet the single source of truth for "rows you
+    can train on", and keeps the reason visible in the standardization log.
+
+    Applied after the study-specific standardizers have finished, so it cannot
+    desynchronize the positional/index-aligned column attachments they perform.
+    """
+    if "editing_efficiency" not in df.columns:
+        return df, 0
+    missing = pd.to_numeric(df["editing_efficiency"], errors="coerce").isna()
+    n_missing = int(missing.sum())
+    if not n_missing:
+        return df, 0
+    logger.warning(
+        "Dropped %s of %s row(s) from %s: no editing_efficiency measurement.",
+        n_missing,
+        len(df),
+        label,
+    )
+    return df.loc[~missing].reset_index(drop=True), n_missing
+
+
 def standardize_pe_data(
     *,
     study: str,
@@ -2549,6 +2631,7 @@ def standardize_pe_data(
             f"{output_path}"
         )
     result = pd.read_parquet(output_path)
+    needs_rewrite = False
     record = get_dataset_record(study, dataset)
     if record is not None and record.target_context == "endogenous":
         # Guarantee the endogenous coordinate extension on every endogenous parquet.
@@ -2560,7 +2643,16 @@ def standardize_pe_data(
         )
         if missing or obsolete:
             result = _attach_endo_coordinate_columns(result)
-            result.to_parquet(output_path, index=False)
+            needs_rewrite = True
+
+    result, n_dropped = _drop_unmeasured_efficiency_rows(
+        result, label=f"{study}/{normalized_dataset} {cell_line}-{pe_system}"
+    )
+    if n_dropped:
+        needs_rewrite = True
+
+    if needs_rewrite:
+        result.to_parquet(output_path, index=False)
     return result
 
 

@@ -10,6 +10,7 @@ gitignored along with the weight directories themselves.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -76,8 +77,44 @@ def _local_registry_path() -> Path:
 
 @contextmanager
 def _registry_lock():
-    """Best-effort serialization for registry writes (atomic replace)."""
-    yield
+    """Serialize registry index rebuilds across processes.
+
+    ``rebuild_index`` scans the weights tree and then rewrites both index files.
+    Without a lock, a concurrent ``register`` finishing mid-scan is dropped from
+    the index until something triggers another rebuild. The CLI, the API server
+    and SLURM jobs can all share one ``WEIGHTS_ROOT``, so an in-process mutex is
+    not enough.
+    """
+    root = weights_root()
+    root.mkdir(parents=True, exist_ok=True)
+    lock_path = root / ".registry.lock"
+    handle = open(lock_path, "a+")
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            # Locking is unsupported on some network filesystems; a serialized
+            # rebuild is preferable to failing the whole registration.
+            pass
+        yield
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        handle.close()
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    """Write JSON via a temp file + rename so readers never see a partial file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    tmp_path.replace(path)
 
 
 def _write_registry_payload(path: Path, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -87,11 +124,7 @@ def _write_registry_payload(path: Path, entries: List[Dict[str, Any]]) -> Dict[s
         "count": len(entries),
         "entries": entries,
     }
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    tmp_path.replace(path)
+    _write_json_atomic(path, payload)
     return payload
 
 
@@ -154,9 +187,9 @@ def _read_manifest(path: Path) -> Dict[str, Any]:
 
 def _write_manifest(entry_dir: Path, manifest: Dict[str, Any]) -> None:
     entry_dir.mkdir(parents=True, exist_ok=True)
-    with open(entry_dir / MANIFEST_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    # The manifest is what makes an entry resolvable, so a truncated write would
+    # strand the weight files beside it.
+    _write_json_atomic(entry_dir / MANIFEST_FILENAME, manifest)
 
 
 def _normalized_loci_list(train_target_loci: Optional[Iterable[str]]) -> Optional[list[str]]:
@@ -168,9 +201,7 @@ def _normalized_loci_list(train_target_loci: Optional[Iterable[str]]) -> Optiona
 def _write_training_loci(entry_dir: Path, loci: Optional[list[str]]) -> None:
     if loci is None:
         return
-    with open(entry_dir / TRAIN_LOCI_FILENAME, "w", encoding="utf-8") as handle:
-        json.dump({"target_uids": loci}, handle)
-        handle.write("\n")
+    _write_json_atomic(entry_dir / TRAIN_LOCI_FILENAME, {"target_uids": loci})
 
 
 def _manifest_summary(manifest: Dict[str, Any]) -> Dict[str, Any]:
@@ -196,22 +227,24 @@ def rebuild_index() -> Dict[str, Any]:
     root.mkdir(parents=True, exist_ok=True)
     tracked: List[Dict[str, Any]] = []
     local: List[Dict[str, Any]] = []
-    model_dirs = sorted(p for p in root.iterdir() if p.is_dir())
-    for model_dir in model_dirs:
-        if not model_dir.is_dir():
-            continue
-        for entry_dir in sorted(model_dir.iterdir()):
-            manifest_path = entry_dir / MANIFEST_FILENAME
-            if not entry_dir.is_dir() or not manifest_path.is_file():
-                continue
-            manifest = _read_manifest(manifest_path)
-            summary = _manifest_summary(manifest)
-            if is_git_tracked_source(summary.get("source")):
-                tracked.append(summary)
-            else:
-                local.append(summary)
-
+    # Hold the lock across scan *and* write: an entry registered between the two
+    # would otherwise be missing from the index it just triggered.
     with _registry_lock():
+        model_dirs = sorted(p for p in root.iterdir() if p.is_dir())
+        for model_dir in model_dirs:
+            if not model_dir.is_dir():
+                continue
+            for entry_dir in sorted(model_dir.iterdir()):
+                manifest_path = entry_dir / MANIFEST_FILENAME
+                if not entry_dir.is_dir() or not manifest_path.is_file():
+                    continue
+                manifest = _read_manifest(manifest_path)
+                summary = _manifest_summary(manifest)
+                if is_git_tracked_source(summary.get("source")):
+                    tracked.append(summary)
+                else:
+                    local.append(summary)
+
         tracked_payload = _write_registry_payload(_registry_path(), tracked)
         local_payload = _write_registry_payload(_local_registry_path(), local)
 
@@ -330,8 +363,8 @@ def register(
         raise
 
     if rebuild:
-        with _registry_lock():
-            rebuild_index()
+        # rebuild_index() takes the registry lock itself.
+        rebuild_index()
     return weight_id
 
 
@@ -443,30 +476,34 @@ def write_training_provenance(
     return manifest
 
 
+def _resolve_provenance_dir(model: str, weight_id: str) -> Optional[Path]:
+    """Resolve a weight directory, stripping a PRIDICT2 ``__HEK`` / ``__K562`` suffix."""
+    try:
+        return resolve_dir(model, weight_id)
+    except ValueError:
+        pass
+    # PRIDICT2 vendor runs are multi-head (e.g. decoder_HEK.pkl), and the UI
+    # selects weights using a `{base_run_id}__{cell_type}` suffix. Training
+    # provenance lives under the base run directory.
+    if model == "pridict2" and "__" in weight_id:
+        base_id = weight_id.rsplit("__", 1)[0]
+        if base_id and base_id != weight_id:
+            try:
+                return resolve_dir(model, base_id)
+            except ValueError:
+                return None
+    return None
+
+
 def load_training_loci(model: str, weight_id: str) -> Optional[set[str]]:
     """Return the universal target-locus IDs a weight set was trained on.
 
     Returns ``None`` when provenance is unavailable (e.g. vendor pretrained
     weights), which callers should treat as "training data unknown".
     """
-    try:
-        entry_dir = resolve_dir(model, weight_id)
-    except ValueError:
-        # PRIDICT2 vendor runs are multi-head (e.g. decoder_HEK.pkl), and the
-        # UI selects weights using a `{base_run_id}__{cell_type}` suffix.
-        # Training provenance sidecars are stored under the base run
-        # directory, so normalize the suffix here.
-        if model == "pridict2" and "__" in weight_id:
-            base_id = weight_id.rsplit("__", 1)[0]
-            if base_id and base_id != weight_id:
-                try:
-                    entry_dir = resolve_dir(model, base_id)
-                except ValueError:
-                    return None
-            else:
-                return None
-        else:
-            return None
+    entry_dir = _resolve_provenance_dir(model, weight_id)
+    if entry_dir is None:
+        return None
     loci_path = entry_dir / TRAIN_LOCI_FILENAME
     if not loci_path.is_file():
         return None
@@ -492,9 +529,12 @@ def load_training_provenance(model: str, weight_id: str) -> Optional[Dict[str, A
 
 def load_training_metadata(model: str, weight_id: str) -> Optional[Dict[str, Any]]:
     """Return the full ``training`` block from a weight manifest, if recorded."""
+    entry_dir = _resolve_provenance_dir(model, weight_id)
+    if entry_dir is None:
+        return None
     try:
-        manifest = get_manifest(model, weight_id)
-    except ValueError:
+        manifest = _read_manifest(entry_dir / MANIFEST_FILENAME)
+    except (OSError, ValueError, json.JSONDecodeError):
         return None
     training = manifest.get("training")
     return training if isinstance(training, dict) else None

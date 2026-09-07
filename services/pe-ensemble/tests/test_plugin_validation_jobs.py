@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -63,12 +64,27 @@ def test_queue_validation_completes_async(plugins_root: Path):
     assert "Validation finished" in log_chunk
 
 
-def test_duplicate_validation_rejected(plugins_root: Path):
+def test_duplicate_validation_rejected(plugins_root: Path, monkeypatch: pytest.MonkeyPatch):
     from pe_common.plugins import PluginError
 
+    from app.plugins import scheduler as scheduler_module
     from app.plugins.manager import queue_validation
+
+    # Hold the first job open. The guard rejects a duplicate only while a job is
+    # still queued/running, and validating the dummy plugin is fast enough that
+    # the worker can finish before the second call -- at which point queueing
+    # again is legitimate and the test would fail intermittently.
+    release = threading.Event()
+    monkeypatch.setattr(
+        scheduler_module,
+        "run_plugin_validation_job",
+        lambda job_id: release.wait(30),
+    )
 
     _upload_dummy(plugins_root)
     queue_validation("async_dummy")
-    with pytest.raises(PluginError, match="already in progress"):
-        queue_validation("async_dummy")
+    try:
+        with pytest.raises(PluginError, match="already in progress"):
+            queue_validation("async_dummy")
+    finally:
+        release.set()

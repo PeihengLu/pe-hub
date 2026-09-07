@@ -29,6 +29,22 @@ TEST_PCT="${TEST_PCT:-0.15}"
 SMOKE="${SMOKE:-0}"
 SPLIT_RANDOM_STATE="${SPLIT_RANDOM_STATE:-42}"
 
+# Whether `peen tune` should also register a weight set for the best trial.
+# Defaults differ per protocol and are set by each runner before sourcing this
+# helper: the CV runner registers (its score is a k-fold mean, so the best
+# trial is worth keeping), the holdout runner does not (a single 15% val split
+# is a noisier basis for publishing weights). Override explicitly with
+# REGISTER_BEST_WEIGHTS=0|1.
+REGISTER_BEST_WEIGHTS="${REGISTER_BEST_WEIGHTS:-${REGISTER_BEST_WEIGHTS_DEFAULT:-0}}"
+
+# Append --register-best-weights to the named array when enabled.
+append_register_best_weights() {
+    local -n _args="$1"
+    if [[ "${REGISTER_BEST_WEIGHTS}" == "1" ]]; then
+        _args+=(--register-best-weights)
+    fi
+}
+
 if [[ "${SMOKE}" == "1" ]]; then
     N_TRIALS="${N_TRIALS_SMOKE:-1}"
     CV_FOLDS="${CV_FOLDS_SMOKE:-2}"

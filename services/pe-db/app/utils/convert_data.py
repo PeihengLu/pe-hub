@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from concurrent.futures import as_completed
 from typing import Any, Callable, Iterable, Optional
@@ -16,6 +17,8 @@ from pe_common.sequence_utils import (
     sanitize_dna_sequence,
     unpadded_coordinate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 STANDARDIZED_REQUIRED_COLUMNS = {
@@ -59,6 +62,18 @@ def _edit_length_series(df: pd.DataFrame) -> pd.Series:
 
 def _safe_int_series(series: pd.Series, default: int = 0) -> pd.Series:
     numeric = pd.to_numeric(series, errors="coerce")
+    n_coerced = int(numeric.isna().sum())
+    if n_coerced:
+        # Falling back to 0 on a coordinate column silently relocates PBS/RT/
+        # protospacer windows to the start of the sequence, which produces
+        # plausible-looking but wrong model inputs. Warn loudly instead.
+        logger.warning(
+            "Column %r had %s non-numeric value(s) replaced with %s; "
+            "downstream sequence slices for those rows are unreliable.",
+            series.name,
+            n_coerced,
+            default,
+        )
     return pd.Series(numeric, index=series.index).fillna(default).astype(int)
 
 
@@ -67,11 +82,41 @@ def _safe_float_series(series: pd.Series, default: float = 0.0) -> pd.Series:
     return pd.Series(numeric, index=series.index).fillna(default).astype(float)
 
 
+def _label_series(series: pd.Series) -> pd.Series:
+    """Coerce a supervised-target column to float, keeping missing values as NaN.
+
+    Deliberately does not fill like :func:`_safe_float_series`: substituting 0.0
+    for an unmeasured efficiency is indistinguishable from a real measurement of
+    zero, so model wrappers could not reject it. Standardization already drops
+    unmeasured rows, so a NaN here means the frame did not come through that
+    path and the wrapper should refuse to train on it.
+    """
+    return pd.Series(pd.to_numeric(series, errors="coerce"), index=series.index).astype(float)
+
+
 def _format_location(left: int, right: int) -> str:
+    """Render a half-open interval in PRIDICT's ``"[l, r]"`` string form.
+
+    An inverted interval is clamped to an empty span so the vendor parsers do
+    not crash. Callers should use :func:`_warn_on_inverted_intervals` to report
+    how many rows were affected, since clamping hides broken geometry.
+    """
     left, right = int(left), int(right)
     if right < left:
         right = left
     return f"[{left}, {right}]"
+
+
+def _warn_on_inverted_intervals(label: str, left: pd.Series, right: pd.Series) -> None:
+    """Report, once per column pair, how many rows have ``right < left``."""
+    n_inverted = int((pd.Series(right).to_numpy() < pd.Series(left).to_numpy()).sum())
+    if n_inverted:
+        logger.warning(
+            "%s has %s row(s) with an inverted interval; those spans were clamped "
+            "to empty and the resulting sequences are unreliable.",
+            label,
+            n_inverted,
+        )
 
 
 def _pridict_indel_correction_length(df: pd.DataFrame) -> pd.Series:
@@ -693,17 +738,21 @@ def standardized_to_pridict_dataframe(
         )
     ]
     out["Correction_Length"] = _pridict_indel_correction_length(df)
+    protospacer_l = _col_as_series(df, "protospacer_location_l", 0)
+    protospacer_r = _col_as_series(df, "protospacer_location_r", 0)
+    _warn_on_inverted_intervals("protospacer_location", protospacer_l, protospacer_r)
     out["protospacerlocation_only_initial"] = [
-        _format_location(l, r)
-        for l, r in zip(_col_as_series(df, "protospacer_location_l", 0), _col_as_series(df, "protospacer_location_r", 0))
+        _format_location(l, r) for l, r in zip(protospacer_l, protospacer_r)
     ]
-    out["PBSlocation"] = [
-        _format_location(l, r)
-        for l, r in zip(_col_as_series(df, "pbs_location_l", 0), _col_as_series(df, "pbs_location_r", 0))
-    ]
+    pbs_l = _col_as_series(df, "pbs_location_l", 0)
+    pbs_r = _col_as_series(df, "pbs_location_r", 0)
+    _warn_on_inverted_intervals("pbs_location", pbs_l, pbs_r)
+    out["PBSlocation"] = [_format_location(l, r) for l, r in zip(pbs_l, pbs_r)]
     rtt_wt_l = _safe_int_series(_col_as_series(df, "rtt_location_l", 0))
     rtt_mut_r = _safe_int_series(_col_as_series(df, "rtt_location_r", 0))
     rtt_wt_r = _rtt_wt_right_bounds(df)
+    _warn_on_inverted_intervals("rtt_location (WT)", rtt_wt_l, rtt_wt_r)
+    _warn_on_inverted_intervals("rtt_location (mutated)", rtt_wt_l, rtt_mut_r)
     out["RT_initial_location"] = [
         _format_location(l, r) for l, r in zip(rtt_wt_l, rtt_wt_r)
     ]
@@ -711,13 +760,13 @@ def standardized_to_pridict_dataframe(
         _format_location(l, r) for l, r in zip(rtt_wt_l, rtt_mut_r)
     ]
     if "editing_efficiency" in df.columns:
-        out["averageedited"] = _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0)
+        out["averageedited"] = _label_series(_col_as_series(df, "editing_efficiency", 0.0))
     elif "averageedited" in df.columns:
-        out["averageedited"] = _safe_float_series(_col_as_series(df, "averageedited", 0.0), default=0.0)
+        out["averageedited"] = _label_series(_col_as_series(df, "averageedited", 0.0))
     # Prefer the preserved distribution trio when present so KL/CE targets are
     # mutually consistent (editing_efficiency may come from a PE2-only column).
     if {"averageedited", "averageunedited", "averageindel"}.issubset(df.columns):
-        out["averageedited"] = _safe_float_series(_col_as_series(df, "averageedited", 0.0), default=0.0)
+        out["averageedited"] = _label_series(_col_as_series(df, "averageedited", 0.0))
         out["averageunedited"] = _safe_float_series(_col_as_series(df, "averageunedited", 0.0), default=0.0)
         out["averageindel"] = _safe_float_series(_col_as_series(df, "averageindel", 0.0), default=0.0)
     else:
@@ -751,7 +800,7 @@ def standardized_to_deepprime_dataframe(
     type_del_series = _col_as_series(df, "type_del", False).astype(bool).to_numpy()
     spcas9_series = _safe_float_series(_col_as_series(df, spcas9_column, 0.0), default=0.0).to_numpy()
     efficiency_series = (
-        _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0).to_numpy()
+        _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
         if "editing_efficiency" in df.columns
         else None
     )
@@ -863,9 +912,7 @@ def standardized_to_optiprime_dataframe(
     rtt_l = _safe_int_series(_col_as_series(df, "rtt_location_l", 0))
     rtt_r = _safe_int_series(_col_as_series(df, "rtt_location_r", 0))
 
-    efficiency = _safe_float_series(
-        _col_as_series(df, "editing_efficiency", 0.0), default=0.0,
-    ).to_numpy()
+    efficiency = _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
 
     records: list[dict[str, Any]] = []
     total = len(df)
@@ -940,7 +987,7 @@ def standardized_to_oped_dataframe(
     ``Target(47bp)`` is the unedited reporter window (WT, with Mut filling
     alignment pads). PBS is sliced from WT; the RT template is sliced from Mut.
     """
-    efficiency = _safe_float_series(_col_as_series(df, "editing_efficiency", 0.0), default=0.0).to_numpy()
+    efficiency = _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
     wt_series = _col_as_series(df, "wt_sequence", "").astype(str).str.upper().to_numpy()
     mut_series = _col_as_series(df, "mut_sequence", "").astype(str).str.upper().to_numpy()
     pbs_l = _safe_int_series(_col_as_series(df, "pbs_location_l", 0), default=0).to_numpy()

@@ -74,6 +74,49 @@ def lightning_accelerator_from_device(device: torch.device) -> str:
     return device_to_lightning_accelerator(device)
 
 
+DEFAULT_TRAINING_SEED = 42
+
+
+def seed_training_run(hyperparameters: Optional[Mapping[str, Any]] = None) -> Optional[int]:
+    """Seed global RNGs at the very start of a training run.
+
+    Must be called before the model is constructed. Seeding only inside
+    :func:`fit_lightning_module` is too late: weight initialization happens
+    while the wrapper builds the model, so two runs with identical
+    hyperparameters would still diverge.
+
+    Returns the seed that was applied, or ``None`` when seeding is disabled.
+    """
+    seed = resolve_training_seed(hyperparameters)
+    if seed is None:
+        return None
+    pl.seed_everything(int(seed), workers=True)
+    return int(seed)
+
+
+def resolve_training_seed(
+    hyperparameters: Optional[Mapping[str, Any]] = None,
+    *,
+    default: Optional[int] = DEFAULT_TRAINING_SEED,
+) -> Optional[int]:
+    """Read the training seed from hyperparameters.
+
+    Accepts an explicit ``seed`` (or the ``random_state`` alias). ``None`` or the
+    string ``"none"`` opts out of seeding, which is the only way to get
+    run-to-run variation from an otherwise identical request.
+    """
+    if not hyperparameters:
+        return default
+    for key in ("seed", "random_state"):
+        if key not in hyperparameters:
+            continue
+        raw = hyperparameters[key]
+        if raw is None or (isinstance(raw, str) and raw.strip().lower() in {"", "none"}):
+            return None
+        return int(raw)
+    return default
+
+
 @dataclass
 class LightningTrainerConfig:
     """Trainer-level config for shared Lightning fits."""
@@ -86,6 +129,9 @@ class LightningTrainerConfig:
     log_every_n_steps: int = 25
     enable_progress_bar: bool = False
     deterministic: bool = True
+    # Seeds weight init, DataLoader shuffling and dropout. Set to None only to
+    # deliberately opt out of reproducibility.
+    seed: Optional[int] = DEFAULT_TRAINING_SEED
 
 
 def _normalize_log_prefix(prefix: str) -> str:
@@ -227,6 +273,12 @@ def fit_lightning_module(
             )
         )
 
+    if config.seed is not None:
+        # Must precede Trainer construction so DataLoader shuffling, dropout and
+        # weight init are all covered. `deterministic=True` alone only forbids
+        # nondeterministic kernels; it does not seed anything.
+        pl.seed_everything(int(config.seed), workers=True)
+
     trainer = pl.Trainer(
         accelerator=lightning_accelerator_from_device(device),
         devices=1,
@@ -240,6 +292,11 @@ def fit_lightning_module(
         enable_model_summary=False,
         num_sanity_val_steps=0,
         logger=False,
+        # The history callback already keeps the best state_dict in memory and
+        # callers persist the final model through the weights registry. Leaving
+        # Lightning's default ModelCheckpoint on would dump a .ckpt per fit into
+        # `<cwd>/checkpoints`, which nothing reads and nothing prunes.
+        enable_checkpointing=False,
     )
     trainer.fit(module, train_dataloaders=train_loader, val_dataloaders=val_loader)
 
@@ -283,8 +340,14 @@ def build_lr_scheduler(
     optimizer: torch.optim.Optimizer,
     scheduler_name: Optional[str] = None,
     scheduler_kwargs: Optional[Dict[str, Any]] = None,
+    *,
+    max_epochs: Optional[int] = None,
 ) -> Optional[Any]:
-    """Construct a torch LR scheduler by name."""
+    """Construct a torch LR scheduler by name.
+
+    ``max_epochs`` supplies the cosine schedule length when the caller does not
+    pin ``t_max`` explicitly.
+    """
     if not scheduler_name:
         return None
     scheduler_kwargs = scheduler_kwargs or {}
@@ -294,7 +357,9 @@ def build_lr_scheduler(
         gamma = float(scheduler_kwargs.get("gamma", 0.95))
         return torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
     if name == "cosine":
-        t_max = int(scheduler_kwargs.get("t_max", 10))
+        # Annealing over the full run is the intent; a fixed fallback would
+        # restart the cosine mid-training on any run longer than the default.
+        t_max = int(scheduler_kwargs.get("t_max", max_epochs or 10))
         eta_min = float(scheduler_kwargs.get("eta_min", 0.0))
         return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta_min)
     if name == "exponential":
