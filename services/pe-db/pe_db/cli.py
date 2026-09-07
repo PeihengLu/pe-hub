@@ -11,7 +11,12 @@ from typing import Any, List, Optional
 
 import pandas as pd
 
-from pe_common.filter_params import add_filter_arguments, filter_kwargs_from_namespace
+from pe_common.filter_params import (
+    add_filter_arguments,
+    add_split_arguments,
+    filter_kwargs_from_namespace,
+    split_kwargs_from_mapping,
+)
 from pe_db.library import (
     PeDbLibraryError,
     catalog_statistics,
@@ -45,15 +50,7 @@ def _payload_to_dataframe(payload: dict[str, Any]) -> pd.DataFrame:
 def _build_filter_parser(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser("filter", help="Filter catalog and/or export model-format data")
     parser.add_argument("--format", dest="format_", default=None, help="Output format (deepprime, oped, std, …)")
-    parser.add_argument("--split-strategy", default=None, choices=["none", "holdout_2", "holdout_3", "cv"])
-    parser.add_argument("--train-pct", type=float, default=None)
-    parser.add_argument("--val-pct", type=float, default=None)
-    parser.add_argument("--test-pct", type=float, default=None)
-    parser.add_argument("--cv-folds", type=int, default=None)
-    parser.add_argument("--use-original-fold", action="store_true")
-    parser.add_argument("--original-fold-test-value", type=float, default=-1.0)
-    parser.add_argument("--split-random-state", type=int, default=42)
-    parser.add_argument("--merge", action="store_true")
+    add_split_arguments(parser)
     parser.add_argument("--summary-only", action="store_true")
     add_filter_arguments(parser)
     parser.add_argument(
@@ -222,16 +219,8 @@ def cmd_convert(args: argparse.Namespace) -> int:
 def cmd_filter(args: argparse.Namespace) -> int:
     params = {
         **filter_kwargs_from_namespace(args),
+        **split_kwargs_from_mapping(vars(args)),
         "format": args.format_,
-        "split_strategy": args.split_strategy,
-        "train_pct": args.train_pct,
-        "val_pct": args.val_pct,
-        "test_pct": args.test_pct,
-        "cv_folds": args.cv_folds,
-        "use_original_fold": args.use_original_fold,
-        "original_fold_test_value": args.original_fold_test_value,
-        "split_random_state": args.split_random_state,
-        "merge": args.merge,
         "summary_only": args.summary_only,
     }
     result = filter_from_params(params)

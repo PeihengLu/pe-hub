@@ -12,53 +12,29 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pe_common.devices import format_devices_for_cli
-from pe_common.filter_params import add_filter_arguments, filter_kwargs_from_namespace
+from pe_common.filter_params import (
+    add_filter_arguments,
+    add_split_arguments,
+    filter_kwargs_from_namespace,
+)
 
-from pe_ensemble.compute.device_scheduler import get_scheduler
-from pe_ensemble.ensemble.combine import COMBINE_METHODS, combine_method_help
-from pe_ensemble.ensemble.jobs import (
-    create_job as create_ensemble_job,
-    get_job as get_ensemble_job,
-    list_jobs as list_ensemble_jobs,
-    read_logs as read_ensemble_logs,
-    wait_for_job as wait_for_ensemble_job,
-)
-from pe_ensemble.ensemble.runner import execute_ensemble
-from pe_ensemble.ensemble.schemas import EnsembleMember, EnsembleRequest
-from pe_ensemble.evaluation.jobs import (
-    create_job as create_eval_job,
-    get_job as get_eval_job,
-    list_jobs as list_eval_jobs,
-    read_logs as read_eval_logs,
-    wait_for_job as wait_for_eval_job,
-)
-from pe_ensemble.evaluation.runner import execute_evaluation
-from pe_ensemble.evaluation.schemas import EvaluationRequest
-from pe_ensemble.models.registry import model_registry
-from pe_ensemble.training.config import enable_cli_pe_db_access, jobs_root, supported_models
-from pe_ensemble.training.jobs import (
-    create_job as create_train_job,
-    get_job as get_train_job,
-    list_jobs as list_train_jobs,
-    read_logs as read_train_logs,
-    wait_for_job as wait_for_train_job,
-)
-from pe_ensemble.training.model_architecture import (
+from pe_ensemble import library
+from pe_ensemble.library import (
+    COMBINE_METHODS,
+    EnsembleMember,
+    EnsembleRequest,
+    EvaluationRequest,
+    JobKind,
+    PeDbAccessError,
+    PeEnsembleLibraryError,
+    SplitQueryParams,
+    TrainingError,
+    TrainingRequest,
+    TuningRequest,
     architecture_from_cli_args,
     merge_training_hyperparameters,
+    supported_models,
 )
-from pe_ensemble.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins
-from pe_ensemble.training.runner import TrainingError
-from pe_ensemble.training.schemas import SplitQueryParams, TrainingRequest
-from pe_ensemble.training.tune_jobs import (
-    create_job as create_tune_job,
-    get_job as get_tune_job,
-    list_jobs as list_tune_jobs,
-    read_logs as read_tune_logs,
-    wait_for_job as wait_for_tune_job,
-)
-from pe_ensemble.training.tune_study import execute_tuning
-from pe_ensemble.training.tuning_schemas import TuningRequest
 
 
 def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
@@ -69,14 +45,12 @@ def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
 
 
 def _bootstrap_plugins() -> List[str]:
-    from pe_ensemble.plugin_loader import load_active_plugins
-
-    return load_active_plugins()
+    return library.load_active_plugins()
 
 
 def _sync_pe_db_plugins() -> None:
     try:
-        reload_pe_db_plugins()
+        library.reload_pe_db_plugins()
     except PeDbAccessError:
         pass
 
@@ -91,29 +65,11 @@ def _parse_json_object(raw: Optional[str]) -> Optional[Dict[str, Any]]:
 
 
 def _add_split_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--split-strategy",
-        default="holdout_3",
-        choices=["none", "holdout_2", "holdout_3", "cv"],
+    add_split_arguments(
+        parser,
+        split_strategy_default="holdout_3",
+        use_original_fold="boolean_optional",
     )
-    # Defaults applied in _build_split by strategy (CV must not inherit holdout pcts).
-    parser.add_argument("--train-pct", type=float, default=None)
-    parser.add_argument("--val-pct", type=float, default=None)
-    parser.add_argument("--test-pct", type=float, default=None)
-    parser.add_argument("--cv-folds", type=int, default=None)
-    parser.add_argument(
-        "--use-original-fold",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Use author original_fold where available (--no-use-original-fold to force random)",
-    )
-    parser.add_argument(
-        "--original-fold-test-value",
-        type=float,
-        default=-1.0,
-    )
-    parser.add_argument("--split-random-state", type=int, default=42)
-    parser.add_argument("--merge", action="store_true")
 
 
 def _add_filter_flags(parser: argparse.ArgumentParser) -> None:
@@ -306,7 +262,7 @@ def _configure_cli_logging() -> None:
 def _prepare_runtime(argv: Optional[List[str]]) -> Optional[int]:
     """Bootstrap plugins and handle global early-exit flags."""
     _configure_cli_logging()
-    enable_cli_pe_db_access()
+    library.enable_cli_pe_db_access()
     early = _early_parse(argv)
     if early.list_devices:
         print(format_devices_for_cli())
@@ -490,23 +446,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_job_result(kind: str, manifest: Dict[str, Any]) -> None:
+    if manifest.get("result") is None and manifest.get("status") not in ("skipped",):
+        raise TrainingError(manifest.get("error") or f"{kind} job failed")
+    print(json.dumps(manifest.get("result") or manifest, indent=2, default=str))
+
+
 def _run_queued_job(
     *,
-    kind: str,
-    job_id: str,
-    submit,
-    wait,
+    kind: JobKind,
+    request: Any,
+    job_id: Optional[str],
     queue_only: bool,
 ) -> int:
+    job_id = library.ensure_job(kind, request, job_id=job_id)
     print(f"job_id={job_id}")
     if queue_only:
         print("Job queued.")
         return 0
-    submit(job_id)
-    manifest = wait(job_id)
-    if manifest.get("result") is None and manifest.get("status") not in ("skipped",):
-        raise TrainingError(manifest.get("error") or f"{kind} job failed")
-    print(json.dumps(manifest.get("result") or manifest, indent=2, default=str))
+    library.submit_job(kind, job_id, request)
+    _print_job_result(kind, library.wait_for_job(kind, job_id))
     return 0
 
 
@@ -515,37 +474,22 @@ def cmd_train(args: argparse.Namespace) -> int:
     if args.run_existing_job:
         if not args.job_id:
             raise TrainingError("--run-existing-job requires --job-id")
-        manifest = get_train_job(args.job_id)
-        if manifest["status"] not in ("queued", "failed"):
-            raise TrainingError(f"Job {args.job_id} is already {manifest['status']}")
-        request_path = jobs_root() / args.job_id / "request.json"
-        with open(request_path, encoding="utf-8") as handle:
-            request = TrainingRequest.model_validate(json.load(handle))
-        get_scheduler().submit_training(args.job_id, request)
-        manifest = wait_for_train_job(args.job_id)
+        manifest = library.rerun_training_job(args.job_id)
         if manifest.get("result") is None:
             raise TrainingError(manifest.get("error") or "Training failed")
         print(json.dumps(manifest["result"], indent=2))
         return 0
 
     request = build_training_request(args)
-    job_id = args.job_id
-    if job_id:
-        try:
-            get_train_job(job_id)
-        except FileNotFoundError:
-            job_id = create_train_job(request, job_id=job_id)
-    else:
-        job_id = create_train_job(request)
-
+    job_id = library.ensure_job("train", request, job_id=args.job_id)
     print(f"job_id={job_id}")
-    print(f"jobs_root={jobs_root()}")
+    print(f"jobs_root={library.jobs_root()}")
     if args.queue_only:
         print("Job queued.")
         return 0
 
-    get_scheduler().submit_training(job_id, request)
-    manifest = wait_for_train_job(job_id)
+    library.submit_job("train", job_id, request)
+    manifest = library.wait_for_job("train", job_id)
     if manifest.get("result") is None:
         raise TrainingError(manifest.get("error") or "Training failed")
     print(json.dumps(manifest["result"], indent=2))
@@ -557,23 +501,14 @@ def cmd_tune(args: argparse.Namespace) -> int:
     request = build_tuning_request(args)
 
     if args.queue:
-        job_id = args.job_id
-        if job_id:
-            try:
-                get_tune_job(job_id)
-            except FileNotFoundError:
-                job_id = create_tune_job(request, job_id=job_id)
-        else:
-            job_id = create_tune_job(request)
         return _run_queued_job(
             kind="tune",
-            job_id=job_id,
-            submit=lambda jid: get_scheduler().submit_tuning(jid, request),
-            wait=wait_for_tune_job,
+            request=request,
+            job_id=args.job_id,
             queue_only=False,
         )
 
-    summary = execute_tuning(request, device_id=request.training.device)
+    summary = library.execute_tuning(request, device_id=request.training.device)
     print(json.dumps(summary, indent=2))
     return 0
 
@@ -583,24 +518,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     request = build_evaluation_request(args)
 
     if args.sync:
-        result = execute_evaluation(request, device_id=request.device)
+        result = library.execute_evaluation(request, device_id=request.device)
         print(json.dumps(result, indent=2, default=str))
         return 0
 
-    job_id = args.job_id
-    if job_id:
-        try:
-            get_eval_job(job_id)
-        except FileNotFoundError:
-            job_id = create_eval_job(request, job_id=job_id)
-    else:
-        job_id = create_eval_job(request)
-
     return _run_queued_job(
         kind="evaluate",
-        job_id=job_id,
-        submit=lambda jid: get_scheduler().submit_evaluation(jid, request),
-        wait=wait_for_eval_job,
+        request=request,
+        job_id=args.job_id,
         queue_only=args.queue_only,
     )
 
@@ -612,86 +537,50 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
     request = build_ensemble_request(args)
 
     if args.sync:
-        result = execute_ensemble(request, device_id=request.device)
+        result = library.execute_ensemble(request, device_id=request.device)
         print(json.dumps(result, indent=2, default=str))
         return 0
 
-    job_id = args.job_id
-    if job_id:
-        try:
-            get_ensemble_job(job_id)
-        except FileNotFoundError:
-            job_id = create_ensemble_job(request, job_id=job_id)
-    else:
-        job_id = create_ensemble_job(request)
-
     return _run_queued_job(
         kind="ensemble",
-        job_id=job_id,
-        submit=lambda jid: get_scheduler().submit_ensemble(jid, request),
-        wait=wait_for_ensemble_job,
+        request=request,
+        job_id=args.job_id,
         queue_only=args.queue_only,
     )
 
 
 def cmd_methods(args: argparse.Namespace) -> int:
     del args
-    for entry in combine_method_help():
+    for entry in library.combine_method_help():
         print(f"{entry['id']}: {entry['description']}")
     return 0
 
 
 def cmd_models(args: argparse.Namespace) -> int:
     del args
-    print(json.dumps(model_registry.list_catalog_entries(), indent=2))
+    print(json.dumps(library.list_model_catalog(), indent=2))
     return 0
 
 
 def cmd_weights(args: argparse.Namespace) -> int:
-    entries = model_registry.list_weight_entries(args.model)
-    print(json.dumps(entries, indent=2, default=str))
+    print(json.dumps(library.list_weight_entries(args.model), indent=2, default=str))
     return 0
 
 
 def cmd_devices(args: argparse.Namespace) -> int:
     del args
     print(format_devices_for_cli())
-    snapshot = get_scheduler().device_snapshot()
-    print(json.dumps(snapshot, indent=2))
+    print(json.dumps(library.device_snapshot(), indent=2))
     return 0
 
 
 def cmd_jobs(args: argparse.Namespace) -> int:
-    if args.kind == "train":
-        jobs = list_train_jobs(limit=args.limit)
-    elif args.kind == "tune":
-        jobs = list_tune_jobs(limit=args.limit)
-    elif args.kind == "evaluate":
-        jobs = list_eval_jobs(limit=args.limit)
-    else:
-        jobs = list_ensemble_jobs(limit=args.limit)
-    print(json.dumps(jobs, indent=2, default=str))
+    print(json.dumps(library.list_jobs(args.kind, limit=args.limit), indent=2, default=str))
     return 0
 
 
 def cmd_logs(args: argparse.Namespace) -> int:
-    readers = {
-        "train": (get_train_job, read_train_logs),
-        "tune": (get_tune_job, read_tune_logs),
-        "evaluate": (get_eval_job, read_eval_logs),
-        "ensemble": (get_ensemble_job, read_ensemble_logs),
-    }
-    get_job, read_logs = readers[args.kind]
-    manifest = get_job(args.job_id)
-    chunk, next_offset = read_logs(args.job_id, offset=args.offset)
-    payload = {
-        "job_id": args.job_id,
-        "status": manifest.get("status"),
-        "offset": args.offset,
-        "next_offset": next_offset,
-        "log": chunk,
-    }
-    print(json.dumps(payload, indent=2))
+    print(json.dumps(library.job_logs(args.kind, args.job_id, offset=args.offset), indent=2))
     return 0
 
 
@@ -713,7 +602,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except TrainingError as exc:
+    except (PeEnsembleLibraryError, TrainingError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:  # noqa: BLE001

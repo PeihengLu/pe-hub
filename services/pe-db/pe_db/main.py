@@ -10,10 +10,15 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Literal, Optional
+from typing import Annotated, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pe_common.filter_params import (
+    CatalogFilterQuery,
+    SplitExportQuery,
+    query_dependency,
+)
 
 from .config import get_settings
 from .db.schemas import DatasetRead, DatasheetRead, ScaffoldRead, StatisticsRead, StudyRead
@@ -29,13 +34,14 @@ from .library import (
     run_init,
 )
 
-SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_catalog_filters = query_dependency(CatalogFilterQuery)
+_split_export = query_dependency(SplitExportQuery)
 
 
 def _env_flag(name: str) -> bool:
@@ -135,18 +141,8 @@ async def list_datasheets(
 
 @app.get("/api/filter")
 async def filter_data(
-    study: Optional[list[str]] = Query(None, description="Filter by study key (e.g. deepprime)."),
-    dataset: Optional[list[str]] = Query(None, description="Filter by dataset name within the study."),
-    cell_line: Optional[list[str]] = Query(None, description="Filter by cell line (e.g. HEK293T)."),
-    pe_system: Optional[list[str]] = Query(None, description="Filter by PE system (e.g. PE2max)."),
-    edit_type: Optional[list[str]] = Query(None, description="Filter edits by type (sub, ins, del)."),
-    edit_length: Optional[list[int]] = Query(None, description="Filter edits by length."),
-    edit_efficiency_min: Optional[float] = Query(None, description="Minimum editing efficiency."),
-    edit_efficiency_max: Optional[float] = Query(None, description="Maximum editing efficiency."),
-    edit_scope: Optional[list[str]] = Query(None, description="Filter by edit scope (on_target, off_target)."),
-    experimental_method: Optional[list[str]] = Query(None, description="Filter by experimental method."),
-    target_context: Optional[list[str]] = Query(None, description="Filter by target context."),
-    scaffold_name: Optional[list[str]] = Query(None, description="Filter by pegRNA scaffold name."),
+    filters: Annotated[CatalogFilterQuery, Depends(_catalog_filters)],
+    split: Annotated[SplitExportQuery, Depends(_split_export)],
     format_: Optional[str] = Query(
         None,
         alias="format",
@@ -154,36 +150,6 @@ async def filter_data(
             "Output format. When unset, returns matching datasheets as usual. "
             "When set, returns standardizable datasets' data converted from the "
             "standardized schema into the requested model format."
-        ),
-    ),
-    split_strategy: Optional[SplitStrategy] = Query(
-        None,
-        description=(
-            "Required when format is set. Split assignment strategy: "
-            "none, holdout_2, holdout_3, or cv."
-        ),
-    ),
-    train_pct: Optional[float] = Query(None),
-    val_pct: Optional[float] = Query(None),
-    test_pct: Optional[float] = Query(None),
-    cv_folds: Optional[int] = Query(None),
-    use_original_fold: bool = Query(
-        False,
-        description="When true, use author original_fold assignments where available.",
-    ),
-    original_fold_test_value: float = Query(
-        -1.0,
-        description=(
-            "original_fold value treated as the test partition when use_original_fold is true "
-            "(-1 for DeepPrime-style held-out test; 0–4 for PRIDICT2 CV test folds)."
-        ),
-    ),
-    split_random_state: int = Query(42),
-    merge: bool = Query(
-        False,
-        description=(
-            "When true, merge all matching datasheets before split assignment. "
-            "Reassigns group_id by shared protospacer after merge."
         ),
     ),
     summary_only: bool = Query(
@@ -205,28 +171,9 @@ async def filter_data(
 ):
     """Filter datasheets by catalog/edit metadata; optionally emit model-format data."""
     params = {
-        "study": study,
-        "dataset": dataset,
-        "cell_line": cell_line,
-        "pe_system": pe_system,
-        "edit_type": edit_type,
-        "edit_length": edit_length,
-        "edit_efficiency_min": edit_efficiency_min,
-        "edit_efficiency_max": edit_efficiency_max,
-        "edit_scope": edit_scope,
-        "experimental_method": experimental_method,
-        "target_context": target_context,
-        "scaffold_name": scaffold_name,
+        **filters.model_dump(),
+        **split.model_dump(),
         "format": format_,
-        "split_strategy": split_strategy,
-        "train_pct": train_pct,
-        "val_pct": val_pct,
-        "test_pct": test_pct,
-        "cv_folds": cv_folds,
-        "use_original_fold": use_original_fold,
-        "original_fold_test_value": original_fold_test_value,
-        "split_random_state": split_random_state,
-        "merge": merge,
         "summary_only": summary_only,
         "progress_token": progress_token,
     }

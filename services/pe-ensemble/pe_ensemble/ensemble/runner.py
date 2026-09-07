@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
+from pe_common.filter_params import filter_kwargs_from_mapping
 from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 from pe_common.training import regression_metrics
 
@@ -21,7 +22,7 @@ from ..evaluation.leakage import (
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
-from ..training.progress_log import tee_stream_to_log
+from ..training.progress_log import model_run_stream_context
 from .combine import combine_predictions
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
 from .schemas import EnsembleMember, EnsembleRequest
@@ -81,20 +82,9 @@ def _fetch_partition(
         model_format=model_format,
         split=request.split,
         records=request.records,
-        study=request.study,
-        dataset=request.dataset,
-        cell_line=request.cell_line,
-        pe_system=request.pe_system,
-        edit_type=request.edit_type,
-        edit_length=request.edit_length,
-        edit_efficiency_min=request.edit_efficiency_min,
-        edit_efficiency_max=request.edit_efficiency_max,
-        edit_scope=request.edit_scope,
-        experimental_method=request.experimental_method,
-        target_context=request.target_context,
-        scaffold_name=request.scaffold_name,
         evaluation=True,
         progress_log=progress_log,
+        **filter_kwargs_from_mapping(request.model_dump()),
     )
 
 
@@ -137,35 +127,26 @@ def _predict_member(
     model_name = member.model_name.strip().lower()
     model = ModelFactory.create_model(model_name, device=device)
     model.load_weights_by_name(member.weights)
+    with model_run_stream_context(
+        model,
+        progress_log,
+        cancel_check=cancel_check,
+    ):
+        predict = getattr(model, "predict_on_frame", None)
+        if predict is None:
+            from pe_common.model_interface import BasePEModel
 
-    if model_name == "oped":
-        prepared = model.prepare_data(test_df)
-        return model.predict(prepared)
-    if model_name == "pridict2":
-        with tee_stream_to_log(
-            progress_log,
-            stderr=True,
-            cancel_check=cancel_check,
-        ):
-            from ..models.pridict2_wrapper import PERNNDistributionModel
-
-            if isinstance(model.model, PERNNDistributionModel):
-                predictions = model.predict(test_df)
-            else:
-                dloader = model.prepare_data(test_df, y_ref=["averageedited"])
-                predictions = model.predict(dloader)
-        if len(predictions) != len(test_df):
-            raise EnsembleError(
-                f"PRIDICT2 returned {len(predictions)} predictions for "
-                f"{len(test_df)} input rows."
+            return BasePEModel.predict_on_frame(
+                model,
+                test_df,
+                progress_log=progress_log,
+                cancel_check=cancel_check,
             )
-        return predictions
-    feature_df = test_df.copy()
-    for column in ("Efficiency", "PE_efficiency", "averageedited"):
-        if column in feature_df.columns:
-            feature_df = feature_df.drop(columns=[column])
-    prepared = model.prepare_data(feature_df)
-    return model.predict(prepared)
+        return predict(
+            test_df,
+            progress_log=progress_log,
+            cancel_check=cancel_check,
+        )
 
 
 def _apply_loci_exclusion(

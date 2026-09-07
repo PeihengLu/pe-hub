@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import Callable, List, Dict, Any, Optional, Tuple, Union
 import pandas as pd
 import torch
 
@@ -60,6 +60,38 @@ class BasePEModel(ABC):
         raise NotImplementedError(
             f"{self.model_name} does not implement save_to_registry"
         )
+
+    def prepare_training_frame(
+        self,
+        df: pd.DataFrame,
+        *,
+        progress_log: Optional[Callable[[str], None]] = None,
+    ) -> Any:
+        """Return the frame ``train`` expects. Default: native rows (identity)."""
+        return df
+
+    def prepare_evaluation_frame(self, df: pd.DataFrame) -> Any:
+        """Return the frame ``evaluate`` expects. Default: native rows (identity)."""
+        return df
+
+    def capture_stderr_during_run(self) -> bool:
+        """When True, runners tee/silence stderr around train, evaluate, and predict."""
+        return False
+
+    def predict_on_frame(
+        self,
+        df: pd.DataFrame,
+        *,
+        progress_log: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ) -> List[float]:
+        """Predict on a native model-format frame (ensemble member path)."""
+        feature_df = df.copy()
+        for column in ("Efficiency", "PE_efficiency", "averageedited"):
+            if column in feature_df.columns:
+                feature_df = feature_df.drop(columns=[column])
+        prepared = self.prepare_data(feature_df)
+        return self.predict(prepared)
 
     def get_model_info(self) -> Dict[str, Any]:
         """Return model metadata"""

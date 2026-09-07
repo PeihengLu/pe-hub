@@ -343,7 +343,7 @@ def ensemble_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     from pe_ensemble.main import app
 
     scheduler = _QueueOnlyScheduler()
-    monkeypatch.setattr("pe_ensemble.main.get_scheduler", lambda: scheduler)
+    monkeypatch.setattr("pe_ensemble.library.get_scheduler", lambda: scheduler)
     monkeypatch.setattr("pe_ensemble.main.ModelFactory.create_model", lambda *a, **k: _DummyModel())
     monkeypatch.setattr(
         "pe_ensemble.main._request_pe_db_filtered",
@@ -390,6 +390,21 @@ def test_root_and_health_payload(ensemble_client: TestClient):
     assert root["service"] == "PE Ensemble"
     assert root["data_filter"] == "/data/filter"
     assert ensemble_client.get("/health").json()["status"] == "healthy"
+
+
+def test_data_filter_openapi_documents_shared_field_lists(ensemble_client: TestClient):
+    from pe_common.filter_params import (
+        FILTER_LIST_FIELDS,
+        FILTER_RANGE_FIELDS,
+        SPLIT_QUERY_FIELDS,
+    )
+
+    spec = ensemble_client.get("/openapi.json").json()
+    names = {item["name"] for item in spec["paths"]["/data/filter"]["get"]["parameters"]}
+    assert set(FILTER_LIST_FIELDS) <= names
+    assert set(FILTER_RANGE_FIELDS) <= names
+    assert set(SPLIT_QUERY_FIELDS) <= names
+    assert "format" in names
 
 
 def test_models_include_builtins(ensemble_client: TestClient):

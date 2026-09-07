@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Literal, Optional
 
-from pe_common.filter_params import FILTER_LIST_FIELDS, coerce_list_param
+from pe_common.filter_params import filter_kwargs_from_mapping, split_kwargs_from_mapping
 from pe_common.splits import SplitConfig, split_config_from_params
 
 from .catalog.initialize import initialize_database
@@ -247,19 +247,9 @@ def filter_from_params(
             append_progress(_token, message)
 
     return filter_data(
-        **{name: coerce_list_param(params.get(name)) for name in FILTER_LIST_FIELDS},
-        edit_efficiency_min=params.get("edit_efficiency_min"),
-        edit_efficiency_max=params.get("edit_efficiency_max"),
+        **filter_kwargs_from_mapping(params),
         format_=params.get("format"),
-        split_strategy=params.get("split_strategy"),
-        train_pct=params.get("train_pct"),
-        val_pct=params.get("val_pct"),
-        test_pct=params.get("test_pct"),
-        cv_folds=params.get("cv_folds"),
-        use_original_fold=bool(params.get("use_original_fold", False)),
-        original_fold_test_value=float(params.get("original_fold_test_value", -1.0)),
-        split_random_state=int(params.get("split_random_state", 42)),
-        merge=bool(params.get("merge", False)),
+        **split_kwargs_from_mapping(params),
         summary_only=bool(params.get("summary_only", False)),
         progress_callback=callback,
     )

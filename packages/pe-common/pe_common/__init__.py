@@ -34,7 +34,16 @@ from .data_utils import (
     target_uid_series,
 )
 from .splits import SplitConfig, assign_splits, split_config_from_params, summarize_splits, validate_split_config
-from .filter_params import FILTER_LIST_FIELDS, coerce_list_param
+from .filter_params import (
+    FILTER_LIST_FIELDS,
+    FILTER_RANGE_FIELDS,
+    SPLIT_QUERY_FIELDS,
+    CatalogFilterBody,
+    CatalogFilterQuery,
+    SplitExportQuery,
+    coerce_list_param,
+    filter_kwargs_from_mapping,
+)
 
 # NOTE: standardized -> model-format conversion lives in the PE-DB service
 # (services/pe-db/pe_db/formats/) and is exposed via GET /api/filter.
@@ -86,7 +95,13 @@ __all__ = [
     "resolve_train_val_from_splits",
     "resolve_final_train_val_for_cv_export",
     "FILTER_LIST_FIELDS",
+    "FILTER_RANGE_FIELDS",
+    "SPLIT_QUERY_FIELDS",
+    "CatalogFilterBody",
+    "CatalogFilterQuery",
+    "SplitExportQuery",
     "coerce_list_param",
+    "filter_kwargs_from_mapping",
     # Training utilities (lazy-loaded — requires torch)
     "DEFAULT_TRAINING_SEED",
     "EarlyStopping",

@@ -33,9 +33,9 @@ Five subpackages under `pe_ensemble/`, each owning one stage. Cross-service cont
 | `pe_ensemble/compute/` | Device scheduling, shared `JobStore`, job lifecycle, logging |
 | `pe_ensemble/plugins/` | Third-party model plugin discovery and validation |
 
-`main.py` holds every route; `train_models.py` and `tune_models.py` are the
-`peen train` / `peen tune` CLI bodies. Routes and CLI both go through the same
-runner modules, so behaviour cannot drift between them.
+`main.py` holds every HTTP route; `cli.py` is `peen`. Both call
+`pe_ensemble.library` for jobs, catalog, and runners, so HTTP and CLI cannot
+drift. `train_models.py` and `tune_models.py` remain thin shims.
 
 ### `pe_ensemble/models/` — wrappers and weights
 

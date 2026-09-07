@@ -26,7 +26,7 @@ pip install -e packages/pe-common
 | `plugins.py` | Plugin manifest discovery and loading | free |
 | `plugin_validation.py` | Validates a plugin against the contract | free |
 | `conversion_progress.py` | Progress callbacks for long conversions | free |
-| `filter_params.py` | Catalog/edit filter field names for CLI, HTTP, and `filter_from_params` | free |
+| `filter_params.py` | Catalog/edit/split field names and generated FastAPI/body models | free |
 | `training.py` | Training loops, Lightning glue, seeding, metrics | needs PyTorch (lazy) |
 | `features.py` | MFE, melting temperature, GC content | needs ViennaRNA (lazy) |
 
@@ -134,7 +134,9 @@ PRIDICT2 and OPED at once. Notable behaviour:
 ### Model interface (`pe_common.model_interface`)
 
 Abstract `BasePEModel` contract implemented by Ensemble wrappers (`load_model`,
-`prepare_data`, `predict`, `train`, `evaluate`, `save_model`).
+`prepare_data`, `predict`, `train`, `evaluate`, `save_model`). Default hooks
+(`prepare_training_frame`, `prepare_evaluation_frame`, `capture_stderr_during_run`,
+`predict_on_frame`) keep model-specific I/O out of the train/eval/ensemble runners.
 
 ## Design note
 

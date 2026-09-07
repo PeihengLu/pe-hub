@@ -5,8 +5,7 @@ import argparse
 
 import pytest
 
-from pe_ensemble.ensemble.combine import COMBINE_METHODS
-from pe_ensemble.training.config import supported_models
+from pe_ensemble.library import COMBINE_METHODS, supported_models
 from pe_ensemble.cli import (
     build_ensemble_request,
     build_evaluation_request,

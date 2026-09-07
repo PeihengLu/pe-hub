@@ -1,15 +1,28 @@
 """Shared training request/response schemas."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
+from pe_common.filter_params import CatalogFilterBody, FilterValue
 
 SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
 HyperparameterMode = Literal["merge", "replace"]
-FilterScalar = Union[str, int]
-FilterValue = Union[FilterScalar, List[FilterScalar]]
 JobStatus = Literal["queued", "running", "stopping", "succeeded", "failed", "cancelled", "skipped"]
+
+__all__ = [
+    "CatalogFilterBody",
+    "FilterValue",
+    "HyperparameterMode",
+    "JobStatus",
+    "SplitQueryParams",
+    "SplitStrategy",
+    "TrainingJobCreatedResponse",
+    "TrainingJobSummary",
+    "TrainingLogResponse",
+    "TrainingRequest",
+    "default_training_split",
+]
 
 
 def default_training_split() -> "SplitQueryParams":
@@ -76,25 +89,13 @@ class SplitQueryParams(BaseModel):
         return self
 
 
-class TrainingRequest(BaseModel):
+class TrainingRequest(CatalogFilterBody):
     model_name: str
     dataset_source: str
     dataset_name: str
     hyperparameters: Optional[Dict[str, Any]] = None
     hyperparameter_mode: HyperparameterMode = "merge"
     split: SplitQueryParams = Field(default_factory=default_training_split)
-    study: Optional[FilterValue] = None
-    dataset: Optional[FilterValue] = None
-    cell_line: Optional[FilterValue] = None
-    pe_system: Optional[FilterValue] = None
-    edit_type: Optional[FilterValue] = None
-    edit_length: Optional[FilterValue] = None
-    edit_efficiency_min: Optional[float] = None
-    edit_efficiency_max: Optional[float] = None
-    edit_scope: Optional[FilterValue] = None
-    experimental_method: Optional[FilterValue] = None
-    target_context: Optional[FilterValue] = None
-    scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
     model_kwargs: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None

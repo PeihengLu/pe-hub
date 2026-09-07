@@ -157,3 +157,19 @@ def test_plugins_reload_empty_root(pe_db_client: TestClient):
     payload = pe_db_client.post("/api/plugins/reload").json()
     assert payload["count"] == 0
     assert payload["loaded"] == []
+
+
+def test_filter_openapi_documents_shared_field_lists(pe_db_client: TestClient):
+    from pe_common.filter_params import (
+        FILTER_LIST_FIELDS,
+        FILTER_RANGE_FIELDS,
+        SPLIT_QUERY_FIELDS,
+    )
+
+    spec = pe_db_client.get("/openapi.json").json()
+    names = {item["name"] for item in spec["paths"]["/api/filter"]["get"]["parameters"]}
+    assert set(FILTER_LIST_FIELDS) <= names
+    assert set(FILTER_RANGE_FIELDS) <= names
+    assert set(SPLIT_QUERY_FIELDS) <= names
+    assert "format" in names
+    assert "summary_only" in names

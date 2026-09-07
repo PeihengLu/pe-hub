@@ -8,80 +8,52 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import List, Literal, Optional, Dict, Any, Union
+from typing import Annotated, List, Literal, Optional, Dict, Any, Union
 import logging
 
 import pandas as pd
 import torch
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .models.model_factory import ModelFactory
 from .models import weights_registry
-from .models.registry import model_registry
-from .training.config import is_supported_model
-from .training.data import (
+from pe_ensemble import library
+from pe_ensemble.library import (
+    EnsembleRequest,
+    EvaluationRequest,
+    PeEnsembleLibraryError,
+    SplitQueryParams,
+    TrainingRequest,
+    TuningRequest,
     build_pe_db_filter_params as _build_pe_db_filter_params,
-    request_pe_db_filtered,
-)
-from .compute.device_scheduler import get_scheduler
-from .compute.job_lifecycle import begin_job_kill, finalize_job_kill
-from .evaluation.jobs import (
-    create_job as create_eval_job,
-    delete_job as delete_eval_job,
-    get_job as get_eval_job,
-    job_summary as eval_job_summary,
-    list_jobs as list_eval_jobs,
-    read_logs as read_eval_logs,
+    is_supported_model,
 )
 from .evaluation.schemas import (
     EvaluationJobCreatedResponse,
     EvaluationLogResponse,
-    EvaluationRequest,
-)
-from .evaluation.benchmark import BenchmarkResolutionError, resolve_evaluation_request
-from .ensemble.combine import combine_method_help
-from .ensemble.jobs import (
-    create_job as create_ensemble_job,
-    delete_job as remove_ensemble_job,
-    get_job as get_ensemble_job,
-    job_summary as ensemble_job_summary,
-    list_jobs as list_ensemble_jobs,
-    read_logs as read_ensemble_logs,
 )
 from .ensemble.schemas import (
     EnsembleJobCreatedResponse,
     EnsembleLogResponse,
-    EnsembleRequest,
-)
-from .training.jobs import create_job, delete_job as delete_train_job, get_job, job_summary, list_jobs, read_logs
-from .training.tune_jobs import (
-    create_job as create_tune_job,
-    delete_job as delete_tune_job,
-    get_job as get_tune_job,
-    job_summary as tune_job_summary,
-    list_jobs as list_tune_jobs,
-    read_logs as read_tune_logs,
 )
 from .training.tuning_schemas import (
     TuningJobCreatedResponse,
     TuningLogResponse,
-    TuningRequest,
 )
+from pe_common.filter_params import CatalogFilterQuery, SplitExportQuery, query_dependency
 from pe_common.devices import list_devices as list_compute_devices
 from pe_common.devices import default_device_id, resolve_device
 from .training.schemas import (
-    SplitQueryParams,
-    SplitStrategy,
     TrainingJobCreatedResponse,
-    TrainingJobSummary,
     TrainingLogResponse,
-    TrainingRequest,
-    default_training_split as _default_training_split,
 )
 
 logger = logging.getLogger(__name__)
+
+_catalog_filters = query_dependency(CatalogFilterQuery)
+_split_export = query_dependency(SplitExportQuery)
 
 GRACEFUL_SHUTDOWN_SECONDS = 5
 
@@ -102,17 +74,14 @@ async def lifespan(_app: FastAPI):
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-ensemble-sync")
     loop.set_default_executor(executor)
     try:
-        from .plugin_loader import load_active_plugins
-
-        loaded = load_active_plugins()
+        loaded = library.load_active_plugins()
         if loaded:
             logger.info("Loaded PE Ensemble plugins: %s", ", ".join(loaded))
         yield
     finally:
-        from .compute.device_scheduler import shutdown_scheduler
         from .plugins.scheduler import shutdown_validation_scheduler
 
-        shutdown_scheduler()
+        library.shutdown_compute()
         shutdown_validation_scheduler()
         _shutdown_joblib_loky()
         executor.shutdown(wait=True, cancel_futures=True)
@@ -170,11 +139,56 @@ def _default_weight_id_for_model(model_name: str, model: Any) -> Optional[str]:
 
 def _request_pe_db_filtered(params: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        return request_pe_db_filtered(params)
+        return library.filter_pe_db(params)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=502, detail=f"Failed to fetch data from PE-DB: {exc}"
         ) from exc
+
+
+def _http_get_job(kind: library.JobKind, job_id: str) -> Dict[str, Any]:
+    try:
+        return library.get_job(kind, job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _http_queue_job(kind: library.JobKind, request: Any, response_cls):
+    try:
+        job_id, manifest = library.queue_job(kind, request)
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return response_cls(
+        job_id=job_id,
+        status=manifest["status"],
+        message=library.queued_message(kind, manifest),
+    )
+
+
+def _http_delete_job(kind: library.JobKind, job_id: str) -> Dict[str, Any]:
+    _http_get_job(kind, job_id)
+    manifest = library.begin_kill(kind, job_id)
+    asyncio.create_task(asyncio.to_thread(library.finalize_kill, kind, job_id))
+    return {
+        "job_id": job_id,
+        "accepted": True,
+        "status": manifest.get("status") if manifest else "deleted",
+    }
+
+
+def _http_job_logs(kind: library.JobKind, job_id: str, offset: int, response_cls):
+    try:
+        payload = library.job_logs(kind, job_id, offset=offset)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return response_cls(**payload)
+
+
+def _http_device_queues() -> Dict[str, Any]:
+    return {
+        "default": default_device_id(),
+        "devices": library.device_snapshot(),
+    }
 
 
 @app.get("/")
@@ -210,35 +224,13 @@ async def health_check():
 
 @app.get("/data/filter")
 async def export_filtered_data(
+    filters: Annotated[CatalogFilterQuery, Depends(_catalog_filters)],
+    split: Annotated[SplitExportQuery, Depends(_split_export)],
     format_: str = Query(
         ...,
         alias="format",
         description="Output format (same as PE-DB GET /api/filter).",
     ),
-    study: Optional[List[str]] = Query(None, description="Filter by study key."),
-    dataset: Optional[List[str]] = Query(None, description="Filter by dataset name."),
-    cell_line: Optional[List[str]] = Query(None, description="Filter by cell line."),
-    pe_system: Optional[List[str]] = Query(None, description="Filter by PE system."),
-    edit_type: Optional[List[str]] = Query(None, description="Filter edits by type."),
-    edit_length: Optional[List[int]] = Query(None, description="Filter edits by length."),
-    edit_efficiency_min: Optional[float] = Query(None, description="Minimum editing efficiency."),
-    edit_efficiency_max: Optional[float] = Query(None, description="Maximum editing efficiency."),
-    edit_scope: Optional[List[str]] = Query(None, description="Filter by edit scope."),
-    experimental_method: Optional[List[str]] = Query(None, description="Filter by experimental method."),
-    target_context: Optional[List[str]] = Query(None, description="Filter by target context."),
-    scaffold_name: Optional[List[str]] = Query(None, description="Filter by pegRNA scaffold name."),
-    split_strategy: SplitStrategy = Query(
-        "none",
-        description="Required by PE-DB when exporting formatted data.",
-    ),
-    train_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
-    val_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
-    test_pct: Optional[float] = Query(None, ge=0.0, le=1.0),
-    cv_folds: Optional[int] = Query(None, ge=2),
-    use_original_fold: bool = Query(False),
-    original_fold_test_value: float = Query(-1.0),
-    split_random_state: int = Query(42, ge=0),
-    merge: bool = Query(False),
 ):
     """Proxy PE-DB ``GET /api/filter`` (PE Hub ``exportFiltered`` contract).
 
@@ -246,31 +238,13 @@ async def export_filtered_data(
     PE Ensemble clients when you need the raw export payload without running
     model evaluation.
     """
+    split_data = split.model_dump()
+    if split_data.get("split_strategy") is None:
+        split_data["split_strategy"] = "none"
     params = _build_pe_db_filter_params(
         model_format=format_,
-        split=SplitQueryParams(
-            split_strategy=split_strategy,
-            train_pct=train_pct,
-            val_pct=val_pct,
-            test_pct=test_pct,
-            cv_folds=cv_folds,
-            use_original_fold=use_original_fold,
-            original_fold_test_value=original_fold_test_value,
-            split_random_state=split_random_state,
-            merge=merge,
-        ),
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
-        edit_type=edit_type,
-        edit_length=edit_length,
-        edit_efficiency_min=edit_efficiency_min,
-        edit_efficiency_max=edit_efficiency_max,
-        edit_scope=edit_scope,
-        experimental_method=experimental_method,
-        target_context=target_context,
-        scaffold_name=scaffold_name,
+        split=SplitQueryParams(**split_data),
+        **filters.model_dump(),
     )
     return await asyncio.to_thread(_request_pe_db_filtered, params)
 
@@ -278,7 +252,7 @@ async def export_filtered_data(
 @app.get("/models")
 async def list_models():
     """List all available models"""
-    models = model_registry.list_catalog_entries()
+    models = library.list_model_catalog()
     return {"models": models, "count": len(models)}
 
 
@@ -292,39 +266,28 @@ async def get_training_presets(
     hyperparameter_mode: Literal["merge", "replace"] = Query("merge"),
 ):
     """Resolve training hyperparameters for a model and dataset filter."""
-    model_name = model_name.strip().lower()
-    if not is_supported_model(model_name):
-        raise HTTPException(status_code=400, detail="Invalid model name")
-
-    from .training.hyperparameter_presets import resolve_hyperparameters
-
-    resolved = resolve_hyperparameters(
-        model_name,
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
-        user_overrides=None,
-        mode=hyperparameter_mode,
-    )
-    return {
-        "model": model_name,
-        "preset_key": resolved.preset_key,
-        "preset_source": resolved.preset_source,
-        "hyperparameter_mode": hyperparameter_mode,
-        "hyperparameters": resolved.hyperparameters,
-    }
+    try:
+        return library.resolve_training_presets(
+            model_name,
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+            hyperparameter_mode=hyperparameter_mode,
+        )
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/models/{model_name}/weights")
 async def list_model_weights(model_name: str):
     """List registered weight sets available for a model."""
-    model_name = model_name.strip().lower()
-    if not is_supported_model(model_name):
-        raise HTTPException(status_code=400, detail="Invalid model name")
+    try:
+        entries = library.list_weight_entries(model_name)
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    entries = model_registry.list_weight_entries(model_name)
-    return {"model": model_name, "weights": entries, "count": len(entries)}
+    return {"model": model_name.strip().lower(), "weights": entries, "count": len(entries)}
 
 
 @app.post("/predict")
@@ -376,79 +339,37 @@ async def list_devices():
 @app.get("/train/devices")
 async def training_device_status():
     """Per-device occupancy and queue depth for training jobs."""
-    return {
-        "default": default_device_id(),
-        "devices": get_scheduler().device_snapshot(),
-    }
+    return _http_device_queues()
 
 
 @app.post("/train")
 async def train_model(request: TrainingRequest):
     """Queue an asynchronous model training job."""
-    model_name = request.model_name.strip().lower()
-    if not is_supported_model(model_name):
-        raise HTTPException(status_code=400, detail="Invalid model name")
-
-    job_id = create_job(request)
-    get_scheduler().submit_training(job_id, request)
-    manifest = get_job(job_id)
-    message = "Training job started"
-    if manifest.get("queue_position"):
-        message = f"Training job queued (position {manifest['queue_position']})"
-    return TrainingJobCreatedResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        message=message,
-    )
+    try:
+        library.require_supported_model(request.model_name)
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _http_queue_job("train", request, TrainingJobCreatedResponse)
 
 
 @app.get("/train/jobs")
 async def list_training_jobs(limit: int = Query(50, ge=1, le=200)):
     """List recent training jobs (newest first)."""
-    manifests = list_jobs(limit=limit)
-    return {
-        "jobs": [job_summary(m).model_dump() for m in manifests],
-        "count": len(manifests),
-    }
+    jobs = library.list_job_summaries("train", limit=limit)
+    return {"jobs": jobs, "count": len(jobs)}
 
 
 @app.get("/train/status/{job_id}")
 async def get_training_status(job_id: str):
     """Return training job status and result metadata."""
-    try:
-        manifest = get_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    summary = job_summary(manifest).model_dump()
-    if manifest.get("result") is not None:
-        summary["result"] = manifest["result"]
-    return summary
+    _http_get_job("train", job_id)
+    return library.job_status("train", job_id)
 
 
 @app.delete("/train/jobs/{job_id}", status_code=202)
 async def delete_training_job(job_id: str):
     """Stop a queued or running training job and remove its on-disk artifacts."""
-    try:
-        get_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    manifest = begin_job_kill("train", job_id, get_job=get_job)
-    asyncio.create_task(
-        asyncio.to_thread(
-            finalize_job_kill,
-            "train",
-            job_id,
-            get_job=get_job,
-            delete_job=delete_train_job,
-        )
-    )
-    return {
-        "job_id": job_id,
-        "accepted": True,
-        "status": manifest.get("status") if manifest else "deleted",
-    }
+    return _http_delete_job("train", job_id)
 
 
 @app.get("/train/logs/{job_id}")
@@ -457,84 +378,34 @@ async def get_training_logs(
     offset: int = Query(0, ge=0, description="Byte offset into the log file"),
 ):
     """Return incremental training log output for a job."""
-    try:
-        manifest = get_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    log_chunk, next_offset = read_logs(job_id, offset=offset)
-    return TrainingLogResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        offset=offset,
-        next_offset=next_offset,
-        log=log_chunk,
-    )
+    return _http_job_logs("train", job_id, offset, TrainingLogResponse)
 
 
 @app.post("/tune")
 async def tune_model(request: TuningRequest):
     """Queue an asynchronous hyperparameter tuning job."""
-    model_name = request.training.model_name.strip().lower()
-    if not is_supported_model(model_name):
-        raise HTTPException(status_code=400, detail="Invalid model name")
-
-    job_id = create_tune_job(request)
-    get_scheduler().submit_tuning(job_id, request)
-    manifest = get_tune_job(job_id)
-    message = "Tuning job started"
-    if manifest.get("queue_position"):
-        message = f"Tuning job queued (position {manifest['queue_position']})"
-    return TuningJobCreatedResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        message=message,
-    )
+    try:
+        library.require_supported_model(request.training.model_name)
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _http_queue_job("tune", request, TuningJobCreatedResponse)
 
 
 @app.get("/tune/jobs")
 async def list_tuning_jobs(limit: int = Query(50, ge=1, le=200)):
-    manifests = list_tune_jobs(limit=limit)
-    return {
-        "jobs": [tune_job_summary(manifest).model_dump() for manifest in manifests],
-        "count": len(manifests),
-    }
+    jobs = library.list_job_summaries("tune", limit=limit)
+    return {"jobs": jobs, "count": len(jobs)}
 
 
 @app.get("/tune/status/{job_id}")
 async def get_tuning_status(job_id: str):
-    try:
-        manifest = get_tune_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    summary = tune_job_summary(manifest).model_dump()
-    if manifest.get("result") is not None:
-        summary["result"] = manifest["result"]
-    return summary
+    _http_get_job("tune", job_id)
+    return library.job_status("tune", job_id)
 
 
 @app.delete("/tune/jobs/{job_id}", status_code=202)
 async def delete_tuning_job(job_id: str):
-    try:
-        get_tune_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    manifest = begin_job_kill("tune", job_id, get_job=get_tune_job)
-    asyncio.create_task(
-        asyncio.to_thread(
-            finalize_job_kill,
-            "tune",
-            job_id,
-            get_job=get_tune_job,
-            delete_job=delete_tune_job,
-        )
-    )
-    return {
-        "job_id": job_id,
-        "accepted": True,
-        "status": manifest.get("status") if manifest else "deleted",
-    }
+    return _http_delete_job("tune", job_id)
 
 
 @app.get("/tune/logs/{job_id}")
@@ -542,106 +413,40 @@ async def get_tuning_logs(
     job_id: str,
     offset: int = Query(0, ge=0, description="Byte offset into the log file"),
 ):
-    try:
-        manifest = get_tune_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    log_chunk, next_offset = read_tune_logs(job_id, offset=offset)
-    return TuningLogResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        offset=offset,
-        next_offset=next_offset,
-        log=log_chunk,
-    )
+    return _http_job_logs("tune", job_id, offset, TuningLogResponse)
 
 
 @app.get("/tune/devices")
 async def tuning_device_status():
-    return {
-        "default": default_device_id(),
-        "devices": get_scheduler().device_snapshot(),
-    }
+    return _http_device_queues()
 
 
 @app.post("/evaluate")
 async def evaluate_model(request: EvaluationRequest):
     """Queue an asynchronous benchmark / evaluation job."""
-    model_name = request.model_name.strip().lower()
-    if not is_supported_model(model_name):
-        raise HTTPException(status_code=400, detail="Invalid model name")
-
-    weight_id = request.weights.strip()
-    if not weight_id:
-        raise HTTPException(status_code=400, detail="weights is required")
     try:
-        model_registry.validate_weight_selection(model_name, weight_id)
-    except ValueError as exc:
+        request = library.resolve_evaluation(request)
+    except PeEnsembleLibraryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    try:
-        request = resolve_evaluation_request(request)
-    except BenchmarkResolutionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    job_id = create_eval_job(request)
-    get_scheduler().submit_evaluation(job_id, request)
-    manifest = get_eval_job(job_id)
-    message = "Evaluation job started"
-    if manifest.get("queue_position"):
-        message = f"Evaluation job queued (position {manifest['queue_position']})"
-    return EvaluationJobCreatedResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        message=message,
-    )
+    return _http_queue_job("evaluate", request, EvaluationJobCreatedResponse)
 
 
 @app.get("/evaluate/jobs")
 async def list_evaluation_jobs(limit: int = Query(50, ge=1, le=200)):
-    manifests = list_eval_jobs(limit=limit)
-    return {
-        "jobs": [eval_job_summary(m).model_dump() for m in manifests],
-        "count": len(manifests),
-    }
+    jobs = library.list_job_summaries("evaluate", limit=limit)
+    return {"jobs": jobs, "count": len(jobs)}
 
 
 @app.get("/evaluate/status/{job_id}")
 async def get_evaluation_status(job_id: str):
-    try:
-        manifest = get_eval_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    summary = eval_job_summary(manifest).model_dump()
-    if manifest.get("result") is not None:
-        summary["result"] = manifest["result"]
-    return summary
+    _http_get_job("evaluate", job_id)
+    return library.job_status("evaluate", job_id)
 
 
 @app.delete("/evaluate/jobs/{job_id}", status_code=202)
 async def delete_evaluation_job(job_id: str):
     """Stop a queued or running evaluation job and remove its on-disk artifacts."""
-    try:
-        get_eval_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    manifest = begin_job_kill("evaluate", job_id, get_job=get_eval_job)
-    asyncio.create_task(
-        asyncio.to_thread(
-            finalize_job_kill,
-            "evaluate",
-            job_id,
-            get_job=get_eval_job,
-            delete_job=delete_eval_job,
-        )
-    )
-    return {
-        "job_id": job_id,
-        "accepted": True,
-        "status": manifest.get("status") if manifest else "deleted",
-    }
+    return _http_delete_job("evaluate", job_id)
 
 
 @app.get("/evaluate/logs/{job_id}")
@@ -649,106 +454,47 @@ async def get_evaluation_logs(
     job_id: str,
     offset: int = Query(0, ge=0),
 ):
-    try:
-        manifest = get_eval_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    log_chunk, next_offset = read_eval_logs(job_id, offset=offset)
-    return EvaluationLogResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        offset=offset,
-        next_offset=next_offset,
-        log=log_chunk,
-    )
+    return _http_job_logs("evaluate", job_id, offset, EvaluationLogResponse)
 
 
 @app.get("/evaluate/devices")
 async def evaluation_device_status():
-    return {
-        "default": default_device_id(),
-        "devices": get_scheduler().device_snapshot(),
-    }
+    return _http_device_queues()
 
 
 @app.get("/ensemble/methods")
 async def list_ensemble_combine_methods():
     """List supported no-retrain prediction fusion methods."""
-    return {"methods": combine_method_help(), "count": len(combine_method_help())}
+    methods = library.combine_method_help()
+    return {"methods": methods, "count": len(methods)}
 
 
 @app.post("/ensemble")
 async def run_ensemble(request: EnsembleRequest):
     """Queue an asynchronous ensemble evaluation job."""
-    for member in request.members:
-        model_name = member.model_name.strip().lower()
-        if not is_supported_model(model_name):
-            raise HTTPException(status_code=400, detail=f"Invalid model name: {member.model_name}")
-        weight_id = member.weights.strip()
-        if not weight_id:
-            raise HTTPException(status_code=400, detail="Each member requires a weights ID")
-        try:
-            model_registry.validate_weight_selection(model_name, weight_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    job_id = create_ensemble_job(request)
-    get_scheduler().submit_ensemble(job_id, request)
-    manifest = get_ensemble_job(job_id)
-    message = "Ensemble job started"
-    if manifest.get("queue_position"):
-        message = f"Ensemble job queued (position {manifest['queue_position']})"
-    return EnsembleJobCreatedResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        message=message,
-    )
+    try:
+        library.validate_ensemble_request(request)
+    except PeEnsembleLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _http_queue_job("ensemble", request, EnsembleJobCreatedResponse)
 
 
 @app.get("/ensemble/jobs")
 async def list_ensemble_evaluation_jobs(limit: int = Query(50, ge=1, le=200)):
-    manifests = list_ensemble_jobs(limit=limit)
-    return {
-        "jobs": [ensemble_job_summary(manifest).model_dump() for manifest in manifests],
-        "count": len(manifests),
-    }
+    jobs = library.list_job_summaries("ensemble", limit=limit)
+    return {"jobs": jobs, "count": len(jobs)}
 
 
 @app.get("/ensemble/status/{job_id}")
 async def get_ensemble_status(job_id: str):
-    try:
-        manifest = get_ensemble_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    summary = ensemble_job_summary(manifest).model_dump()
-    if manifest.get("result") is not None:
-        summary["result"] = manifest["result"]
-    return summary
+    _http_get_job("ensemble", job_id)
+    return library.job_status("ensemble", job_id)
 
 
 @app.delete("/ensemble/jobs/{job_id}", status_code=202)
 async def delete_ensemble_job(job_id: str):
     """Stop a queued or running ensemble job and remove its on-disk artifacts."""
-    try:
-        get_ensemble_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    manifest = begin_job_kill("ensemble", job_id, get_job=get_ensemble_job)
-    asyncio.create_task(
-        asyncio.to_thread(
-            finalize_job_kill,
-            "ensemble",
-            job_id,
-            get_job=get_ensemble_job,
-            delete_job=remove_ensemble_job,
-        )
-    )
-    return {
-        "job_id": job_id,
-        "accepted": True,
-        "status": manifest.get("status") if manifest else "deleted",
-    }
+    return _http_delete_job("ensemble", job_id)
 
 
 @app.get("/ensemble/logs/{job_id}")
@@ -756,26 +502,12 @@ async def get_ensemble_logs(
     job_id: str,
     offset: int = Query(0, ge=0),
 ):
-    try:
-        manifest = get_ensemble_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    log_chunk, next_offset = read_ensemble_logs(job_id, offset=offset)
-    return EnsembleLogResponse(
-        job_id=job_id,
-        status=manifest["status"],
-        offset=offset,
-        next_offset=next_offset,
-        log=log_chunk,
-    )
+    return _http_job_logs("ensemble", job_id, offset, EnsembleLogResponse)
 
 
 @app.get("/ensemble/devices")
 async def ensemble_device_status():
-    return {
-        "default": default_device_id(),
-        "devices": get_scheduler().device_snapshot(),
-    }
+    return _http_device_queues()
 
 
 @app.get("/models/plugins")

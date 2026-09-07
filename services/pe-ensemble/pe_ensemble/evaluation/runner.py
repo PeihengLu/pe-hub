@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from pe_common.filter_params import filter_kwargs_from_mapping
 from pe_common.devices import AUTO_DEVICE, resolve_device, resolve_device_id
 
 from ..models.model_factory import ModelFactory
 from ..training.config import is_supported_model, model_format_for
 from ..training.data import ModelFormatFetchResult, fetch_model_format_result
-from ..training.progress_log import tee_stream_to_log
+from ..training.progress_log import model_run_stream_context
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .benchmark import BenchmarkResolutionError, resolve_evaluation_request
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_skipped, mark_succeeded
@@ -100,20 +101,9 @@ def execute_evaluation(
                 model_format=model_format,
                 split=request.split,
                 records=request.records,
-                study=request.study,
-                dataset=request.dataset,
-                cell_line=request.cell_line,
-                pe_system=request.pe_system,
-                edit_type=request.edit_type,
-                edit_length=request.edit_length,
-                edit_efficiency_min=request.edit_efficiency_min,
-                edit_efficiency_max=request.edit_efficiency_max,
-                edit_scope=request.edit_scope,
-                experimental_method=request.experimental_method,
-                target_context=request.target_context,
-                scaffold_name=request.scaffold_name,
                 evaluation=True,
                 progress_log=_progress_log,
+                **filter_kwargs_from_mapping(request.model_dump()),
             )
             test_df = fetch.df
             if test_df.empty:
@@ -221,22 +211,14 @@ def execute_evaluation(
 
             _raise_if_cancelled()
             model = ModelFactory.create_model(model_name, device=device)
-
-            if model_name == "oped":
-                prepared = model.prepare_data(test_df)
-                _raise_if_cancelled()
+            prepared = getattr(model, "prepare_evaluation_frame", lambda df: df)(test_df)
+            _raise_if_cancelled()
+            with model_run_stream_context(
+                model,
+                _progress_log if job_id else None,
+                cancel_check=_raise_if_cancelled if job_id else None,
+            ):
                 metrics = model.evaluate(prepared, weights=request.weights)
-            elif model_name == "pridict2":
-                _raise_if_cancelled()
-                with tee_stream_to_log(
-                    _progress_log if job_id else None,
-                    stderr=True,
-                    cancel_check=_raise_if_cancelled if job_id else None,
-                ):
-                    metrics = model.evaluate(test_df, weights=request.weights)
-            else:
-                _raise_if_cancelled()
-                metrics = model.evaluate(test_df, weights=request.weights)
         except JobCancelledError:
             if job_id:
                 mark_cancelled(job_id)

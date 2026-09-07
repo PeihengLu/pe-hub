@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 from pe_common.training import format_epoch_metrics_row
@@ -153,3 +153,16 @@ def tee_stream_to_log(
             sys.stdout = previous_stdout
         if stderr:
             sys.stderr = previous_stderr
+
+
+def model_run_stream_context(
+    model: Any,
+    progress_log: Optional[ProgressLog],
+    *,
+    cancel_check: Optional[CancelCheck] = None,
+):
+    """Tee/silence stderr around a model call when the wrapper asks for it."""
+    capture = getattr(model, "capture_stderr_during_run", None)
+    if not callable(capture) or not capture():
+        return nullcontext()
+    return tee_stream_to_log(progress_log, stderr=True, cancel_check=cancel_check)

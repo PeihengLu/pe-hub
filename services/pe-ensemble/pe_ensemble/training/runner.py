@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import torch
 
+from pe_common.filter_params import filter_kwargs_from_mapping
 from pe_common.data_utils import TARGET_UID_COLUMN
 from pe_common.devices import AUTO_DEVICE, cuda_index_from_device, resolve_device, resolve_device_id
 from pe_common.splits import exclude_test_partition
@@ -13,10 +14,10 @@ from pe_common.splits import exclude_test_partition
 from ..models import weights_registry
 from ..models.model_factory import ModelFactory
 from .config import is_supported_model, model_format_for
-from .data import fetch_training_dataframe, normalize_filter_param
+from .data import fetch_training_dataframe
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .jobs import append_log, job_log_context, mark_cancelled, mark_failed, mark_running, mark_succeeded
-from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, tee_stream_to_log
+from .progress_log import JOB_CANCEL_CHECK_KEY, JOB_PROGRESS_LOG_KEY, model_run_stream_context
 from .hyperparameter_presets import resolve_hyperparameters_for_request
 from .schemas import TrainingRequest
 
@@ -86,21 +87,10 @@ def _training_metadata_from_request(
     data_provenance: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     filters = {
-        key: normalize_filter_param(getattr(request, key))
-        for key in (
-            "study",
-            "dataset",
-            "cell_line",
-            "pe_system",
-            "edit_type",
-            "edit_length",
-            "edit_scope",
-            "experimental_method",
-            "target_context",
-            "scaffold_name",
-        )
+        key: value
+        for key, value in filter_kwargs_from_mapping(request.model_dump()).items()
+        if value is not None
     }
-    filters = {k: v for k, v in filters.items() if v is not None}
     metrics: Dict[str, Any] = {}
     # Each wrapper reports validation differently: PRIDICT2 emits a nested
     # `validation_metrics` block (keys are prefixed per outcome), OPED and
@@ -212,23 +202,19 @@ def execute_training(
                 device=device,
                 **(request.model_kwargs or {}),
             )
-            if model_name == "oped":
-                _progress_log(f"Tokenizing {len(train_df)} OPED sequences for training...")
-                train_df = model.prepare_data(train_df)
-                _progress_log(f"Encoded {len(train_df)} rows; starting training loop")
+            train_df = getattr(model, "prepare_training_frame", lambda df, **_: df)(
+                train_df, progress_log=_progress_log
+            )
 
             hyperparameters = _merge_hyperparameters(request, device)
             hyperparameters[JOB_PROGRESS_LOG_KEY] = _progress_log
             hyperparameters[JOB_CANCEL_CHECK_KEY] = _raise_if_cancelled
             _raise_if_cancelled()
-            if model_name == "pridict2":
-                with tee_stream_to_log(
-                    _progress_log if job_id else None,
-                    stderr=True,
-                    cancel_check=_raise_if_cancelled if job_id else None,
-                ):
-                    result = model.train(train_df, hyperparameters=hyperparameters)
-            else:
+            with model_run_stream_context(
+                model,
+                _progress_log if job_id else None,
+                cancel_check=_raise_if_cancelled if job_id else None,
+            ):
                 result = model.train(train_df, hyperparameters=hyperparameters)
             metadata = _training_metadata_from_request(
                 request,

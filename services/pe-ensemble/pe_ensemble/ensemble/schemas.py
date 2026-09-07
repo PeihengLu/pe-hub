@@ -1,12 +1,13 @@
 """Shared ensemble request/response schemas."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pe_common.filter_params import CatalogFilterBody
 
 from ..evaluation.schemas import default_evaluation_split
-from ..training.schemas import FilterValue, JobStatus, SplitQueryParams
+from ..training.schemas import JobStatus, SplitQueryParams
 from .combine import COMBINE_METHODS, CombineMethod
 
 EnsembleJobStatus = JobStatus
@@ -24,7 +25,7 @@ class EnsembleMember(BaseModel):
     )
 
 
-class EnsembleRequest(BaseModel):
+class EnsembleRequest(CatalogFilterBody):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     ensemble_name: str = Field(..., min_length=1)
@@ -32,18 +33,6 @@ class EnsembleRequest(BaseModel):
     combine_options: Dict[str, Any] = Field(default_factory=dict)
     members: List[EnsembleMember] = Field(..., min_length=2)
     split: SplitQueryParams = Field(default_factory=default_evaluation_split)
-    study: Optional[FilterValue] = None
-    dataset: Optional[FilterValue] = None
-    cell_line: Optional[FilterValue] = None
-    pe_system: Optional[FilterValue] = None
-    edit_type: Optional[FilterValue] = None
-    edit_length: Optional[FilterValue] = None
-    edit_efficiency_min: Optional[float] = None
-    edit_efficiency_max: Optional[float] = None
-    edit_scope: Optional[FilterValue] = None
-    experimental_method: Optional[FilterValue] = None
-    target_context: Optional[FilterValue] = None
-    scaffold_name: Optional[FilterValue] = None
     records: Optional[List[Dict[str, Any]]] = None
     device: Optional[str] = "auto"
     allow_data_leak: bool = Field(

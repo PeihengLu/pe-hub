@@ -2,6 +2,37 @@ export type ExportFormat = 'std' | 'deepprime' | 'pridict' | 'pridict2' | 'oped'
 
 export type SplitStrategy = 'none' | 'holdout_2' | 'holdout_3' | 'cv'
 
+export const FILTER_LIST_FIELDS = [
+  'study',
+  'dataset',
+  'cell_line',
+  'pe_system',
+  'edit_type',
+  'edit_length',
+  'edit_scope',
+  'experimental_method',
+  'target_context',
+  'scaffold_name',
+] as const
+
+export const FILTER_RANGE_FIELDS = ['edit_efficiency_min', 'edit_efficiency_max'] as const
+
+export const SPLIT_QUERY_FIELDS = [
+  'split_strategy',
+  'train_pct',
+  'val_pct',
+  'test_pct',
+  'cv_folds',
+  'use_original_fold',
+  'original_fold_test_value',
+  'split_random_state',
+  'merge',
+] as const
+
+export type FilterAttributeKey = (typeof FILTER_LIST_FIELDS)[number]
+export type FilterRangeKey = (typeof FILTER_RANGE_FIELDS)[number]
+export type SplitQueryField = (typeof SPLIT_QUERY_FIELDS)[number]
+
 export const SPLIT_STRATEGIES: {
   value: SplitStrategy
   label: string
@@ -78,21 +109,28 @@ export function buildSplitParams(config: {
   return params
 }
 
-export type FilterAttributeKey =
-  | 'study'
-  | 'dataset'
-  | 'cell_line'
-  | 'pe_system'
-  | 'edit_type'
-  | 'edit_length'
-  | 'edit_scope'
-  | 'experimental_method'
-  | 'target_context'
-  | 'scaffold_name'
-
 export interface FilterAttributeDef {
   key: FilterAttributeKey
   label: string
+}
+
+const FILTER_ATTRIBUTE_LABELS: Record<FilterAttributeKey, string> = {
+  study: 'Study',
+  dataset: 'Dataset',
+  cell_line: 'Cell line',
+  pe_system: 'PE system',
+  edit_type: 'Edit type',
+  edit_length: 'Edit length',
+  edit_scope: 'Edit scope',
+  experimental_method: 'Experimental method',
+  target_context: 'Target context',
+  scaffold_name: 'Scaffold',
+}
+
+export type CatalogFilterParams = {
+  [K in FilterAttributeKey]?: K extends 'edit_length' ? number[] : string[]
+} & {
+  [K in FilterRangeKey]?: number
 }
 
 export const EXPORT_FORMATS: { value: ExportFormat; label: string; description: string }[] = [
@@ -123,18 +161,10 @@ export const EXPORT_FORMATS: { value: ExportFormat; label: string; description: 
   },
 ]
 
-export const FILTER_ATTRIBUTES: FilterAttributeDef[] = [
-  { key: 'study', label: 'Study' },
-  { key: 'dataset', label: 'Dataset' },
-  { key: 'cell_line', label: 'Cell line' },
-  { key: 'pe_system', label: 'PE system' },
-  { key: 'edit_type', label: 'Edit type' },
-  { key: 'edit_length', label: 'Edit length' },
-  { key: 'edit_scope', label: 'Edit scope' },
-  { key: 'experimental_method', label: 'Experimental method' },
-  { key: 'target_context', label: 'Target context' },
-  { key: 'scaffold_name', label: 'Scaffold' },
-]
+export const FILTER_ATTRIBUTES: FilterAttributeDef[] = FILTER_LIST_FIELDS.map((key) => ({
+  key,
+  label: FILTER_ATTRIBUTE_LABELS[key],
+}))
 
 export const STATIC_FILTER_OPTIONS: Partial<Record<FilterAttributeKey, string[]>> = {
   edit_type: ['sub', 'ins', 'del'],

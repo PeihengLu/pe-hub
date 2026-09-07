@@ -209,6 +209,7 @@ services/pe-ensemble/tests/test_pridict2_vendor_provenance.py
 services/pe-ensemble/tests/test_pridict2_weight_bundles.py
 services/pe-ensemble/tests/test_pridict2_weight_selection.py
 services/pe-ensemble/tests/test_author_folds.py
+services/pe-ensemble/tests/test_runner_model_hooks.py
 EOF
             ;;
         training)
@@ -247,6 +248,7 @@ services/pe-ensemble/tests/test_plugin_validation_jobs.py
 services/pe-ensemble/tests/test_job_kill.py
 services/pe-ensemble/tests/test_device_scheduler.py
 services/pe-ensemble/tests/test_progress_log.py
+services/pe-ensemble/tests/test_library.py
 EOF
             ;;
         splits)
@@ -264,6 +266,7 @@ packages/pe-common/tests/test_cell_lines.py
 packages/pe-common/tests/test_sequence_utils.py
 packages/pe-common/tests/test_conversion_progress.py
 packages/pe-common/tests/test_filter_params.py
+packages/pe-common/tests/test_model_interface.py
 EOF
             ;;
         *)

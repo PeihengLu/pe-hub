@@ -1069,6 +1069,28 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
         
         return dloader
+
+    def capture_stderr_during_run(self) -> bool:
+        return True
+
+    def predict_on_frame(
+        self,
+        df: pd.DataFrame,
+        *,
+        progress_log: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ) -> List[float]:
+        if isinstance(self.model, PERNNDistributionModel):
+            predictions = self.predict(df)
+        else:
+            dloader = self.prepare_data(df, y_ref=["averageedited"])
+            predictions = self.predict(dloader)
+        if len(predictions) != len(df):
+            raise ValueError(
+                f"PRIDICT2 returned {len(predictions)} predictions for "
+                f"{len(df)} input rows."
+            )
+        return predictions
     
     def predict(self, data: Any, batch_size: int = 500) -> List[float]:
         """

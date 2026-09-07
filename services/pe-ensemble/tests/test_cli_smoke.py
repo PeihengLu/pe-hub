@@ -75,14 +75,11 @@ def peen_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "status": "succeeded",
         "result": {"weights_id": "stub-weights", "metrics": {"pearson": 0.9}},
     }
-    monkeypatch.setattr("pe_ensemble.cli.get_scheduler", lambda: _QueueOnlyScheduler())
-    monkeypatch.setattr("pe_ensemble.cli.execute_tuning", lambda *a, **k: {"best_value": 0.1, "n_trials": 1})
-    monkeypatch.setattr("pe_ensemble.cli.execute_evaluation", lambda *a, **k: succeeded["result"])
-    monkeypatch.setattr("pe_ensemble.cli.execute_ensemble", lambda *a, **k: succeeded["result"])
-    monkeypatch.setattr("pe_ensemble.cli.wait_for_train_job", lambda job_id, **k: succeeded)
-    monkeypatch.setattr("pe_ensemble.cli.wait_for_tune_job", lambda job_id, **k: succeeded)
-    monkeypatch.setattr("pe_ensemble.cli.wait_for_eval_job", lambda job_id, **k: succeeded)
-    monkeypatch.setattr("pe_ensemble.cli.wait_for_ensemble_job", lambda job_id, **k: succeeded)
+    monkeypatch.setattr("pe_ensemble.library.get_scheduler", lambda: _QueueOnlyScheduler())
+    monkeypatch.setattr("pe_ensemble.library.execute_tuning", lambda *a, **k: {"best_value": 0.1, "n_trials": 1})
+    monkeypatch.setattr("pe_ensemble.library.execute_evaluation", lambda *a, **k: succeeded["result"])
+    monkeypatch.setattr("pe_ensemble.library.execute_ensemble", lambda *a, **k: succeeded["result"])
+    monkeypatch.setattr("pe_ensemble.library.wait_for_job", lambda kind, job_id, **k: succeeded)
 
     from pe_ensemble.training import config as training_config
 

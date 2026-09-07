@@ -1,16 +1,6 @@
-export type SplitStrategy = 'none' | 'holdout_2' | 'holdout_3' | 'cv'
+export type { SplitExportParams, SplitStrategy } from '@apps/database/config/exportAttributes'
 
-export interface SplitExportParams {
-  split_strategy: SplitStrategy
-  train_pct?: number
-  val_pct?: number
-  test_pct?: number
-  cv_folds?: number
-  use_original_fold?: boolean
-  original_fold_test_value?: number
-  split_random_state?: number
-  merge?: boolean
-}
+import type { SplitExportParams } from '@apps/database/config/exportAttributes'
 
 export const DEFAULT_EVAL_SPLIT: SplitExportParams = {
   split_strategy: 'holdout_2',

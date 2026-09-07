@@ -6,10 +6,15 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from pe_common.filter_params import FILTER_LIST_FIELDS, coerce_list_param
+from pe_common.filter_params import (
+    coerce_list_param,
+    filter_kwargs_from_mapping,
+    known_filter_kwargs,
+    split_query_params_from_mapping,
+)
 from .conversion_progress import pe_db_filter_progress
 from .pe_db_access import fetch_pe_db_filter
-from .schemas import FilterValue, SplitQueryParams, TrainingRequest
+from .schemas import SplitQueryParams, TrainingRequest
 
 normalize_filter_param = coerce_list_param
 
@@ -18,56 +23,18 @@ def build_pe_db_filter_params(
     *,
     model_format: str,
     split: Optional[SplitQueryParams] = None,
-    study: Optional[FilterValue] = None,
-    dataset: Optional[FilterValue] = None,
-    cell_line: Optional[FilterValue] = None,
-    pe_system: Optional[FilterValue] = None,
-    edit_type: Optional[FilterValue] = None,
-    edit_length: Optional[FilterValue] = None,
-    edit_efficiency_min: Optional[float] = None,
-    edit_efficiency_max: Optional[float] = None,
-    edit_scope: Optional[FilterValue] = None,
-    experimental_method: Optional[FilterValue] = None,
-    target_context: Optional[FilterValue] = None,
-    scaffold_name: Optional[FilterValue] = None,
+    **filters: Any,
 ) -> Dict[str, Any]:
+    known_filter_kwargs(filters)
     split = split or SplitQueryParams()
     params: Dict[str, Any] = {
         "format": model_format,
-        "split_strategy": split.split_strategy,
-        "use_original_fold": split.use_original_fold,
-        "original_fold_test_value": split.original_fold_test_value,
-        "split_random_state": split.split_random_state,
-        "merge": split.merge,
+        **split_query_params_from_mapping(split.model_dump()),
     }
-    if split.train_pct is not None:
-        params["train_pct"] = split.train_pct
-    if split.val_pct is not None:
-        params["val_pct"] = split.val_pct
-    if split.test_pct is not None:
-        params["test_pct"] = split.test_pct
-    if split.cv_folds is not None:
-        params["cv_folds"] = split.cv_folds
-    values = {
-        "study": study,
-        "dataset": dataset,
-        "cell_line": cell_line,
-        "pe_system": pe_system,
-        "edit_type": edit_type,
-        "edit_length": edit_length,
-        "edit_scope": edit_scope,
-        "experimental_method": experimental_method,
-        "target_context": target_context,
-        "scaffold_name": scaffold_name,
-    }
-    for name in FILTER_LIST_FIELDS:
-        normalized = coerce_list_param(values[name])
-        if normalized is not None:
-            params[name] = normalized
-    if edit_efficiency_min is not None:
-        params["edit_efficiency_min"] = edit_efficiency_min
-    if edit_efficiency_max is not None:
-        params["edit_efficiency_max"] = edit_efficiency_max
+    extracted = filter_kwargs_from_mapping(filters)
+    for name, value in extracted.items():
+        if value is not None:
+            params[name] = value
     return params
 
 
@@ -105,23 +72,13 @@ def fetch_model_format_result(
     model_format: str,
     split: SplitQueryParams,
     records: Optional[List[Dict[str, Any]]] = None,
-    study: Optional[FilterValue] = None,
-    dataset: Optional[FilterValue] = None,
-    cell_line: Optional[FilterValue] = None,
-    pe_system: Optional[FilterValue] = None,
-    edit_type: Optional[FilterValue] = None,
-    edit_length: Optional[FilterValue] = None,
-    edit_efficiency_min: Optional[float] = None,
-    edit_efficiency_max: Optional[float] = None,
-    edit_scope: Optional[FilterValue] = None,
-    experimental_method: Optional[FilterValue] = None,
-    target_context: Optional[FilterValue] = None,
-    scaffold_name: Optional[FilterValue] = None,
     evaluation: bool = False,
     progress_log: Optional[Callable[[str], None]] = None,
+    **filters: Any,
 ) -> ModelFormatFetchResult:
     from pe_common.splits import select_evaluation_partition
 
+    known_filter_kwargs(filters)
     if records is not None:
         df = pd.DataFrame(records)
         if evaluation and split.split_strategy != "none":
@@ -137,18 +94,7 @@ def fetch_model_format_result(
     params = build_pe_db_filter_params(
         model_format=model_format,
         split=split,
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
-        edit_type=edit_type,
-        edit_length=edit_length,
-        edit_efficiency_min=edit_efficiency_min,
-        edit_efficiency_max=edit_efficiency_max,
-        edit_scope=edit_scope,
-        experimental_method=experimental_method,
-        target_context=target_context,
-        scaffold_name=scaffold_name,
+        **filters,
     )
     if progress_log is not None:
         progress_log(f"Fetching {model_format} data from PE-DB (conversion may take a while)...")
@@ -182,37 +128,15 @@ def fetch_model_format_dataframe(
     model_format: str,
     split: SplitQueryParams,
     records: Optional[List[Dict[str, Any]]] = None,
-    study: Optional[FilterValue] = None,
-    dataset: Optional[FilterValue] = None,
-    cell_line: Optional[FilterValue] = None,
-    pe_system: Optional[FilterValue] = None,
-    edit_type: Optional[FilterValue] = None,
-    edit_length: Optional[FilterValue] = None,
-    edit_efficiency_min: Optional[float] = None,
-    edit_efficiency_max: Optional[float] = None,
-    edit_scope: Optional[FilterValue] = None,
-    experimental_method: Optional[FilterValue] = None,
-    target_context: Optional[FilterValue] = None,
-    scaffold_name: Optional[FilterValue] = None,
     evaluation: bool = False,
+    **filters: Any,
 ) -> pd.DataFrame:
     return fetch_model_format_result(
         model_format=model_format,
         split=split,
         records=records,
-        study=study,
-        dataset=dataset,
-        cell_line=cell_line,
-        pe_system=pe_system,
-        edit_type=edit_type,
-        edit_length=edit_length,
-        edit_efficiency_min=edit_efficiency_min,
-        edit_efficiency_max=edit_efficiency_max,
-        edit_scope=edit_scope,
-        experimental_method=experimental_method,
-        target_context=target_context,
-        scaffold_name=scaffold_name,
         evaluation=evaluation,
+        **filters,
     ).df
 
 
@@ -226,18 +150,7 @@ def fetch_training_dataframe(
         model_format=model_format,
         split=request.split,
         records=request.records,
-        study=request.study,
-        dataset=request.dataset,
-        cell_line=request.cell_line,
-        pe_system=request.pe_system,
-        edit_type=request.edit_type,
-        edit_length=request.edit_length,
-        edit_efficiency_min=request.edit_efficiency_min,
-        edit_efficiency_max=request.edit_efficiency_max,
-        edit_scope=request.edit_scope,
-        experimental_method=request.experimental_method,
-        target_context=request.target_context,
-        scaffold_name=request.scaffold_name,
         evaluation=False,
         progress_log=progress_log,
+        **filter_kwargs_from_mapping(request.model_dump()),
     ).df

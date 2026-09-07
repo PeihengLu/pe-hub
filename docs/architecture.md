@@ -189,11 +189,11 @@ both services. Usage: [`packages/pe-common/README.md`](../packages/pe-common/REA
 | `sequence_utils.py` | 202 | `align_wt_mut_sequences`, padding insert/remove, coordinate shifting |
 | `data_utils.py` | 251 | Frame helpers and `TARGET_UID_COLUMN`, the universal locus key used for leak audits |
 | `features.py` | 276 | MFE (ViennaRNA), melting temperature, GC content. Lazy-imported |
-| `model_interface.py` | 70 | `BasePEModel` — the contract every wrapper and plugin implements |
+| `model_interface.py` | ~110 | `BasePEModel` — wrappers implement train/eval/predict; default hooks cover OPED prepare and PRIDICT2 stderr |
 | `plugins.py` | 392 | Plugin manifest parsing and discovery |
 | `plugin_validation.py` | 501 | The validation harness that gates plugin activation |
 | `cell_lines.py` | 83 | Cell-line name normalization |
-| `filter_params.py` | ~70 | Catalog/edit filter field names shared by `pedb`, `peen`, and `filter_from_params` |
+| `filter_params.py` | ~280 | Catalog/edit/split field lists shared by CLI, FastAPI Query models, request bodies, and the TypeScript client |
 | `conversion_progress.py` | 44 | Progress reporting shared with PE-DB conversion |
 
 `training.py` and `features.py` are loaded lazily because they pull in torch and
@@ -282,10 +282,10 @@ Model service. Usage and API: [`services/pe-ensemble/README.md`](../services/pe-
 
 ### `pe_ensemble/` — FastAPI
 
-`main.py` (1014) holds every route: models and weights, `/train`, `/tune`,
-`/evaluate`, `/ensemble`, plugin management, and `/devices`. `plugin_loader.py`
-imports plugin wrappers. `train_models.py` and `tune_models.py` are thin script
-entry points.
+`main.py` holds every HTTP route. Job create/submit/status/logs/kill and
+catalog lookups go through `library.py`; plugin upload/validate still talks
+to `plugins/manager.py`. `plugin_loader.py` imports plugin wrappers.
+`train_models.py` and `tune_models.py` are thin script entry points.
 
 ### `pe_ensemble/models/` — wrappers and the weight registry
 
@@ -311,7 +311,7 @@ Weight-set layout, ID conventions and manifest fields:
 
 | Module | Lines | Responsibility |
 |---|---:|---|
-| `runner.py` | 292 | `execute_training` — the end-to-end training path |
+| `runner.py` | ~280 | `execute_training` — fetch, wrapper hooks, train, register weights |
 | `tune_study.py` | 238 | Optuna study lifecycle, preset writing, optional final train |
 | `tune_runner.py` | 221 | One Optuna trial; extracts the objective metric per model |
 | `search_spaces.py` | 229 | Per-model search spaces and objective metric names |
@@ -347,12 +347,13 @@ layers entirely, which is what tuning trials use.
 
 ### `pe_ensemble/evaluation/`, `pe_ensemble/ensemble/`, `pe_ensemble/plugins/`
 
-- `evaluation/` — `runner.py` (281) evaluates on the test partition only;
+- `evaluation/` — `runner.py` evaluates on the test partition only, using
+  wrapper `prepare_evaluation_frame` / stderr-capture hooks;
   `leakage.py` (554) compares a weight set's recorded training loci against the
   evaluation set and warns or excludes; `benchmark.py` (108) resolves named
   benchmarks.
-- `ensemble/` — `combine.py` (214) fuses member predictions; `runner.py` (470)
-  orchestrates multi-model ensemble jobs.
+- `ensemble/` — `combine.py` (214) fuses member predictions; `runner.py`
+  orchestrates multi-model jobs via `predict_on_frame`.
 - `plugins/` — `manager.py` (578) handles upload, activation and removal;
   `validation_jobs.py` is a thin `JobStore` wrapper around validation manifests.
 
@@ -363,9 +364,10 @@ and `mark_succeeded` helpers; the shared filesystem mechanics live in
 
 ### `pe_ensemble/` — CLI
 
-`cli.py` (787) is the `peen` entry point (`train`, `tune`, `evaluate`,
-`ensemble`, `jobs`, `logs`, `devices`, `models`). `library.py` exposes the
-in-process API.
+`cli.py` is the `peen` entry point (`train`, `tune`, `evaluate`,
+`ensemble`, `jobs`, `logs`, `devices`, `models`). `main.py` is FastAPI.
+Both call `pe_ensemble.library` for jobs, catalog, PE-DB filter, and
+runners — the same split as `pedb` / `pe_db.main` and `pe_db.library`.
 
 ## Code map: `pe-hub` (frontend)
 
@@ -394,7 +396,9 @@ src/
 
 Top-level sections are `home`, `database`, `ensemble` and `add-model`; within
 `ensemble` the sub-pages are `benchmark`, `design`, `train`, `ensemble` and
-`docs`.
+`docs`. Filter/split query field names live once in
+`apps/database/config/exportAttributes.ts` (`FILTER_LIST_FIELDS`,
+`SPLIT_QUERY_FIELDS`) and must match `pe_common.filter_params`.
 
 ## Directories that are not source
 

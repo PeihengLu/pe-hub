@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { ENSEMBLE_API_URL } from '@config/services'
-import type { SplitExportParams } from '@apps/ensemble/config/splitParams'
+import type { CatalogFilterParams, SplitExportParams } from '@apps/database/config/exportAttributes'
 
 const apiClient = axios.create({
   baseURL: ENSEMBLE_API_URL,
@@ -98,25 +98,13 @@ export interface JobDeleteAcceptedResponse {
   status: TrainingJobStatus | 'deleted'
 }
 
-export interface TrainingRequest {
+export interface TrainingRequest extends CatalogFilterParams {
   model_name: string
   dataset_source: string
   dataset_name: string
   hyperparameters?: Record<string, unknown>
   hyperparameter_mode?: 'merge' | 'replace'
   split?: SplitExportParams
-  study?: string[]
-  dataset?: string[]
-  cell_line?: string[]
-  pe_system?: string[]
-  edit_type?: string[]
-  edit_length?: number[]
-  edit_scope?: string[]
-  experimental_method?: string[]
-  target_context?: string[]
-  scaffold_name?: string[]
-  edit_efficiency_min?: number
-  edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   model_kwargs?: Record<string, unknown>
   notes?: string
@@ -161,23 +149,11 @@ export interface TrainingJobsListResponse {
 
 export type BenchmarkJobStatus = TrainingJobStatus
 
-export interface EvaluationRequest {
+export interface EvaluationRequest extends CatalogFilterParams {
   model_name: string
   benchmark_name?: string
   weights: string
   split?: SplitExportParams
-  study?: string[]
-  dataset?: string[]
-  cell_line?: string[]
-  pe_system?: string[]
-  edit_type?: string[]
-  edit_length?: number[]
-  edit_scope?: string[]
-  experimental_method?: string[]
-  target_context?: string[]
-  scaffold_name?: string[]
-  edit_efficiency_min?: number
-  edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   device?: string
   auto_training_benchmark?: boolean
@@ -246,24 +222,12 @@ export interface EnsembleMemberInput {
   member_weight?: number
 }
 
-export interface EnsembleRequest {
+export interface EnsembleRequest extends CatalogFilterParams {
   ensemble_name: string
   combine: CombineMethod
   combine_options?: Record<string, unknown>
   members: EnsembleMemberInput[]
   split?: SplitExportParams
-  study?: string[]
-  dataset?: string[]
-  cell_line?: string[]
-  pe_system?: string[]
-  edit_type?: string[]
-  edit_length?: number[]
-  edit_scope?: string[]
-  experimental_method?: string[]
-  target_context?: string[]
-  scaffold_name?: string[]
-  edit_efficiency_min?: number
-  edit_efficiency_max?: number
   records?: Record<string, unknown>[]
   device?: string
   allow_data_leak?: boolean

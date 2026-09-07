@@ -2,7 +2,7 @@ import sys
 import os
 import hashlib
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, cast
+from typing import Callable, List, Dict, Any, Optional, Tuple, cast
 import pandas as pd
 import torch
 import numpy as np
@@ -596,7 +596,32 @@ class OPEDModelWrapper(BasePEModel):
                 pd.to_pickle(encoded_full, cache_path)
 
         return encoded_full
-    
+
+    def prepare_training_frame(
+        self,
+        df: pd.DataFrame,
+        *,
+        progress_log: Optional[Callable[[str], None]] = None,
+    ) -> Any:
+        if progress_log is not None:
+            progress_log(f"Tokenizing {len(df)} OPED sequences for training...")
+        encoded = self.prepare_data(df)
+        if progress_log is not None:
+            progress_log(f"Encoded {len(encoded)} rows; starting training loop")
+        return encoded
+
+    def prepare_evaluation_frame(self, df: pd.DataFrame) -> Any:
+        return self.prepare_data(df)
+
+    def predict_on_frame(
+        self,
+        df: pd.DataFrame,
+        *,
+        progress_log: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], None]] = None,
+    ) -> List[float]:
+        return self.predict(self.prepare_data(df))
+
     def predict(self, data: pd.DataFrame, batch_size: int = 1024) -> List[float]:
         """
         Make predictions using OPED model
