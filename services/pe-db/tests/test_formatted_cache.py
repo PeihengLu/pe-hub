@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.converter import DataConverter
-from app.formatted_cache import (
+from pe_db.converter import DataConverter
+from pe_db.formatted_cache import (
     FORMATTED_CACHE_REVISIONS,
     clear_cached_data,
     clear_formatted_cache,
@@ -18,7 +18,7 @@ from app.formatted_cache import (
     load_formatted_cache,
     save_formatted_cache,
 )
-from app.utils.convert_data import standardized_to_oped_dataframe
+from pe_db.utils.convert_data import standardized_to_oped_dataframe
 
 
 @pytest.fixture()
@@ -309,7 +309,7 @@ def test_load_or_convert_formatted_restores_source_index(
 def test_convert_pending_sheets_via_formatted_cache_aligns_with_merge(
     datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    from app.db.repository import _convert_pending_sheets_via_formatted_cache
+    from pe_db.db.repository import _convert_pending_sheets_via_formatted_cache
 
     converter = DataConverter(datasets_dir)
     sheet_a = _sample_standardized()
@@ -384,7 +384,7 @@ def test_convert_pending_sheets_remaps_duplicate_seq_ids(
     datasets_dir: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """Per-sheet caches both use seq_0..; merge must uniquify for PRIDICT2."""
-    from app.db.repository import _convert_pending_sheets_via_formatted_cache
+    from pe_db.db.repository import _convert_pending_sheets_via_formatted_cache
 
     converter = DataConverter(datasets_dir)
     sheet_a = _sample_standardized()

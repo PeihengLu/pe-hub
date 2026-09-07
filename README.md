@@ -162,7 +162,7 @@ Run backends individually (after `./scripts/install-clis.sh`):
 ```bash
 # PE Database
 cd services/pe-db
-uvicorn app.main:app --reload --port 8000
+uvicorn pe_db.main:app --reload --port 8000
 
 # PE Ensemble
 cd services/pe-ensemble
@@ -223,13 +223,13 @@ pe-hub/
 
 On PE Database startup, `initialize_database()` runs three steps:
 
-1. **Seed** — create SQL tables; insert studies, datasets, and scaffolds from Python registries (`app/catalog/`)
+1. **Seed** — create SQL tables; insert studies, datasets, and scaffolds from Python registries (`pe_db/catalog/`)
 2. **Export** — write `datasets/exported/` from raw files; register **Datasheet** rows in the catalog
 3. **Standardize** — write `datasets/standardized/` parquet from exported CSVs
 
 Edit-level measurements are **not** stored in SQL. They are loaded with Pandas from parquet/CSV behind the API. Catalog tables (`study`, `dataset`, `scaffold`, `datasheet`) are described in [`services/pe-db/README.md`](services/pe-db/README.md) and [`txt/diagrams/illustration/database_er.mmd`](txt/diagrams/illustration/database_er.mmd).
 
-Supported studies include DeepPrime, DeepPE, PRIDICT1, PRIDICT2, MinsePIE, and OptiPrime (see [`app/catalog/studies.py`](services/pe-db/app/catalog/studies.py)).
+Supported studies include DeepPrime, DeepPE, PRIDICT1, PRIDICT2, MinsePIE, and OptiPrime (see [`pe_db/catalog/studies.py`](services/pe-db/pe_db/catalog/studies.py)).
 
 - **Some datasets are only partially standardizable.** `pridict1/endogenous`,
 `pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`: their parquet files
@@ -388,7 +388,7 @@ Although I am trying my best to scour the internet for all the relevant data, I 
 
 ### Catalog metadata
 
-Register the study and dataset(s) in [`services/pe-db/app/catalog/studies.py`](services/pe-db/app/catalog/studies.py), add exporters and standardizers in [`services/pe-db/app/studies/<study>.py`](services/pe-db/app/studies/) (`register_study(...)` plus one import in `load_studies()`), and place raw source files under `datasets/raw/<study>/`.
+Register the study and dataset(s) in [`services/pe-db/pe_db/catalog/studies.py`](services/pe-db/pe_db/catalog/studies.py), add exporters and standardizers in [`services/pe-db/pe_db/studies/<study>.py`](services/pe-db/pe_db/studies/) (`register_study(...)` plus one import in `load_studies()`), and place raw source files under `datasets/raw/<study>/`.
 
 **Study**
 

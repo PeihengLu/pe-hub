@@ -39,4 +39,4 @@ pedb = "pe_db.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "pe_db*"]
+include = ["pe_db*"]

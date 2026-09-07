@@ -65,10 +65,10 @@ Adding a model today requires editing ~9 hardcoded locations that must agree:
 
 | Location                    | Constant / code                                                           |
 | --------------------------- | ------------------------------------------------------------------------- |
-| `app/formats/<name>.py` | `standardized_to_*_dataframe()` functions |
-| `app/converter.py:123`      | if/elif format dispatch                                                   |
-| `app/formatted_cache.py:15` | `FORMATTED_MODEL_FORMATS` frozenset                                       |
-| `app/main.py:219`           | `Literal["std","oped","deepprime","pridict","pridict2"]` on `/api/filter` |
+| `pe_db/formats/<name>.py` | `standardized_to_*_dataframe()` functions |
+| `pe_db/converter.py:123`      | if/elif format dispatch                                                   |
+| `pe_db/formatted_cache.py:15` | `FORMATTED_MODEL_FORMATS` frozenset                                       |
+| `pe_db/main.py:219`           | `Literal["std","oped","deepprime","pridict","pridict2"]` on `/api/filter` |
 
 
 Two enabling pieces already exist and are unused:
@@ -197,7 +197,7 @@ def convert(std_df: pd.DataFrame) -> pd.DataFrame:
 ```
 
 This is the same shape as the existing `standardized_to_*_dataframe()` functions
-in `app/formats/`; row-order preservation is the one hard rule
+in `pe_db/formats/`; row-order preservation is the one hard rule
 (because `/api/filter` converts the full datasheet then subsets by index at
 `repository.py:430`).
 

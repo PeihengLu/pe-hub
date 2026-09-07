@@ -48,7 +48,7 @@ Custom env name: `./scripts/setup-python-env.sh --name pedb --install`
 cd services/pe-db && pe-db init
 
 # Individual backends
-cd services/pe-db && uvicorn app.main:app --reload --port 8000
+cd services/pe-db && uvicorn pe_db.main:app --reload --port 8000
 cd services/pe-ensemble && PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
 cd pe-hub && npm run dev
 ```

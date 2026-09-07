@@ -37,7 +37,7 @@ from .splits import SplitConfig, assign_splits, split_config_from_params, summar
 from .filter_params import FILTER_LIST_FIELDS, coerce_list_param
 
 # NOTE: standardized -> model-format conversion lives in the PE-DB service
-# (services/pe-db/app/formats/) and is exposed via GET /api/filter.
+# (services/pe-db/pe_db/formats/) and is exposed via GET /api/filter.
 # PE-Ensemble consumes model-format data from that endpoint; pe-common stays
 # free of model-specific conversion logic.
 

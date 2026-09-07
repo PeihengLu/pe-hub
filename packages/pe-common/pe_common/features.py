@@ -211,7 +211,7 @@ def batch_calculate_features(
       *_rna_mfe, *_tm_wallace, *_gc_content
 
     DeepSpCas9 on-target scoring is owned by the PE-DB service
-    (services/pe-db/app/utils/deepspcas9.py); it is not computed here.
+    (services/pe-db/pe_db/utils/deepspcas9.py); it is not computed here.
     """
     # copy to avoid mutating input
     df_in: pd.DataFrame = df.copy().reset_index(drop=True)

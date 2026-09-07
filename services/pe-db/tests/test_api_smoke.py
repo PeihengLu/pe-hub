@@ -62,7 +62,7 @@ ROUTE_CASES: dict[tuple[str, str], tuple[RouteCall, int]] = {
 
 @pytest.fixture
 def pe_db_client(seeded_catalog, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    from app.main import app
+    from pe_db.main import app
 
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan
@@ -74,7 +74,7 @@ def pe_db_client(seeded_catalog, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def test_api_route_inventory_matches_app():
-    from app.main import app
+    from pe_db.main import app
 
     actual = _http_routes(app)
     declared = set(ROUTE_CASES)

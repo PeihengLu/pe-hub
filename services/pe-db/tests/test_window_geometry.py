@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "pe-common"))
 
-from app.utils.standardize_data import (  # noqa: E402
+from pe_db.utils.standardize_data import (  # noqa: E402
     _MINSEPIE_WIDE_FLANK_BP,
     _build_minsepie_core_target_sequences,
     _locate_optiprime_protospacer,

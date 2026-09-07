@@ -28,7 +28,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "services" / "pe-db"))
 sys.path.insert(0, str(REPO / "packages" / "pe-common"))
 
-from app.formatted_cache import clear_cached_data  # noqa: E402
+from pe_db.formatted_cache import clear_cached_data  # noqa: E402
 
 
 def _build_parser() -> argparse.ArgumentParser:

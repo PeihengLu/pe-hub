@@ -36,10 +36,10 @@ file:
 | Stage | Written by | Trigger |
 |---|---|---|
 | `raw/` | Humans (committed) | — |
-| `exported/` | `app/studies/<study>.py` exporters via `app/pipeline/run.py` | Startup, per missing dataset, or `force_reexport` |
-| `standardized/` | `app/studies/<study>.py` standardizers via `app/pipeline/run.py` | Startup, or `force_standardize` |
-| `formatted/` | converters in `services/pe-db/app/formats/` | On demand from `format=` requests, then cached |
-| `catalog/` | `services/pe-db/app/catalog/seed.py` + `datasheets.py` | Startup |
+| `exported/` | `pe_db/studies/<study>.py` exporters via `pe_db/pipeline/run.py` | Startup, per missing dataset, or `force_reexport` |
+| `standardized/` | `pe_db/studies/<study>.py` standardizers via `pe_db/pipeline/run.py` | Startup, or `force_standardize` |
+| `formatted/` | converters in `services/pe-db/pe_db/formats/` | On demand from `format=` requests, then cached |
+| `catalog/` | `services/pe-db/pe_db/catalog/seed.py` + `datasheets.py` | Startup |
 
 Export is skipped **per dataset**, not per study, so registering a new dataset
 picks it up on the next startup without a forced rebuild. Standardization
@@ -90,7 +90,7 @@ or ``force_standardize``.
 
 ## Studies
 
-Registered in `services/pe-db/app/catalog/studies.py`:
+Registered in `services/pe-db/pe_db/catalog/studies.py`:
 
 | Study | Raw path | Notes |
 |-------|----------|-------|
@@ -101,7 +101,7 @@ Registered in `services/pe-db/app/catalog/studies.py`:
 | `deeppe` | `raw/deeppe/` | DeepPE benchmark sets |
 
 Some datasets are **partially standardizable** (metadata-only conversion). Set
-`partial=True` on the `DatasetRecord` in `services/pe-db/app/catalog/studies.py`.
+`partial=True` on the `DatasetRecord` in `services/pe-db/pe_db/catalog/studies.py`.
 
 ## Model-specific notes
 

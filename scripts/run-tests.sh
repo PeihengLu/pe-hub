@@ -2,9 +2,9 @@
 #
 # Run PE-Hub tests in isolated pytest processes.
 #
-# pe-db and pe-ensemble both expose a top-level ``app`` package, so each suite
-# gets its own interpreter. PYTHONPATH is set per suite so imports resolve
-# without an editable install.
+# pe-ensemble still exposes a top-level ``app`` package; pe-db lives under
+# ``pe_db``. Each suite gets its own interpreter and PYTHONPATH so imports
+# resolve without an editable install and plugin state stays per suite.
 #
 # Usage:
 #   ./scripts/run-tests.sh                 # every suite

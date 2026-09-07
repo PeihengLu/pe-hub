@@ -1,7 +1,7 @@
-"""Installable PE Database library package (CLI + in-process access).
+"""Installable PE Database package (FastAPI service, CLI, and in-process library).
 
-The FastAPI service lives under ``app/``; this namespace is the stable import
-path for headless use (``pe-db`` CLI and ``pe-ensemble`` CLI).
+``pe_db.library`` is the stable import path for headless use (``pedb`` and
+in-process ``peen``). The HTTP app is ``pe_db.main:app``.
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 """Standardized-to-model format converters hosted in pe-db service.
 
-Implementation lives in ``app.formats``; this module re-exports the public
+Implementation lives in ``pe_db.formats``; this module re-exports the public
 surface (and a few private helpers tests and MFE workers still import).
 """
 from __future__ import annotations

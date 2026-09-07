@@ -31,7 +31,7 @@ Two rules explain most of the layout:
 
 1. **PE-DB owns data shape.** Converting standardized rows into DeepPrime /
    PRIDICT / OPED / OptiPrime columns happens only in
-   `services/pe-db/app/formats/`. PE-Ensemble asks for data in a
+   `services/pe-db/pe_db/formats/`. PE-Ensemble asks for data in a
    model's native format and never converts standardized rows itself. This is
    why every wrapper's `prepare_data` validates its columns and raises with a
    "fetch from PE-DB" message rather than trying to fix the frame.
@@ -50,24 +50,24 @@ server.
 
 ```
 datasets/raw/<study>/            Original published files (Excel, CSV)
-  │   export_original_data()             app/pipeline/run.py → app/studies/<name>.py
+  │   export_original_data()             pe_db/pipeline/run.py → pe_db/studies/<name>.py
   ▼
 datasets/exported/<study>/<dataset>/<cell_line>-<pe_system>.csv
   │                                      Per-study column renaming, one CSV per datasheet
-  │   standardize_exported_data()        app/pipeline/run.py → app/studies/<name>.py
+  │   standardize_exported_data()        pe_db/pipeline/run.py → pe_db/studies/<name>.py
   ▼
 datasets/standardized/<study>/<dataset>/<cell_line>-<pe_system>.parquet
   │                                      Shared schema, 0-based half-open coordinates
-  │   format_registry.convert_standardized()   app/format_registry.py → app/formats/
+  │   format_registry.convert_standardized()   pe_db/format_registry.py → pe_db/formats/
   ▼
 datasets/formatted/<format>/...          Cached model-native columns
-  │                                      app/formatted_cache.py
+  │                                      pe_db/formatted_cache.py
   ▼
 GET /api/filter?format=…&split_strategy=…    Filtered + split-assigned model input
 ```
 
 Three stages run on PE-DB startup via `initialize_database()`
-(`app/catalog/initialize.py`): **seed** the catalog from the Python registries,
+(`pe_db/catalog/initialize.py`): **seed** the catalog from the Python registries,
 **export** raw files, then **standardize** exported CSVs.
 
 Things worth knowing about this pipeline:
@@ -200,21 +200,23 @@ ViennaRNA; importing `pe_common` alone stays cheap.
 
 Catalog and data service. Usage and API: [`services/pe-db/README.md`](../services/pe-db/README.md).
 
-### `app/` — service internals
+### `pe_db/` — installable package
 
 | Module | Lines | Responsibility |
 |---|---:|---|
 | `main.py` | ~300 | FastAPI catalog/filter/health routes (`/api/studies`, `/api/filter`, …) |
 | `library.py` | 349 | Headless equivalent of the HTTP API; what `pedb` and in-process `peen` call |
+| `cli.py` | ~370 | `pedb` / `pe-db` console entry |
 | `converter.py` | 199 | Orchestrates export → standardize → model-format conversion, with cache lookup |
 | `format_registry.py` | 89 | Maps a format name (`std`, `deepprime`, `pridict`, `pridict2`, `oped`, `optiprime`, plus plugin formats) to its converter |
 | `formatted_cache.py` | 311 | Revision-gated on-disk cache of converted frames |
 | `loaders.py` | 120 | Reads standardized parquet; normalizes `-`/`_` in path segments |
 | `plugin_loader.py` | 182 | Registers converters contributed by plugins |
 | `process_pool.py` | 40 | Worker pool for the expensive MFE feature pass |
+| `mfe_worker.py` | ~25 | Spawn-safe PRIDICT2 MFE worker entry |
 | `config.py` | 39 | Paths and environment flags |
 
-### `app/catalog/` — what data exists
+### `pe_db/catalog/` — what data exists
 
 | Module | Lines | Responsibility |
 |---|---:|---|
@@ -226,9 +228,9 @@ Catalog and data service. Usage and API: [`services/pe-db/README.md`](../service
 | `initialize.py` | 34 | The startup sequence: seed → export → standardize |
 
 Adding a study means catalog rows in `studies.py` plus a pipeline module under
-`app/studies/` — see [README § Contributing data](../README.md#contributing-data).
+`pe_db/studies/` — see [README § Contributing data](../README.md#contributing-data).
 
-### `app/pipeline/` and `app/studies/` — the pipeline
+### `pe_db/pipeline/` and `pe_db/studies/` — the pipeline
 
 | Module | Responsibility |
 |---|---|
@@ -237,7 +239,7 @@ Adding a study means catalog rows in `studies.py` plus a pipeline module under
 | `pipeline/schema.py` | Shared standardized columns and builders |
 | `studies/<name>.py` | Per-study export + standardize (no edits to the orchestrator) |
 
-### `app/formats/` — model-native converters
+### `pe_db/formats/` — model-native converters
 
 | Module | Responsibility |
 |---|---|
@@ -250,16 +252,16 @@ Adding a study means catalog rows in `studies.py` plus a pipeline module under
 
 `utils/convert_data.py` re-exports these for tests and the MFE process-pool worker.
 
-### `app/utils/` — scoring helpers
+### `pe_db/utils/` — scoring helpers
 
 | Module | Responsibility |
 |---|---|
 | `deepspcas9.py` | Extracts 30-mer windows and fills missing SpCas9 scores (TensorFlow 1.x model) |
 | `json_utils.py` | NaN/Inf-safe JSON encoding for API responses |
 
-`pipeline/` plus `studies/` own export and standardization. To trace one dataset, find its `app/studies/<name>.py` module.
+`pipeline/` plus `studies/` own export and standardization. To trace one dataset, find its `pe_db/studies/<name>.py` module.
 
-### `app/db/` — SQL layer
+### `pe_db/db/` — SQL layer
 
 | Module | Lines | Responsibility |
 |---|---:|---|
@@ -269,11 +271,7 @@ Adding a study means catalog rows in `studies.py` plus a pipeline module under
 | `session.py` | 55 | Engine and session lifecycle |
 | `base.py` | 7 | Declarative base |
 
-### `pe_db/` — CLI and public library
-
-`cli.py` (372) is the `pedb` entry point; `library.py` re-exports `app.library`
-as a stable import surface; `mfe_worker.py` is the subprocess body for the MFE
-pool; `_bootstrap.py` fixes up `sys.path` for editable installs.
+HTTP is `uvicorn pe_db.main:app`. Ensemble still uses a top-level `app` package.
 
 ## Code map: `services/pe-ensemble`
 
@@ -400,7 +398,7 @@ Top-level sections are `home`, `database`, `ensemble` and `add-model`; within
 |---|---|
 | `src/` | **Empty legacy shell.** Only a README explaining where the code moved. No imports reference it |
 | `services/pe-ensemble/frontend/` | **Retired.** Superseded by `pe-hub/` |
-| `services/pe-db/build/` | **Stale build output.** Mirrors `app/`; not the source of truth |
+| `services/pe-db/build/` | **Stale build output.** Not the source of truth |
 | `vendor/models/` | Third-party model code (git submodules) |
 | `checkpoints/`, `artifacts/` | Scratch output, gitignored. Nothing in the service reads them |
 | `datasets/`, `results/` | Data and experiment output; DVC-tracked, not in git |

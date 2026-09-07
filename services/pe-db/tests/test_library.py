@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.library import (
+from pe_db.library import (
     PeDbLibraryError,
     catalog_statistics,
     filter_data,

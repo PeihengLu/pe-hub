@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, str(PE_DB))
 sys.path.insert(0, str(REPO / "packages" / "pe-common"))
 
-from app.utils.convert_data import (  # noqa: E402
+from pe_db.utils.convert_data import (  # noqa: E402
     standardized_to_deepprime_dataframe,
     standardized_to_oped_dataframe,
     standardized_to_pridict_dataframe,

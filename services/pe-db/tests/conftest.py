@@ -1,8 +1,8 @@
 """Pytest path setup for pe-db tests.
 
-Ensures ``app`` resolves to ``services/pe-db/app``. Paths are applied only while
-pe-db tests are being collected (not at conftest import time), so pe-db and
-pe-ensemble suites can coexist in one pytest invocation.
+Puts ``services/pe-db`` on ``sys.path`` so ``pe_db`` imports resolve without an
+editable install. Paths are applied only while pe-db tests are being collected,
+so pe-db and pe-ensemble suites can coexist in one pytest invocation.
 
 For isolated runs, ``scripts/run-tests.sh`` is the recommended entry point.
 """
@@ -15,7 +15,6 @@ import pytest
 
 _SERVICE_ROOT = Path(__file__).resolve().parents[1]
 _PE_COMMON = Path(__file__).resolve().parents[3] / "packages" / "pe-common"
-_PE_DB_APP = _SERVICE_ROOT / "app"
 
 
 def _pe_db_path_in_sys_path() -> None:
@@ -24,18 +23,6 @@ def _pe_db_path_in_sys_path() -> None:
         while path in sys.path:
             sys.path.remove(path)
         sys.path.insert(0, path)
-
-
-def _purge_conflicting_app_modules() -> None:
-    app = sys.modules.get("app")
-    if app is None:
-        return
-    app_file = getattr(app, "__file__", "") or ""
-    if str(_PE_DB_APP) in app_file:
-        return
-    for name in list(sys.modules):
-        if name == "app" or name.startswith("app."):
-            del sys.modules[name]
 
 
 def _collector_path(collector) -> str:
@@ -63,7 +50,6 @@ def pytest_collectstart(collector) -> None:
     if not _is_under_pe_db_tests(collector):
         return
     _pe_db_path_in_sys_path()
-    _purge_conflicting_app_modules()
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -74,35 +60,28 @@ def pytest_make_collect_report(collector):
     if not path.endswith(".py"):
         return None
     _pe_db_path_in_sys_path()
-    _purge_conflicting_app_modules()
     return None
 
 
 def reset_pe_db_engine() -> None:
-    """Drop cached Settings and SQLAlchemy engines for both ``app`` import paths.
-
-    Tests import ``app.*`` directly; ``pedb`` goes through ``pe_db_service_app.*``.
-    Both copies cache Settings and a process-global engine.
-    """
-    for config_name in ("app.config", "pe_db_service_app.config"):
-        config_mod = sys.modules.get(config_name)
-        if config_mod is not None and hasattr(config_mod, "get_settings"):
-            config_mod.get_settings.cache_clear()
+    """Drop cached Settings and the process-global SQLAlchemy engine."""
+    config_mod = sys.modules.get("pe_db.config")
+    if config_mod is not None and hasattr(config_mod, "get_settings"):
+        config_mod.get_settings.cache_clear()
     try:
-        from app.config import get_settings as _app_get_settings
+        from pe_db.config import get_settings as _get_settings
 
-        _app_get_settings.cache_clear()
+        _get_settings.cache_clear()
     except ImportError:
         pass
-    for session_name in ("app.db.session", "pe_db_service_app.db.session"):
-        session_mod = sys.modules.get(session_name)
-        if session_mod is None:
-            continue
-        engine = getattr(session_mod, "_engine", None)
-        if engine is not None:
-            engine.dispose()
-        session_mod._engine = None
-        session_mod._SessionLocal = None
+    session_mod = sys.modules.get("pe_db.db.session")
+    if session_mod is None:
+        return
+    engine = getattr(session_mod, "_engine", None)
+    if engine is not None:
+        engine.dispose()
+    session_mod._engine = None
+    session_mod._SessionLocal = None
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +99,7 @@ def seeded_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("PLUGINS_ROOT", str(tmp_path / "plugins"))
     (tmp_path / "plugins").mkdir()
     reset_pe_db_engine()
-    from app.library import run_seed
+    from pe_db.library import run_seed
 
     run_seed()
     return tmp_path

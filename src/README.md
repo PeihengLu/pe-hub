@@ -17,8 +17,8 @@ been migrated into services and `packages/pe-common/`.
 
 ### Migrated to `services/pe-db/`
 
-- Data conversion → `app/converter.py`, `app/pipeline/`, `app/studies/`, `app/formats/`
-- Catalog metadata → `app/catalog/`
+- Data conversion → `pe_db/converter.py`, `pe_db/pipeline/`, `pe_db/studies/`, `pe_db/formats/`
+- Catalog metadata → `pe_db/catalog/`
 
 ### Migrated to `services/pe-ensemble/`
 

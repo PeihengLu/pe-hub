@@ -136,7 +136,7 @@ Abstract `BasePEModel` contract implemented by Ensemble wrappers (`load_model`,
 ## Design note
 
 Standardized → model-format conversion lives in the **PE-DB** service
-(`services/pe-db/app/formats/`, exposed via `GET /api/filter`).
+(`services/pe-db/pe_db/formats/`, exposed via `GET /api/filter`).
 `pe-common` intentionally stays free of model-specific conversion logic.
 
 ## Usage

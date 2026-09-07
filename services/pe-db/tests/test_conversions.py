@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "pe-common"))
 
-from app.utils.convert_data import (  # noqa: E402
+from pe_db.utils.convert_data import (  # noqa: E402
     PRIDICT2_NORMALIZER_COLUMNS,
     _compute_deepprime_thermo_features,
     is_standardized_dataframe,
@@ -22,7 +22,7 @@ from app.utils.convert_data import (  # noqa: E402
     standardized_to_optiprime_dataframe,
     standardized_to_pridict_dataframe,
 )
-from app.utils.standardize_data import (  # noqa: E402
+from pe_db.utils.standardize_data import (  # noqa: E402
     _build_standardized_output_df,
     _coerce_original_fold,
     _drop_unmeasured_efficiency_rows,

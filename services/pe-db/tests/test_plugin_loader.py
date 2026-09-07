@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.format_registry import convert_standardized, is_format_registered
-from app.plugin_loader import load_active_plugins
+from pe_db.format_registry import convert_standardized, is_format_registered
+from pe_db.plugin_loader import load_active_plugins
 
 
 @pytest.fixture()

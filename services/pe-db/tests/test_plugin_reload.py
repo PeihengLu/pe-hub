@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.plugin_loader import _loaded_plugins, _quarantined_plugins, load_active_plugins, reload_active_plugins
+from pe_db.plugin_loader import _loaded_plugins, _quarantined_plugins, load_active_plugins, reload_active_plugins
 
 
 @pytest.fixture()

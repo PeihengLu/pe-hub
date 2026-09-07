@@ -24,7 +24,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Start the PE Database API (uvicorn app.main:app).
+Start the PE Database API (uvicorn pe_db.main:app).
 
 Options:
   --install         Install Python dependencies before starting
@@ -134,8 +134,8 @@ if [[ "${INSTALL_DEPS}" == true ]]; then
     echo "Dependencies installed."
 fi
 
-if ! (cd "${SERVICE_DIR}" && "${PYTHON}" -c "import uvicorn, app.main"); then
-    echo "Error: missing Python dependencies (uvicorn and/or app.main)." >&2
+if ! (cd "${SERVICE_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main"); then
+    echo "Error: missing Python dependencies (uvicorn and/or pe_db.main)." >&2
     echo "Active Python: ${PYTHON}" >&2
     echo "Run: $(basename "$0") --install" >&2
     exit 1
@@ -144,7 +144,7 @@ fi
 cd "${SERVICE_DIR}"
 
 UVICORN_ARGS=(
-    app.main:app
+    pe_db.main:app
     --host "${HOST}"
     --port "${PORT}"
     --timeout-graceful-shutdown 5
@@ -152,7 +152,7 @@ UVICORN_ARGS=(
 if [[ "${RELOAD}" == true ]]; then
     UVICORN_ARGS+=(
         --reload
-        --reload-dir "${SERVICE_DIR}/app"
+        --reload-dir "${SERVICE_DIR}/pe_db"
         --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
     )
 fi

@@ -1,4 +1,4 @@
-"""Pipeline orchestration. Prefer ``app.pipeline.run`` for new code."""
+"""Pipeline orchestration. Prefer ``pe_db.pipeline.run`` for new code."""
 from __future__ import annotations
 
 from ..pipeline.run import (

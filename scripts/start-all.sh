@@ -264,7 +264,7 @@ trap cleanup EXIT INT TERM
 
 start_pe_db() {
     local -a uvicorn_args=(
-        app.main:app
+        pe_db.main:app
         --host "${PE_DB_HOST}"
         --port "${PE_DB_PORT}"
         --timeout-graceful-shutdown 5
@@ -272,7 +272,7 @@ start_pe_db() {
     if [[ "${RELOAD}" == true ]]; then
         uvicorn_args+=(
             --reload
-            --reload-dir "${PE_DB_DIR}/app"
+            --reload-dir "${PE_DB_DIR}/pe_db"
             --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
         )
     fi
@@ -348,7 +348,7 @@ if [[ "${INSTALL_DEPS}" == true ]]; then
     echo "Dependencies installed."
 fi
 
-if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, app.main"); then
+if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main"); then
     echo "Error: PE Database dependencies missing. Run: $(basename "$0") --install" >&2
     exit 1
 fi

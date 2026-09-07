@@ -22,7 +22,7 @@ def pe_db_cli_access(monkeypatch):
         if path not in sys.path:
             sys.path.insert(0, path)
     for name in list(sys.modules):
-        if name == "pe_db" or name.startswith("pe_db.") or name.startswith("pe_db_service_app"):
+        if name == "pe_db" or name.startswith("pe_db."):
             del sys.modules[name]
     yield
 

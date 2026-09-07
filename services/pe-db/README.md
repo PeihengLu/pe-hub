@@ -14,9 +14,9 @@ Jump to: [Code layout](#code-layout) · [Initialization](#database-initializatio
 
 | Table         | How it is maintained                                                                 |
 | ------------- | ------------------------------------------------------------------------------------ |
-| `study`     | **Seeded** — hand-coded in `app/catalog/studies.py`                         |
-| `dataset`   | **Seeded** — hand-coded in `app/catalog/studies.py`                         |
-| `scaffold`  | **Seeded** — hand-coded in `app/catalog/scaffolds.py`                       |
+| `study`     | **Seeded** — hand-coded in `pe_db/catalog/studies.py`                         |
+| `dataset`   | **Seeded** — hand-coded in `pe_db/catalog/studies.py`                         |
+| `scaffold`  | **Seeded** — hand-coded in `pe_db/catalog/scaffolds.py`                       |
 | `datasheet` | **Semi-automatic** — indexed from `datasets/exported/**/*.csv` after export |
 
 Edit-level rows are **not** in SQL. They live in `datasets/exported/` (raw CSV) and `datasets/standardized/` (parquet) and are loaded with Pandas behind the API.
@@ -49,20 +49,20 @@ Seed does **not**:
 
 ```text
 pedb (pe-db)  ──┐
-                ├──► pe_db.library  (← app/library.py)
+                ├──► pe_db.library
 FastAPI       ──┘
 peen (pe-ensemble) CLI ──► pe_db.library (in-process; no PE-DB HTTP server)
 pe-ensemble web ──HTTP──► FastAPI
 ```
 
-Installable packages: `pe_db` (console scripts `pedb` / `pe-db` + `pe_db.library`) and the FastAPI app under `app/`. Both the CLI and HTTP handlers call the same headless library — no localhost hop for CLI use.
+Installable package: `pe_db` (console scripts `pedb` / `pe-db`, headless `pe_db.library`, FastAPI app `pe_db.main:app`). Both the CLI and HTTP handlers call the same library — no localhost hop for CLI use.
 
 ## Code layout
 
 Where to look when you need to change something. Full cross-service context is in
 [`docs/architecture.md`](../../docs/architecture.md).
 
-### `app/` — service internals
+### `pe_db/` — installable package
 
 | File | Responsibility |
 |---|---|
@@ -76,7 +76,7 @@ Where to look when you need to change something. Full cross-service context is i
 | `process_pool.py` | Worker pool for the expensive ViennaRNA MFE pass |
 | `config.py` | Path and environment-flag resolution |
 
-### `app/catalog/` — the declarative source of truth
+### `pe_db/catalog/` — the declarative source of truth
 
 | File | Responsibility |
 |---|---|
@@ -86,7 +86,7 @@ Where to look when you need to change something. Full cross-service context is i
 | `seed.py` | Writes the registries into SQL and migrates legacy columns |
 | `initialize.py` | The startup sequence: seed → export → standardize |
 
-### `app/pipeline/`, `app/studies/`, `app/formats/` — the pipeline
+### `pe_db/pipeline/`, `pe_db/studies/`, `pe_db/formats/` — the pipeline
 
 | File | Responsibility |
 |---|---|
@@ -98,9 +98,9 @@ Where to look when you need to change something. Full cross-service context is i
 | `deepspcas9.py` | 30-mer window extraction and SpCas9 score backfill (TensorFlow 1.x) |
 | `json_utils.py` | NaN/Inf-safe JSON encoding for API responses |
 
-Adding a study is: catalog rows in `studies.py`, then a module under `app/studies/` that calls `register_study`. The orchestrator does not grow an `if/elif`.
+Adding a study is: catalog rows in `studies.py`, then a module under `pe_db/studies/` that calls `register_study`. The orchestrator does not grow an `if/elif`.
 
-### `app/db/` — SQL layer
+### `pe_db/db/` — SQL layer
 
 | File | Responsibility |
 |---|---|
@@ -109,20 +109,19 @@ Adding a study is: catalog rows in `studies.py`, then a module under `app/studie
 | `schemas.py` | Pydantic response models |
 | `session.py` | Engine and session lifecycle |
 
-### `pe_db/` — installable CLI and library
+### Console entry
 
-`cli.py` is the `pedb` entry point. `library.py` re-exports `app.library` as a
-stable import path, `mfe_worker.py` is the MFE subprocess body, and
-`_bootstrap.py` fixes `sys.path` for editable installs.
+`cli.py` is the `pedb` entry point. `mfe_worker.py` is the spawn-safe MFE worker
+body. HTTP is `uvicorn pe_db.main:app`.
 
 ### Common tasks
 
 | Task | Where |
 |---|---|
-| Add a study or dataset | Catalog rows in `app/catalog/studies.py`, then exporters/standardizers in `app/studies/<study>.py` |
-| Add a model output format | `app/formats/<name>.py`, register in `app/format_registry.py` |
-| Change filtering or splits | `app/db/repository.py` and `packages/pe-common/pe_common/splits.py` |
-| Add an endpoint | `app/library.py` first, then a thin route in `app/main.py` (CLI-only admin ops stay on `pedb`) |
+| Add a study or dataset | Catalog rows in `pe_db/catalog/studies.py`, then exporters/standardizers in `pe_db/studies/<study>.py` |
+| Add a model output format | `pe_db/formats/<name>.py`, register in `pe_db/format_registry.py` |
+| Change filtering or splits | `pe_db/db/repository.py` and `packages/pe-common/pe_common/splits.py` |
+| Add an endpoint | `pe_db/library.py` first, then a thin route in `pe_db/main.py` (CLI-only admin ops stay on `pedb`) |
 
 ## Data pipeline behaviour
 
@@ -303,7 +302,7 @@ Dataset HPO recipes and the PRIDICT 2.0 transfer + ensemble reproduction call `p
 pip install -e packages/pe-common
 pip install -e services/pe-db   # installs ``pedb`` / ``pe-db`` CLI and ``pe_db`` library package
 cd services/pe-db
-uvicorn app.main:app --reload --port 8000
+uvicorn pe_db.main:app --reload --port 8000
 ```
 
 Or from the repo root: `./scripts/start-pe-db-backend.sh --install`, or `./start-all.sh --install` (also installs pe-ensemble).
@@ -322,7 +321,7 @@ conda install -c conda-forge tensorflow -y   # optional; for MinSePIE spcas9 bac
 pip install -e packages/pe-common
 pip install -e services/pe-db
 cd services/pe-db
-uvicorn app.main:app --reload --port 8000
+uvicorn pe_db.main:app --reload --port 8000
 ```
 
 TensorFlow is **optional**. Standardization runs without it; rows that need a

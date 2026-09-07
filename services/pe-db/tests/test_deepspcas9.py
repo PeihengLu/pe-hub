@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.utils.deepspcas9 import (  # noqa: E402
+from pe_db.utils.deepspcas9 import (  # noqa: E402
     extract_deepspcas9_target30,
     fill_missing_spcas9_scores,
 )
