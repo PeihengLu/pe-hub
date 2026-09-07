@@ -11,7 +11,7 @@ _DUMMY_ROOT = Path(__file__).resolve().parents[3] / "testdata" / "plugins" / "du
 
 @pytest.fixture()
 def plugins_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    from app.plugin_loader import _loaded_plugins, _quarantined_plugins
+    from pe_ensemble.plugin_loader import _loaded_plugins, _quarantined_plugins
 
     root = tmp_path / "plugins"
     root.mkdir()
@@ -29,8 +29,8 @@ def _dummy_bytes() -> tuple[bytes, bytes]:
 
 
 def test_upload_validate_activate_flow(plugins_root: Path, monkeypatch: pytest.MonkeyPatch):
-    from app.plugin_loader import load_active_plugins
-    from app.plugins.manager import (
+    from pe_ensemble.plugin_loader import load_active_plugins
+    from pe_ensemble.plugins.manager import (
         activate_plugin_bundle,
         get_plugin,
         list_plugins,
@@ -64,14 +64,14 @@ def test_upload_validate_activate_flow(plugins_root: Path, monkeypatch: pytest.M
     assert any(entry["name"] == "upload_dummy" for entry in plugins)
 
     validation = queue_validation("upload_dummy")
-    from app.plugins.validation_jobs import wait_for_job
+    from pe_ensemble.plugins.validation_jobs import wait_for_job
 
     manifest = wait_for_job(validation["job_id"], timeout=120)
     assert manifest["status"] == "succeeded"
     assert manifest["result"]["validation_report"]["passed"]
     assert manifest["result"]["status"] == "pending"
 
-    from app.plugins import manager as plugin_manager
+    from pe_ensemble.plugins import manager as plugin_manager
 
     monkeypatch.setattr(
         plugin_manager,
@@ -91,7 +91,7 @@ def test_upload_validate_activate_flow(plugins_root: Path, monkeypatch: pytest.M
 
 
 def test_upload_with_manifest_file(plugins_root: Path):
-    from app.plugins.manager import get_plugin, upload_plugin_bundle
+    from pe_ensemble.plugins.manager import get_plugin, upload_plugin_bundle
 
     convert_bytes, wrapper_bytes = _dummy_bytes()
     manifest_bytes = (_DUMMY_ROOT / "manifest.yaml").read_bytes()
@@ -124,7 +124,7 @@ def _dummy_zip_bytes() -> bytes:
 
 
 def test_upload_zip_bundle_only(plugins_root: Path):
-    from app.plugins.manager import get_plugin, upload_plugin_bundle
+    from pe_ensemble.plugins.manager import get_plugin, upload_plugin_bundle
 
     uploaded = upload_plugin_bundle(bundle_zip_bytes=_dummy_zip_bytes())
     assert uploaded["name"] == "dummy_model"
@@ -136,7 +136,7 @@ def test_upload_zip_bundle_only(plugins_root: Path):
 
 
 def test_upload_manifest_name_mismatch(plugins_root: Path):
-    from app.plugins.manager import upload_plugin_bundle
+    from pe_ensemble.plugins.manager import upload_plugin_bundle
 
     convert_bytes, wrapper_bytes = _dummy_bytes()
     manifest_bytes = (_DUMMY_ROOT / "manifest.yaml").read_bytes()
@@ -151,7 +151,7 @@ def test_upload_manifest_name_mismatch(plugins_root: Path):
 
 
 def test_activate_requires_validation(plugins_root: Path):
-    from app.plugins.manager import activate_plugin_bundle, upload_plugin_bundle
+    from pe_ensemble.plugins.manager import activate_plugin_bundle, upload_plugin_bundle
 
     convert_bytes, wrapper_bytes = _dummy_bytes()
     upload_plugin_bundle(
@@ -170,13 +170,13 @@ def test_activate_requires_validation(plugins_root: Path):
 
 
 def test_delete_plugin_removes_directory(plugins_root: Path, monkeypatch: pytest.MonkeyPatch):
-    from app.plugins.manager import (
+    from pe_ensemble.plugins.manager import (
         activate_plugin_bundle,
         delete_plugin_bundle,
         queue_validation,
         upload_plugin_bundle,
     )
-    from app.plugins.validation_jobs import wait_for_job
+    from pe_ensemble.plugins.validation_jobs import wait_for_job
 
     convert_bytes, wrapper_bytes = _dummy_bytes()
     upload_plugin_bundle(
@@ -192,7 +192,7 @@ def test_delete_plugin_removes_directory(plugins_root: Path, monkeypatch: pytest
     )
     manifest = wait_for_job(queue_validation("to_delete")["job_id"], timeout=120)
     assert manifest["status"] == "succeeded"
-    from app.plugins import manager as plugin_manager
+    from pe_ensemble.plugins import manager as plugin_manager
 
     monkeypatch.setattr(
         plugin_manager,
@@ -206,8 +206,8 @@ def test_delete_plugin_removes_directory(plugins_root: Path, monkeypatch: pytest
 
 
 def test_notify_pe_db_plugin_reload_handles_error(monkeypatch: pytest.MonkeyPatch):
-    from app.plugins.manager import notify_pe_db_plugin_reload
-    from app.training import pe_db_access
+    from pe_ensemble.plugins.manager import notify_pe_db_plugin_reload
+    from pe_ensemble.training import pe_db_access
 
     class FakeResponse:
         status_code = 500

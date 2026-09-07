@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from app.models.oped_wrapper import OPEDModelWrapper
+from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
 from pe_common.sequence_utils import reverse_complement
 
 

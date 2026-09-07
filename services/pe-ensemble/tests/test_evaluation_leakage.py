@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from app.evaluation import leakage
-from app.evaluation.leakage import (
+from pe_ensemble.evaluation import leakage
+from pe_ensemble.evaluation.leakage import (
     REASON_NO_ORIGINAL_TEST_SPLIT,
     REASON_TRAIN_TEST_OVERLAP,
     REASON_UNVERIFIABLE_PROVENANCE,
@@ -16,10 +16,10 @@ from app.evaluation.leakage import (
     collect_ensemble_training_loci,
     dataset_names_from_training,
 )
-from app.evaluation.runner import execute_evaluation
-from app.evaluation.schemas import EvaluationRequest
-from app.training.data import ModelFormatFetchResult
-from app.training.schemas import SplitQueryParams
+from pe_ensemble.evaluation.runner import execute_evaluation
+from pe_ensemble.evaluation.schemas import EvaluationRequest
+from pe_ensemble.training.data import ModelFormatFetchResult
+from pe_ensemble.training.schemas import SplitQueryParams
 
 
 def _test_df(uids: list[str], *, split_source: str = "group_id") -> pd.DataFrame:
@@ -198,7 +198,7 @@ def test_execute_evaluation_excludes_partial_overlap_and_continues(tmp_path, mon
     )
     # runner imports weights_registry directly
     monkeypatch.setattr(
-        "app.evaluation.runner.weights_registry.load_training_loci",
+        "pe_ensemble.evaluation.runner.weights_registry.load_training_loci",
         lambda model, weights: {"ps:bbb"},
     )
 
@@ -210,7 +210,7 @@ def test_execute_evaluation_excludes_partial_overlap_and_continues(tmp_path, mon
         dataset="benchmark",
         allow_data_leak=False,
     )
-    from app.evaluation.jobs import create_job, get_job
+    from pe_ensemble.evaluation.jobs import create_job, get_job
 
     job_id = create_job(request)
     fetch = ModelFormatFetchResult(df=_test_df(["ps:bbb", "ps:ccc"]))
@@ -220,8 +220,8 @@ def test_execute_evaluation_excludes_partial_overlap_and_continues(tmp_path, mon
             assert list(test_df["target_uid"]) == ["ps:ccc"]
             return {"pearson": 0.5, "n_samples": len(test_df)}
 
-    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
-        "app.evaluation.runner.ModelFactory.create_model", return_value=_StubModel()
+    with patch("pe_ensemble.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
+        "pe_ensemble.evaluation.runner.ModelFactory.create_model", return_value=_StubModel()
     ):
         result = execute_evaluation(request, job_id=job_id, device_id="cpu")
 
@@ -241,7 +241,7 @@ def test_execute_evaluation_emits_parseable_leak_error_on_full_overlap(tmp_path,
         lambda model, weights: {"ps:bbb", "ps:ccc"},
     )
     monkeypatch.setattr(
-        "app.evaluation.runner.weights_registry.load_training_loci",
+        "pe_ensemble.evaluation.runner.weights_registry.load_training_loci",
         lambda model, weights: {"ps:bbb", "ps:ccc"},
     )
 
@@ -252,12 +252,12 @@ def test_execute_evaluation_emits_parseable_leak_error_on_full_overlap(tmp_path,
         study="some",
         dataset="benchmark",
     )
-    from app.evaluation.jobs import create_job, get_job
+    from pe_ensemble.evaluation.jobs import create_job, get_job
 
     job_id = create_job(request)
     fetch = ModelFormatFetchResult(df=_test_df(["ps:bbb", "ps:ccc"]))
 
-    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch):
+    with patch("pe_ensemble.evaluation.runner.fetch_model_format_result", return_value=fetch):
         result = execute_evaluation(request, job_id=job_id, device_id="cpu")
 
     assert result["status"] == "error"
@@ -289,7 +289,7 @@ def test_execute_evaluation_allow_data_leak_override(tmp_path, monkeypatch):
         dataset="benchmark",
         allow_data_leak=True,
     )
-    from app.evaluation.jobs import create_job, get_job
+    from pe_ensemble.evaluation.jobs import create_job, get_job
 
     job_id = create_job(request)
     fetch = ModelFormatFetchResult(df=_test_df(["ps:bbb", "ps:ccc"]))
@@ -298,8 +298,8 @@ def test_execute_evaluation_allow_data_leak_override(tmp_path, monkeypatch):
         def evaluate(self, test_df, weights):
             return {"pearson": 0.5, "n_samples": len(test_df)}
 
-    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
-        "app.evaluation.runner.ModelFactory.create_model", return_value=_StubModel()
+    with patch("pe_ensemble.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
+        "pe_ensemble.evaluation.runner.ModelFactory.create_model", return_value=_StubModel()
     ):
         result = execute_evaluation(request, job_id=job_id, device_id="cpu")
 
@@ -543,15 +543,15 @@ def test_execute_evaluation_aborts_optiprime_library_diverse_holdout(tmp_path, m
         dataset="library-diverse",
         auto_training_benchmark=False,
     )
-    from app.evaluation.jobs import create_job, get_job
+    from pe_ensemble.evaluation.jobs import create_job, get_job
 
     job_id = create_job(request)
     fetch = ModelFormatFetchResult(
         df=_test_df(["ps:ccc", "ps:ddd"], split_source="original_fold")
     )
 
-    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
-        "app.evaluation.runner.ModelFactory.create_model"
+    with patch("pe_ensemble.evaluation.runner.fetch_model_format_result", return_value=fetch), patch(
+        "pe_ensemble.evaluation.runner.ModelFactory.create_model"
     ) as create_model:
         result = execute_evaluation(request, job_id=job_id, device_id="cpu")
 
@@ -586,12 +586,12 @@ def test_execute_evaluation_aborts_synthetic_library1(tmp_path, monkeypatch):
         study="pridict1",
         dataset="library1",
     )
-    from app.evaluation.jobs import create_job, get_job
+    from pe_ensemble.evaluation.jobs import create_job, get_job
 
     job_id = create_job(request)
     fetch = ModelFormatFetchResult(df=_test_df(["ps:ccc", "ps:ddd"]))
 
-    with patch("app.evaluation.runner.fetch_model_format_result", return_value=fetch):
+    with patch("pe_ensemble.evaluation.runner.fetch_model_format_result", return_value=fetch):
         result = execute_evaluation(request, job_id=job_id, device_id="cpu")
 
     assert result["status"] == "error"

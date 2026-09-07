@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.training.schemas import SplitQueryParams, TrainingRequest, default_training_split
+from pe_ensemble.training.schemas import SplitQueryParams, TrainingRequest, default_training_split
 
 
 class TestValidRequests:

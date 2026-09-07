@@ -12,7 +12,7 @@ _DUMMY_ROOT = Path(__file__).resolve().parents[3] / "testdata" / "plugins" / "du
 
 @pytest.fixture()
 def plugins_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    from app.plugin_loader import _loaded_plugins, _quarantined_plugins
+    from pe_ensemble.plugin_loader import _loaded_plugins, _quarantined_plugins
 
     root = tmp_path / "plugins"
     jobs = tmp_path / "validation_jobs"
@@ -27,7 +27,7 @@ def plugins_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _upload_dummy(plugins_root: Path) -> str:
-    from app.plugins.manager import upload_plugin_bundle
+    from pe_ensemble.plugins.manager import upload_plugin_bundle
 
     convert = (_DUMMY_ROOT / "convert.py").read_bytes()
     wrapper = (_DUMMY_ROOT / "wrapper.py").read_bytes()
@@ -49,8 +49,8 @@ def _upload_dummy(plugins_root: Path) -> str:
 
 
 def test_queue_validation_completes_async(plugins_root: Path):
-    from app.plugins.manager import queue_validation
-    from app.plugins.validation_jobs import read_logs, wait_for_job
+    from pe_ensemble.plugins.manager import queue_validation
+    from pe_ensemble.plugins.validation_jobs import read_logs, wait_for_job
 
     _upload_dummy(plugins_root)
     created = queue_validation("async_dummy")
@@ -67,8 +67,8 @@ def test_queue_validation_completes_async(plugins_root: Path):
 def test_duplicate_validation_rejected(plugins_root: Path, monkeypatch: pytest.MonkeyPatch):
     from pe_common.plugins import PluginError
 
-    from app.plugins import scheduler as scheduler_module
-    from app.plugins.manager import queue_validation
+    from pe_ensemble.plugins import scheduler as scheduler_module
+    from pe_ensemble.plugins.manager import queue_validation
 
     # Hold the first job open. The guard rejects a duplicate only while a job is
     # still queued/running, and validating the dummy plugin is fast enough that

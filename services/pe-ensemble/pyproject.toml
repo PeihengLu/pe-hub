@@ -78,4 +78,4 @@ peen = "pe_ensemble.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "pe_ensemble*"]
+include = ["pe_ensemble*"]

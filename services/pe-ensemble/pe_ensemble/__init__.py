@@ -1,7 +1,7 @@
-"""Installable PE Ensemble library package (CLI + in-process access).
+"""Installable PE Ensemble package (FastAPI service, CLI, and in-process library).
 
-The FastAPI service lives under ``app/``; this namespace is the stable import
-path for headless use on clusters and from other Python code.
+``pe_ensemble.library`` is the stable import path for headless use. The HTTP
+app is ``pe_ensemble.main:app``.
 """
 from __future__ import annotations
 

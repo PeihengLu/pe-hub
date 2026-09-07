@@ -166,7 +166,7 @@ uvicorn pe_db.main:app --reload --port 8000
 
 # PE Ensemble
 cd services/pe-ensemble
-PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
+PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
 
 # PE Hub
 cd pe-hub && npm install && npm run dev
@@ -368,10 +368,9 @@ make format
 make lint
 ```
 
-pe-db and pe-ensemble both own a top-level `app` package, so a bare `pytest`
-at the repo root can import the wrong service. Use `./scripts/run-tests.sh`
-(or `make test`). Pass one or more group names to run a functional subset;
-`./scripts/run-tests.sh --list` prints the groups.
+Use `./scripts/run-tests.sh` (or `make test`) so each suite gets its own
+interpreter and PYTHONPATH. Pass one or more group names to run a functional
+subset; `./scripts/run-tests.sh --list` prints the groups.
 
 Re-export or re-standardize data:
 

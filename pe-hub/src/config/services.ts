@@ -38,7 +38,7 @@ export const SERVICES: Record<ServiceId, ServiceDefinition> = {
     healthPath: '/health',
     startupCommands: [
       './scripts/start-all.sh',
-      'cd services/pe-db && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000',
+      'cd services/pe-db && uvicorn pe_db.main:app --reload --host 0.0.0.0 --port 8000',
     ],
   },
   'pe-ensemble': {
@@ -52,7 +52,7 @@ export const SERVICES: Record<ServiceId, ServiceDefinition> = {
     startupCommands: [
       './scripts/start-all.sh',
       'cd services/pe-ensemble',
-      'PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --host 0.0.0.0 --port 8001',
+      'PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --host 0.0.0.0 --port 8001',
     ],
   },
 }

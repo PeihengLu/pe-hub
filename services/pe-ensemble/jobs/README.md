@@ -49,7 +49,7 @@ which is how the CLI isolates runs:
 | `error` | Failure message, when `status` is `failed` |
 | `result` | The full training payload, including the wrapper's own `result` dict |
 
-Manifests are written through `app/compute/job_store.py` (atomic JSON via
+Manifests are written through `pe_ensemble/compute/job_store.py` (atomic JSON via
 `manifest_io.py`), so a reader never sees a half-written manifest. Plugin
 validation jobs use the same store; they have no `request.json`.
 
@@ -90,7 +90,7 @@ then re-index the registry:
 # Registered weights you no longer want
 rm -rf services/pe-ensemble/weights/<model>/<weight_id>
 python -c "import sys; sys.path.insert(0,'services/pe-ensemble'); \
-from app.models import weights_registry; weights_registry.rebuild_index()"
+from pe_ensemble.models import weights_registry; weights_registry.rebuild_index()"
 
 # Finished job records (keeps weights)
 rm -rf services/pe-ensemble/jobs/<job_id>
@@ -115,7 +115,7 @@ they should stay empty on new runs.
 
 ## Concurrency
 
-The device scheduler (`app/compute/device_scheduler.py`) runs at most one job per
+The device scheduler (`pe_ensemble/compute/device_scheduler.py`) runs at most one job per
 compute device and queues the rest, so two training jobs never contend for the
 same GPU. Registry index rebuilds take a file lock, which matters when the API
 server, the CLI and cluster jobs share one `WEIGHTS_ROOT`.

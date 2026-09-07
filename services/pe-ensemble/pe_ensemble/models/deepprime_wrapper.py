@@ -32,13 +32,14 @@ from pe_common.training import (
     resolve_training_seed,
     seed_training_run,
 )
-from pe_common.splits import (
-    has_assigned_cv_folds,
-    iter_assigned_cv_folds,
-    resolve_train_val_from_splits,
-)
+from pe_common.splits import resolve_train_val_from_splits
 
 from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
+from .hparams import (
+    iter_cv_training_folds,
+    require_evaluate_weights,
+    resolve_pretrained_weight_id,
+)
 
 
 class _DeepPrimeTensorDataset(Dataset):
@@ -193,10 +194,10 @@ class DeepPrimeModelWrapper(BasePEModel):
 
     def _init_trainable_models(self, hyperparameters: Dict[str, Any]) -> None:
         load_pretrained = bool(hyperparameters.get("load_pretrained", False))
-        pretrained_weights = hyperparameters.get("weights")
         if load_pretrained:
-            if pretrained_weights:
-                self.load_weights_by_name(str(pretrained_weights))
+            weight_id = resolve_pretrained_weight_id(hyperparameters)
+            if weight_id:
+                self.load_weights_by_name(weight_id)
             else:
                 self.load_model()
             return
@@ -556,36 +557,33 @@ class DeepPrimeModelWrapper(BasePEModel):
 
         source_df = train_data.reset_index(drop=True)
         cv_reports: List[Dict[str, Any]] = []
-        if val_data is None and has_assigned_cv_folds(source_df):
-            for fold_idx, (fold_label, fold_train, fold_val) in enumerate(
-                iter_assigned_cv_folds(source_df)
-            ):
-                if cancel_check is not None:
-                    cancel_check()
-                self._init_trainable_models(hyperparameters)
-                _, fold_summaries, fold_val_metrics = self._fit_models_on_split(
-                    train_source=fold_train,
-                    val_source=fold_val,
-                    hyperparameters=hyperparameters,
-                    progress_log=progress_log,
-                    cancel_check=cancel_check,
-                    run_label=f"{fold_label} |",
-                )
-                fold_losses = [float(row["best_val_loss"]) for row in fold_summaries]
-                cv_reports.append(
-                    {
-                        "fold": fold_idx,
-                        "fold_label": fold_label,
-                        "n_train": int(len(fold_train)),
-                        "n_val": int(len(fold_val)),
-                        "best_val_loss": float(sum(fold_losses) / len(fold_losses))
-                        if fold_losses
-                        else float("nan"),
-                        "val_pearson": float(fold_val_metrics["pearson"]),
-                        "val_spearman": float(fold_val_metrics["spearman"]),
-                        "model_summaries": fold_summaries,
-                    }
-                )
+        for fold_idx, fold_label, fold_train, fold_val in iter_cv_training_folds(
+            source_df, val_data, cancel_check=cancel_check
+        ):
+            self._init_trainable_models(hyperparameters)
+            _, fold_summaries, fold_val_metrics = self._fit_models_on_split(
+                train_source=fold_train,
+                val_source=fold_val,
+                hyperparameters=hyperparameters,
+                progress_log=progress_log,
+                cancel_check=cancel_check,
+                run_label=f"{fold_label} |",
+            )
+            fold_losses = [float(row["best_val_loss"]) for row in fold_summaries]
+            cv_reports.append(
+                {
+                    "fold": fold_idx,
+                    "fold_label": fold_label,
+                    "n_train": int(len(fold_train)),
+                    "n_val": int(len(fold_val)),
+                    "best_val_loss": float(sum(fold_losses) / len(fold_losses))
+                    if fold_losses
+                    else float("nan"),
+                    "val_pearson": float(fold_val_metrics["pearson"]),
+                    "val_spearman": float(fold_val_metrics["spearman"]),
+                    "model_summaries": fold_summaries,
+                }
+            )
 
         train_source, val_source = resolve_train_val_from_splits(source_df, val_data)
         self._init_trainable_models(hyperparameters)
@@ -655,11 +653,7 @@ class DeepPrimeModelWrapper(BasePEModel):
         Returns:
             Dictionary with evaluation metrics (Pearson, Spearman)
         """
-        if not weights or not str(weights).strip():
-            raise ValueError(
-                "weights is required for evaluate(). "
-                f"Available: {self.list_available_weights()}"
-            )
+        weights = require_evaluate_weights(self, weights)
         self.load_weights_by_name(weights)
 
         if 'Efficiency' in test_data.columns:

@@ -319,7 +319,7 @@ export default function AddModelInstructions() {
             code={`ARTIFACT = "model.pt"  # fixed name you own; document in plugin README
 
 def load_weights_by_name(self, name: str) -> None:
-    from app.models import weights_registry
+    from pe_ensemble.models import weights_registry
 
     entry_dir = weights_registry.resolve_dir(self.model_name, name)
     artifact = entry_dir / ARTIFACT
@@ -374,7 +374,7 @@ def load_weights_by_name(self, name: str) -> None:
             description="Return registry ids for this model. Easiest: delegate to weights_registry."
             code={`@staticmethod
 def list_available_weights() -> List[str]:
-    from app.models import weights_registry
+    from pe_ensemble.models import weights_registry
 
     return weights_registry.list_weight_ids("my_model")`}
           />

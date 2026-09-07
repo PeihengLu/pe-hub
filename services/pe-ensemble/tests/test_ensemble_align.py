@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from app.ensemble.runner import EnsembleError, _align_member_matrix
+from pe_ensemble.ensemble.runner import EnsembleError, _align_member_matrix
 
 
 def test_align_member_matrix_raises_on_length_mismatch():

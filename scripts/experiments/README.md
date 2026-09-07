@@ -17,8 +17,8 @@ Three layers, so a run can be traced from the shell command down to the code:
    `SKIP_IF_TUNED` handling.
 3. **CLI and service code** — `peen train` / `peen tune` / `peen evaluate`, which
    are the same runners the HTTP API uses
-   (`services/pe-ensemble/app/training/runner.py`,
-   `app/training/tune_runner.py`, `app/evaluation/runner.py`).
+   (`services/pe-ensemble/pe_ensemble/training/runner.py`,
+   `pe_ensemble/training/tune_runner.py`, `pe_ensemble/evaluation/runner.py`).
 
 Multi-step experiments get their own subdirectory with numbered stage scripts and
 a `run_all.sh`: [`pridict2-reproduction/`](pridict2-reproduction/README.md),
@@ -94,10 +94,10 @@ conda activate pe-hub
 # OptiPrime: all library1 + library-diverse + lib-* + ClinVar (Hsu pooled
 # protospacer CV; has_original_test_split is false, so in-domain eval aborts).
 cd services/pe-ensemble
-python -m app.models.deepprime_vendor_provenance
-python -m app.models.oped_vendor_provenance
-python -m app.models.optiprime_vendor_provenance
-python -m app.models.pridict2_vendor_provenance
+python -m pe_ensemble.models.deepprime_vendor_provenance
+python -m pe_ensemble.models.oped_vendor_provenance
+python -m pe_ensemble.models.optiprime_vendor_provenance
+python -m pe_ensemble.models.pridict2_vendor_provenance
 cd ../..
 
 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
@@ -140,10 +140,10 @@ via the ARC remote (see the Oxford ARC README).
   loci** (no author split) plus library-diverse minus `run_x`, and Model B
   also includes ClinVar train folds. OptiPrime records pooled Hsu training
   sheets with `has_original_test_split: false`. Sync with
-  `python -m app.models.deepprime_vendor_provenance`,
-  `python -m app.models.oped_vendor_provenance`,
-  `python -m app.models.optiprime_vendor_provenance`, and
-  `python -m app.models.pridict2_vendor_provenance` from `services/pe-ensemble`.
+  `python -m pe_ensemble.models.deepprime_vendor_provenance`,
+  `python -m pe_ensemble.models.oped_vendor_provenance`,
+  `python -m pe_ensemble.models.optiprime_vendor_provenance`, and
+  `python -m pe_ensemble.models.pridict2_vendor_provenance` from `services/pe-ensemble`.
 - Partial train/test locus overlap on an **author holdout this weight used**
   excludes overlapping `target_uid`s and continues. Weights with
   `has_original_test_split: false` (OptiPrime `base`) abort in-domain eval

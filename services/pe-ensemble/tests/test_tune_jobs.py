@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from app.compute.device_scheduler import ComputeDeviceScheduler
-from app.training.schemas import TrainingRequest
-from app.training.tune_jobs import create_job, get_job, list_jobs, wait_for_job
-from app.training.tuning_schemas import TuningRequest
+from pe_ensemble.compute.device_scheduler import ComputeDeviceScheduler
+from pe_ensemble.training.schemas import TrainingRequest
+from pe_ensemble.training.tune_jobs import create_job, get_job, list_jobs, wait_for_job
+from pe_ensemble.training.tuning_schemas import TuningRequest
 
 
 @pytest.fixture()
@@ -49,7 +49,7 @@ def test_list_tune_jobs_newest_first(tune_jobs_root: Path):
 
 def test_scheduler_runs_tune_job(tune_jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
     def fake_execute(request, *, job_id=None, device_id=None):
-        from app.training.tune_jobs import mark_succeeded
+        from pe_ensemble.training.tune_jobs import mark_succeeded
 
         mark_succeeded(
             job_id,
@@ -61,7 +61,7 @@ def test_scheduler_runs_tune_job(tune_jobs_root: Path, monkeypatch: pytest.Monke
             },
         )
 
-    monkeypatch.setattr("app.compute.device_scheduler.execute_tuning", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_tuning", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     request = _tuning_request()

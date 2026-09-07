@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import inspect
 
-from app.models.optiprime_wrapper import (
+from pe_ensemble.models.optiprime_wrapper import (
     _PREDICT_CSV_NAME,
     _as_float_scalar,
     _preprocess_optiprime_eval_df,

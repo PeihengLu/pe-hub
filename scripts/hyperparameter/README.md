@@ -75,5 +75,5 @@ SKIP_IF_TUNED=1 ./scripts/hyperparameter/tune_hpo_cv5.sh --model pridict2 \
 | Tuning job state and logs | `services/pe-ensemble/tune_jobs/<job_id>/` — see [`jobs/README.md`](../../services/pe-ensemble/jobs/README.md) |
 
 Search spaces are defined per model in
-`services/pe-ensemble/app/training/search_spaces.py`; how a preset resolves
+`services/pe-ensemble/pe_ensemble/training/search_spaces.py`; how a preset resolves
 against request hyperparameters is described in the training presets README.

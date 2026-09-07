@@ -22,9 +22,9 @@ been migrated into services and `packages/pe-common/`.
 
 ### Migrated to `services/pe-ensemble/`
 
-- Model runners → `app/models/` (wrappers + `model_factory.py`)
-- Training pipeline → `app/training/` (jobs, runner) and `app/compute/` (device scheduler, JobStore)
-- CLI entry → `app/train_models.py`
+- Model runners → `pe_ensemble/models/` (wrappers + `model_factory.py`)
+- Training pipeline → `pe_ensemble/training/` (jobs, runner) and `pe_ensemble/compute/` (device scheduler, JobStore)
+- CLI entry → `pe_ensemble/train_models.py`
 
 ### Remaining here
 

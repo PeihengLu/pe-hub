@@ -1,6 +1,6 @@
 # Model plugins
 
-A **plugin** is a self-contained directory that adds a new prime-editing model to PE Database and PE Ensemble without editing core source. Once **active**, the model appears in PE Hub (Train, Benchmark, Add Model) and in the training CLI (`python -m app.train_models`).
+A **plugin** is a self-contained directory that adds a new prime-editing model to PE Database and PE Ensemble without editing core source. Once **active**, the model appears in PE Hub (Train, Benchmark, Add Model) and in the training CLI (`python -m pe_ensemble.train_models`).
 
 Both services read the same tree (default: `<repo>/plugins`, override with `PLUGINS_ROOT`).
 
@@ -243,7 +243,7 @@ peen train \
 Verify the model is registered:
 
 ```bash
-python -c "from app.plugin_loader import load_active_plugins; from app.training.config import supported_models; load_active_plugins(); print(supported_models())"
+python -c "from pe_ensemble.plugin_loader import load_active_plugins; from pe_ensemble.training.config import supported_models; load_active_plugins(); print(supported_models())"
 ```
 
 ---
@@ -289,7 +289,7 @@ Prepare bundle (manifest + convert + wrapper [+ weights])
         └─► PE-DB: convert registered as format=
         │
         ├─► PE Hub: Train / Benchmark
-        └─► CLI: python -m app.train_models --model <name> …
+        └─► CLI: python -m pe_ensemble.train_models --model <name> …
 ```
 
 For maintainers and API details, see `docs/add-new-model-plugins.md`.

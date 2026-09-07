@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'packages' / 'pe-common'))
 
-from app.models.model_factory import ModelFactory
+from pe_ensemble.models.model_factory import ModelFactory
 
 
 class TestModelFactory:
@@ -126,7 +126,7 @@ class TestWeightSelection:
         reason="DeepPrime weights not available",
     )
     def test_deepprime_list_available_weights(self):
-        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
+        from pe_ensemble.models.deepprime_wrapper import DeepPrimeModelWrapper
 
         names = DeepPrimeModelWrapper.list_available_weights()
         assert isinstance(names, list) and len(names) > 0
@@ -146,7 +146,7 @@ class TestWeightSelection:
         reason="PRIDICT2 weights not available",
     )
     def test_pridict2_list_available_weights(self):
-        from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+        from pe_ensemble.models.pridict2_wrapper import PRIDICT2ModelWrapper
 
         names = PRIDICT2ModelWrapper.list_available_weights()
         assert isinstance(names, list) and len(names) > 0
@@ -162,7 +162,7 @@ class TestWeightSelection:
         reason="PRIDICT2 weights not available",
     )
     def test_pridict2_evaluate_requires_cell_type_suffix(self):
-        from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+        from pe_ensemble.models.pridict2_wrapper import PRIDICT2ModelWrapper
 
         model = ModelFactory.create_model("pridict2", device=torch.device("cpu"))
         base_id = next(
@@ -189,7 +189,7 @@ class TestBasePEModel:
     def test_interface_methods(self):
         """Test that model implements all required interface methods"""
         from pe_common.model_interface import BasePEModel
-        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
+        from pe_ensemble.models.deepprime_wrapper import DeepPrimeModelWrapper
         
         required_methods = [
             'load_model',
@@ -208,7 +208,7 @@ class TestBasePEModel:
     def test_inheritance(self):
         """Test that wrapper inherits from BasePEModel"""
         from pe_common.model_interface import BasePEModel
-        from app.models.deepprime_wrapper import DeepPrimeModelWrapper
+        from pe_ensemble.models.deepprime_wrapper import DeepPrimeModelWrapper
         
         assert issubclass(DeepPrimeModelWrapper, BasePEModel)
 

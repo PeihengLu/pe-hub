@@ -61,7 +61,7 @@ class DummyModelWrapper(BasePEModel):
         return "dummy_state_dict"
 
     def load_weights_by_name(self, name: str) -> None:
-        from app.models import weights_registry
+        from pe_ensemble.models import weights_registry
 
         entry_dir = weights_registry.resolve_dir("dummy_model", name)
         artifact = entry_dir / "weights.txt"
@@ -72,6 +72,6 @@ class DummyModelWrapper(BasePEModel):
 
     @staticmethod
     def list_available_weights() -> List[str]:
-        from app.models import weights_registry
+        from pe_ensemble.models import weights_registry
 
         return weights_registry.list_weight_ids("dummy_model")

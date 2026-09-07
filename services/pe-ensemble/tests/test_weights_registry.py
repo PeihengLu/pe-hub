@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from app.models import deepprime_vendor_provenance
-from app.models import weights_registry
+from pe_ensemble.models import deepprime_vendor_provenance
+from pe_ensemble.models import weights_registry
 
 
 @pytest.fixture()

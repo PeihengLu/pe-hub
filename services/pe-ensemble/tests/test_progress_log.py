@@ -4,7 +4,7 @@ from __future__ import annotations
 import io
 import sys
 
-from app.training.progress_log import (
+from pe_ensemble.training.progress_log import (
     JOB_CANCEL_CHECK_KEY,
     JOB_PROGRESS_LOG_KEY,
     make_epoch_logger,

@@ -30,7 +30,7 @@ def _model_factory():
     """Import ModelFactory after optional runtime deps are present."""
     pytest.importorskip("torch")
     pytest.importorskip("lightning")
-    from app.models.model_factory import ModelFactory
+    from pe_ensemble.models.model_factory import ModelFactory
 
     return ModelFactory
 

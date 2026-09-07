@@ -14,7 +14,7 @@ _PE_COMMON = _REPO_ROOT / "packages" / "pe-common"
 @pytest.fixture
 def pe_db_cli_access(monkeypatch):
     """Enable pe-ensemble CLI pe-db access with pe-db on the import path."""
-    from app.training import config as training_config
+    from pe_ensemble.training import config as training_config
 
     monkeypatch.setattr(training_config, "_use_pe_db_library", True)
     for entry in (_PE_DB_ROOT, _PE_COMMON):
@@ -28,8 +28,8 @@ def pe_db_cli_access(monkeypatch):
 
 
 def test_fetch_pe_db_filter_cli_in_process(pe_db_cli_access):
-    from app.training.data import build_pe_db_filter_params, request_pe_db_filtered
-    from app.training.schemas import SplitQueryParams
+    from pe_ensemble.training.data import build_pe_db_filter_params, request_pe_db_filtered
+    from pe_ensemble.training.schemas import SplitQueryParams
 
     params = build_pe_db_filter_params(
         model_format="std",
@@ -41,7 +41,7 @@ def test_fetch_pe_db_filter_cli_in_process(pe_db_cli_access):
 
 
 def test_web_service_defaults_to_http(monkeypatch):
-    from app.training import config as training_config
+    from pe_ensemble.training import config as training_config
 
     monkeypatch.setattr(training_config, "_use_pe_db_library", False)
     assert training_config.use_pe_db_library() is False
@@ -49,7 +49,7 @@ def test_web_service_defaults_to_http(monkeypatch):
 
 
 def test_enable_cli_pe_db_access_uses_in_process_pe_db(monkeypatch):
-    from app.training import config as training_config
+    from pe_ensemble.training import config as training_config
 
     monkeypatch.setattr(training_config, "_use_pe_db_library", False)
     training_config.enable_cli_pe_db_access()
@@ -57,16 +57,28 @@ def test_enable_cli_pe_db_access_uses_in_process_pe_db(monkeypatch):
     assert training_config.pe_db_mode() == "library"
 
 
-def test_enable_cli_pe_db_access_syncs_service_app_alias():
-    """evaluate/ensemble via pe_ensemble.library must see the same CLI flag."""
-    from pe_ensemble._bootstrap import import_service_app
-    from app.training import config as app_config
+def test_library_and_direct_imports_share_one_config_module():
+    """pe_ensemble.library must not load a second copy of training.config.
 
-    svc_config = import_service_app("training.config")
-    assert app_config is not svc_config
-    app_config._use_pe_db_library = False
-    svc_config._use_pe_db_library = False
+    The old top-level ``app`` package collided with pe-db's ``app``, so library
+    imported through ``pe_ensemble_service_app``. That produced two module
+    objects for the same file; setting ``_use_pe_db_library`` on one copy did
+    not update the other.
+    """
+    from pe_ensemble.library import supported_models
+    from pe_ensemble.training import config as direct_config
 
-    app_config.enable_cli_pe_db_access()
-    assert app_config.use_pe_db_library() is True
-    assert svc_config.use_pe_db_library() is True
+    assert supported_models is direct_config.supported_models
+    assert sys.modules["pe_ensemble.training.config"] is direct_config
+    colliding = [
+        name
+        for name in sys.modules
+        if name.startswith("app.training")
+        or name.startswith("app.models")
+        or name.startswith("pe_ensemble_service_app")
+        or name == "pe_ensemble._bootstrap"
+    ]
+    assert colliding == []
+    direct_config._use_pe_db_library = False
+    direct_config.enable_cli_pe_db_access()
+    assert direct_config.use_pe_db_library() is True

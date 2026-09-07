@@ -86,7 +86,7 @@ def test_oped_vendor_weights_load_into_model():
     registry_dir = WEIGHTS_ROOT / "oped" / "pegRNA_Model_Merged_saved.order3_decoder_weights"
     if not (registry_dir / "weights.pt").is_file():
         pytest.skip("OPED registry weights not available")
-    from app.models.oped_wrapper import OPEDModelWrapper
+    from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
 
     wrapper = OPEDModelWrapper(device=torch.device("cpu"))
     wrapper.load_weights_by_name("pegRNA_Model_Merged_saved.order3_decoder_weights")
@@ -97,7 +97,7 @@ def test_oped_vendor_weights_load_into_model():
 
 def test_oped_infer_architecture_pins_nhead_8():
     """Vendor load_model used nhead=64; weight shapes ignore nhead — pin 8."""
-    from app.models.oped_wrapper import OPEDModelWrapper
+    from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
 
     state = {
         "embedding.0.weight": torch.zeros(5, 64),
@@ -111,7 +111,7 @@ def test_oped_infer_architecture_pins_nhead_8():
 
 
 def test_oped_infer_architecture_falls_back_when_nhead_8_incompatible():
-    from app.models.oped_wrapper import OPEDModelWrapper
+    from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
 
     state = {
         "embedding.0.weight": torch.zeros(5, 12),

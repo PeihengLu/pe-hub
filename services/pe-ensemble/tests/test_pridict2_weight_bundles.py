@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+from pe_ensemble.models.pridict2_wrapper import PRIDICT2ModelWrapper
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WEIGHTS_ROOT = REPO_ROOT / "services" / "pe-ensemble" / "weights" / "pridict2"

@@ -17,27 +17,27 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 - **OPED** - Transformer-based model for PE efficiency prediction
 - **OptiPrime** - JAX/Flax model; optional, installed by `scripts/install-optiprime-deps.sh`
 
-Plus conventional baselines (XGBoost and friends) in `app/training/model_baselines.py`.
+Plus conventional baselines (XGBoost and friends) in `pe_ensemble/training/model_baselines.py`.
 
 ## Code layout
 
-Five subpackages under `app/`, each owning one stage. Cross-service context is in
+Five subpackages under `pe_ensemble/`, each owning one stage. Cross-service context is in
 [`docs/architecture.md`](../../docs/architecture.md).
 
 | Package | Owns |
 |---|---|
-| `app/models/` | Model wrappers and the weights registry |
-| `app/training/` | Train and tune orchestration, data fetching, search spaces |
-| `app/evaluation/` | Benchmark jobs and leakage checks |
-| `app/ensemble/` | Post-hoc fusion of multiple models' predictions |
-| `app/compute/` | Device scheduling, shared `JobStore`, job lifecycle, logging |
-| `app/plugins/` | Third-party model plugin discovery and validation |
+| `pe_ensemble/models/` | Model wrappers and the weights registry |
+| `pe_ensemble/training/` | Train and tune orchestration, data fetching, search spaces |
+| `pe_ensemble/evaluation/` | Benchmark jobs and leakage checks |
+| `pe_ensemble/ensemble/` | Post-hoc fusion of multiple models' predictions |
+| `pe_ensemble/compute/` | Device scheduling, shared `JobStore`, job lifecycle, logging |
+| `pe_ensemble/plugins/` | Third-party model plugin discovery and validation |
 
 `main.py` holds every route; `train_models.py` and `tune_models.py` are the
 `peen train` / `peen tune` CLI bodies. Routes and CLI both go through the same
 runner modules, so behaviour cannot drift between them.
 
-### `app/models/` — wrappers and weights
+### `pe_ensemble/models/` — wrappers and weights
 
 Every wrapper implements the same lifecycle: `prepare_data` → `train` →
 `predict` → `save_model` / `load_model`. `model_factory.py` maps a model name to
@@ -49,11 +49,12 @@ its wrapper and `registry.py` describes the vendor weight sets.
 | `pridict2_wrapper.py` | `PERNNDistributionModel` from the vendor `prieml_model`. Each run gets a unique scratch `output_dir` |
 | `oped_wrapper.py` | `TransformerEncoderModelOrder3` over k-mer tokens. Requires `embedding_size % nhead == 0` |
 | `optiprime_wrapper.py` | JAX/Flax; import is lazy so the service still starts without JAX |
+| `hparams.py` | Reads vendor aliases and resolves `load_pretrained` / `weights`; does not unify Lightning vs JAX |
 | `weights_registry.py` | Disk-backed registry under `weights/`. Manifests are written atomically and index rebuilds take an `fcntl` lock |
 | `*_vendor_provenance.py` | Records which vendor checkpoint a weight set descends from; fold predicates live in `author_folds.py` |
 | `migrate_weights.py`, `convert_oped_weights.py` | One-off layout and format migrations |
 
-### `app/training/` — orchestration
+### `pe_ensemble/training/` — orchestration
 
 | File | Notes |
 |---|---|
@@ -71,7 +72,7 @@ its wrapper and `registry.py` describes the vendor weight sets.
 | `model_baselines.py` | Non-deep-learning baselines |
 | `pe_db_access.py` | Chooses the in-process library vs HTTP transport |
 
-### `app/compute/` — shared job machinery
+### `pe_ensemble/compute/` — shared job machinery
 
 `device_scheduler.py` allocates GPUs and queues work per device;
 `job_store.py` is the shared filesystem registry (create/list/logs/status);
@@ -82,10 +83,10 @@ its wrapper and `registry.py` describes the vendor weight sets.
 
 | Task | Where |
 |---|---|
-| Add a model | New wrapper in `app/models/`, register in `model_factory.py`, add a search space in `app/training/search_spaces.py` |
-| Change what a training run records | `app/training/runner.py` (`_training_metadata_from_request`) |
-| Change tunable hyperparameters | `app/training/search_spaces.py` and `hyperparameter_presets.py` |
-| Add a request field | `app/training/schemas.py`, then thread it through `runner.py` |
+| Add a model | New wrapper in `pe_ensemble/models/`, register in `model_factory.py`, add a search space in `pe_ensemble/training/search_spaces.py` |
+| Change what a training run records | `pe_ensemble/training/runner.py` (`_training_metadata_from_request`) |
+| Change tunable hyperparameters | `pe_ensemble/training/search_spaces.py` and `hyperparameter_presets.py` |
+| Add a request field | `pe_ensemble/training/schemas.py`, then thread it through `runner.py` |
 | Debug a stuck job | Read the manifest and log under `jobs/<job_id>/` — see [`jobs/README.md`](jobs/README.md) |
 
 ## Training and output invariants
@@ -141,7 +142,7 @@ Behaviour that is easy to break and worth knowing:
 ```bash
 cd services/pe-ensemble
 pip install -e .
-PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
+PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
 ```
 
 The service will be available at http://localhost:8001 by default.
@@ -153,7 +154,7 @@ The service will be available at http://localhost:8001 by default.
 pip install -e .
 
 # Run development server
-PE_DB_URL=http://localhost:8000 uvicorn app.main:app --reload --port 8001
+PE_DB_URL=http://localhost:8000 uvicorn pe_ensemble.main:app --reload --port 8001
 ```
 
 ## Data format and conversion
@@ -181,7 +182,7 @@ layout but are **gitignored**; they are indexed in `local_registry.json` while
 `WEIGHTS_ROOT` only when mounting an external volume.
 
 On older checkouts where weights still sit under `vendor/models`, bootstrap once
-with `python -m app.models.migrate_weights`.
+with `python -m pe_ensemble.models.migrate_weights`.
 
 ## Install (cluster / headless)
 
@@ -215,7 +216,7 @@ Active model plugins under `PLUGINS_ROOT` (default `<repo>/plugins`) are loaded 
 | `peen models` / `weights` / `methods` / `devices` | Registry and device listings |
 | `peen jobs` / `logs` | Inspect queued or completed jobs |
 
-`python -m app.train_models` and `python -m app.tune_models` remain as thin shims.
+`python -m pe_ensemble.train_models` and `python -m pe_ensemble.tune_models` remain as thin shims.
 
 ### Cluster / headless (in-process PE-DB)
 
@@ -324,7 +325,7 @@ peen train \
 Example OPED training with a smaller architecture:
 
 ```bash
-python -m app.train_models \
+python -m pe_ensemble.train_models \
   --model oped \
   --dataset-name library2 \
   --dataset library2 \
@@ -340,7 +341,7 @@ freezes the backbone, and skips architecture flags). DeepPrime always fine-tunes
 member in the checkpoint together:
 
 ```bash
-python -m app.train_models \
+python -m pe_ensemble.train_models \
   --model deepprime \
   --dataset-name library2 \
   --dataset library2 \
@@ -359,7 +360,7 @@ See [jobs/README.md](jobs/README.md) for queue-only / worker-step patterns.
 List available weight sets via `GET /models/{model_name}/weights` or from Python:
 
 ```python
-from app.models.model_factory import ModelFactory
+from pe_ensemble.models.model_factory import ModelFactory
 
 # DeepPrime: IDs match the original variant directory names.
 dp = ModelFactory.create_model("deepprime", pe_system="PE2max", cell_type="HEK293T")
@@ -390,7 +391,7 @@ of the PyTorch version. PRIDICT2 sets the practical floor (it requires
 
 OPED's legacy full-pickle checkpoints are version-fragile and are **not** loaded
 at runtime — the wrapper defaults to `pegRNA_Model_Merged_saved.order3_decoder_weights.pt`
-and rejects full pickles. Use `python -m app.models.convert_oped_weights` to
+and rejects full pickles. Use `python -m pe_ensemble.models.convert_oped_weights` to
 regenerate the state_dict if needed. See `vendor/models/README.md` for details.
 
 Verify the unified environment with:

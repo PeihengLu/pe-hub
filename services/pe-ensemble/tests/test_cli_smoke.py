@@ -84,11 +84,11 @@ def peen_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("pe_ensemble.cli.wait_for_eval_job", lambda job_id, **k: succeeded)
     monkeypatch.setattr("pe_ensemble.cli.wait_for_ensemble_job", lambda job_id, **k: succeeded)
 
-    from app.training import config as training_config
+    from pe_ensemble.training import config as training_config
 
     previous = training_config.use_pe_db_library()
     yield tmp_path
-    training_config._sync_pe_db_library_flag(previous)
+    training_config._use_pe_db_library = previous
 
 
 def _run(argv: list[str]) -> int:

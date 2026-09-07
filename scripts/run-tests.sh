@@ -2,9 +2,9 @@
 #
 # Run PE-Hub tests in isolated pytest processes.
 #
-# pe-ensemble still exposes a top-level ``app`` package; pe-db lives under
-# ``pe_db``. Each suite gets its own interpreter and PYTHONPATH so imports
-# resolve without an editable install and plugin state stays per suite.
+# pe-db lives under ``pe_db`` and pe-ensemble under ``pe_ensemble``. Each suite
+# gets its own interpreter and PYTHONPATH so imports resolve without an
+# editable install and plugin state stays per suite.
 #
 # Usage:
 #   ./scripts/run-tests.sh                 # every suite
@@ -195,6 +195,7 @@ EOF
             cat <<'EOF'
 services/pe-ensemble/tests/test_model_wrappers.py
 services/pe-ensemble/tests/test_model_architecture.py
+services/pe-ensemble/tests/test_hparams.py
 services/pe-ensemble/tests/test_weights_loading.py
 services/pe-ensemble/tests/test_weights_registry.py
 services/pe-ensemble/tests/test_vendor_models_evaluation.py

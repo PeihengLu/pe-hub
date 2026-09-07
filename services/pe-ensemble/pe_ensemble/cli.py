@@ -14,55 +14,51 @@ from typing import Any, Dict, List, Optional
 from pe_common.devices import format_devices_for_cli
 from pe_common.filter_params import add_filter_arguments, filter_kwargs_from_namespace
 
-from pe_ensemble._bootstrap import ensure_service_root_on_path
-
-ensure_service_root_on_path()
-
-from app.compute.device_scheduler import get_scheduler  # noqa: E402
-from app.ensemble.combine import COMBINE_METHODS, combine_method_help  # noqa: E402
-from app.ensemble.jobs import (  # noqa: E402
+from pe_ensemble.compute.device_scheduler import get_scheduler
+from pe_ensemble.ensemble.combine import COMBINE_METHODS, combine_method_help
+from pe_ensemble.ensemble.jobs import (
     create_job as create_ensemble_job,
     get_job as get_ensemble_job,
     list_jobs as list_ensemble_jobs,
     read_logs as read_ensemble_logs,
     wait_for_job as wait_for_ensemble_job,
 )
-from app.ensemble.runner import execute_ensemble  # noqa: E402
-from app.ensemble.schemas import EnsembleMember, EnsembleRequest  # noqa: E402
-from app.evaluation.jobs import (  # noqa: E402
+from pe_ensemble.ensemble.runner import execute_ensemble
+from pe_ensemble.ensemble.schemas import EnsembleMember, EnsembleRequest
+from pe_ensemble.evaluation.jobs import (
     create_job as create_eval_job,
     get_job as get_eval_job,
     list_jobs as list_eval_jobs,
     read_logs as read_eval_logs,
     wait_for_job as wait_for_eval_job,
 )
-from app.evaluation.runner import execute_evaluation  # noqa: E402
-from app.evaluation.schemas import EvaluationRequest  # noqa: E402
-from app.models.registry import model_registry  # noqa: E402
-from app.training.config import enable_cli_pe_db_access, jobs_root, supported_models  # noqa: E402
-from app.training.jobs import (  # noqa: E402
+from pe_ensemble.evaluation.runner import execute_evaluation
+from pe_ensemble.evaluation.schemas import EvaluationRequest
+from pe_ensemble.models.registry import model_registry
+from pe_ensemble.training.config import enable_cli_pe_db_access, jobs_root, supported_models
+from pe_ensemble.training.jobs import (
     create_job as create_train_job,
     get_job as get_train_job,
     list_jobs as list_train_jobs,
     read_logs as read_train_logs,
     wait_for_job as wait_for_train_job,
 )
-from app.training.model_architecture import (  # noqa: E402
+from pe_ensemble.training.model_architecture import (
     architecture_from_cli_args,
     merge_training_hyperparameters,
 )
-from app.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins  # noqa: E402
-from app.training.runner import TrainingError  # noqa: E402
-from app.training.schemas import SplitQueryParams, TrainingRequest  # noqa: E402
-from app.training.tune_jobs import (  # noqa: E402
+from pe_ensemble.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins
+from pe_ensemble.training.runner import TrainingError
+from pe_ensemble.training.schemas import SplitQueryParams, TrainingRequest
+from pe_ensemble.training.tune_jobs import (
     create_job as create_tune_job,
     get_job as get_tune_job,
     list_jobs as list_tune_jobs,
     read_logs as read_tune_logs,
     wait_for_job as wait_for_tune_job,
 )
-from app.training.tune_study import execute_tuning  # noqa: E402
-from app.training.tuning_schemas import TuningRequest  # noqa: E402
+from pe_ensemble.training.tune_study import execute_tuning
+from pe_ensemble.training.tuning_schemas import TuningRequest
 
 
 def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
@@ -73,7 +69,7 @@ def _early_parse(argv: Optional[List[str]]) -> argparse.Namespace:
 
 
 def _bootstrap_plugins() -> List[str]:
-    from app.plugin_loader import load_active_plugins
+    from pe_ensemble.plugin_loader import load_active_plugins
 
     return load_active_plugins()
 

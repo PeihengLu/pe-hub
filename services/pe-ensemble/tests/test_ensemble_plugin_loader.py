@@ -11,7 +11,7 @@ import pytest
 def plugins_and_weights(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    from app.plugin_loader import _loaded_plugins, _quarantined_plugins, load_active_plugins
+    from pe_ensemble.plugin_loader import _loaded_plugins, _quarantined_plugins, load_active_plugins
 
     plugins = Path(__file__).resolve().parents[3] / "testdata" / "plugins"
     weights = tmp_path_factory.mktemp("ensemble_weights")
@@ -24,9 +24,9 @@ def plugins_and_weights(
 
 
 def test_load_dummy_plugin_registers_model_and_weights(plugins_and_weights: Path):
-    from app.models import weights_registry
-    from app.models.registry import model_registry
-    from app.plugin_loader import load_active_plugins
+    from pe_ensemble.models import weights_registry
+    from pe_ensemble.models.registry import model_registry
+    from pe_ensemble.plugin_loader import load_active_plugins
 
     assert "dummy_model" in load_active_plugins(plugins_and_weights)
     assert model_registry.is_registered("dummy_model")
@@ -41,7 +41,7 @@ def test_load_dummy_plugin_registers_model_and_weights(plugins_and_weights: Path
 
 
 def test_dummy_wrapper_evaluate_round_trip(plugins_and_weights: Path):
-    from app.models.registry import model_registry
+    from pe_ensemble.models.registry import model_registry
 
     spec = model_registry.get("dummy_model")
     wrapper = spec.wrapper_class()

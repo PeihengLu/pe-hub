@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.training.model_architecture import (
+from pe_ensemble.training.model_architecture import (
     apply_fine_tune_defaults,
     architecture_from_cli_args,
     build_architecture_hyperparameters,

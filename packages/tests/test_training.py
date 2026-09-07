@@ -16,6 +16,7 @@ from pe_common.training import (
     LightningTrainerConfig,
     apply_fine_tune_freezing,
     dataloader_kwargs,
+    first_hyperparam,
     fit_lightning_module,
     format_epoch_metrics_row,
     resolve_dataloader_num_workers,
@@ -186,3 +187,14 @@ def test_dataloader_kwargs_pin_memory():
     assert kwargs["num_workers"] == 2
     assert kwargs["pin_memory"] is True
     assert kwargs["persistent_workers"] is True
+
+
+def test_first_hyperparam_prefers_the_first_present_key():
+    assert first_hyperparam({"epoch_num": 20, "epochs": 5}, "epoch_num", "epochs", default=100) == 20
+    assert first_hyperparam({"epochs": 5}, "epoch_num", "epochs", default=100) == 5
+    assert first_hyperparam({}, "epoch_num", "epochs", default=100) == 100
+    assert first_hyperparam(None, "dropout", default=0.1) == 0.1
+
+
+def test_first_hyperparam_returns_explicit_none():
+    assert first_hyperparam({"drop_out": None, "dropout": 0.2}, "drop_out", "dropout", default=0.1) is None

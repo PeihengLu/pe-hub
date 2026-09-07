@@ -31,6 +31,7 @@ from . import weights_registry
 from pe_common.model_interface import BasePEModel
 from pe_common.training import (
     build_lr_scheduler,
+    first_hyperparam,
     fit_lightning_module,
     LightningTrainerConfig,
     regression_metrics,
@@ -38,13 +39,14 @@ from pe_common.training import (
     resolve_training_seed,
     seed_training_run,
 )
-from pe_common.splits import (
-    has_assigned_cv_folds,
-    iter_assigned_cv_folds,
-    resolve_train_val_from_splits,
-)
+from pe_common.splits import resolve_train_val_from_splits
 
 from ..training.progress_log import log_training_best, make_epoch_logger
+from .hparams import (
+    iter_cv_training_folds,
+    require_evaluate_weights,
+    resolve_pretrained_weight_id,
+)
 
 # Add vendor model paths required by PRIDICT2 imports.
 _vendor_root = resolve_vendor_models_path()
@@ -395,12 +397,7 @@ def build_pernn_distribution_model(
     embed_dim = int(hyperparameters.get("embed_dim", 64))
     num_hidden_layers = int(hyperparameters.get("num_hidden_layers", 1))
     bidirection = bool(hyperparameters.get("bidirection", True))
-    p_dropout = float(
-        hyperparameters.get(
-            "p_dropout",
-            hyperparameters.get("dropout", 0.1),
-        )
-    )
+    p_dropout = float(first_hyperparam(hyperparameters, "p_dropout", "dropout", default=0.1))
     annot_embed = _ANNOT_EMBED
     model = PERNNDistributionModel(
         embed_dim=embed_dim,
@@ -1229,12 +1226,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
     def _resolve_train_statedict_dir(
         self, hyperparameters: Dict[str, Any]
     ) -> Optional[str]:
-        if not bool(hyperparameters.get("load_pretrained", False)):
+        weight_id = resolve_pretrained_weight_id(hyperparameters)
+        if not weight_id:
             return None
-        weights = hyperparameters.get("weights")
-        if not weights:
-            return None
-        return self._resolve_pretrained_statedict_dir(str(weights))
+        return self._resolve_pretrained_statedict_dir(weight_id)
 
     def _build_trf_tup(
         self,
@@ -1252,12 +1247,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         z_dim = _compute_z_dim(embed_dim)
         num_hidden_layers = int(hyperparameters.get("num_hidden_layers", 1))
         bidirection = bool(hyperparameters.get("bidirection", True))
-        p_dropout = float(
-            hyperparameters.get(
-                "p_dropout",
-                hyperparameters.get("dropout", 0.1),
-            )
-        )
+        p_dropout = float(first_hyperparam(hyperparameters, "p_dropout", "dropout", default=0.1))
         l2_reg = float(hyperparameters.get("weight_decay", 1e-4))
         return (
             embed_dim,
@@ -1369,9 +1359,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
 
         # When fine-tuning, inherit backbone architecture from the pretrained run.
         build_hparams = dict(hyperparameters)
-        weights_name = hyperparameters.get("weights")
-        if bool(hyperparameters.get("load_pretrained", False)) and weights_name:
-            inherited = self._architecture_from_pretrained_weights(str(weights_name))
+        weight_id = resolve_pretrained_weight_id(hyperparameters)
+        if weight_id:
+            inherited = self._architecture_from_pretrained_weights(weight_id)
             build_hparams.update(inherited)
 
         batch_size = int(build_hparams.get("batch_size", 128))
@@ -1483,26 +1473,23 @@ class PRIDICT2ModelWrapper(BasePEModel):
         output_dir = str(hyperparameters.get("output_dir", "artifacts/pridict2_train"))
         fold_reports: List[Dict[str, Any]] = []
 
-        if val_data is None and has_assigned_cv_folds(train_data):
-            for fold_idx, (fold_label, fold_train_native, fold_val_native) in enumerate(
-                iter_assigned_cv_folds(train_data)
-            ):
-                if cancel_check is not None:
-                    cancel_check()
-                fold_train_df = self._to_pridict_dataframe(fold_train_native)
-                fold_val_df = self._to_pridict_dataframe(fold_val_native)
-                report = self._run_train_val_once(
-                    train_df=fold_train_df,
-                    val_df=fold_val_df,
-                    y_ref=y_ref,
-                    hyperparameters=hyperparameters,
-                    output_dir=output_dir,
-                    run_suffix=f"cv_{fold_label}",
-                    progress_log=progress_log,
-                    cancel_check=cancel_check,
-                    progress_log_prefix=f"cv {fold_label} |",
-                )
-                fold_reports.append({"fold": fold_idx, "fold_label": fold_label, **report})
+        for fold_idx, fold_label, fold_train_native, fold_val_native in iter_cv_training_folds(
+            train_data, val_data, cancel_check=cancel_check
+        ):
+            fold_train_df = self._to_pridict_dataframe(fold_train_native)
+            fold_val_df = self._to_pridict_dataframe(fold_val_native)
+            report = self._run_train_val_once(
+                train_df=fold_train_df,
+                val_df=fold_val_df,
+                y_ref=y_ref,
+                hyperparameters=hyperparameters,
+                output_dir=output_dir,
+                run_suffix=f"cv_{fold_label}",
+                progress_log=progress_log,
+                cancel_check=cancel_check,
+                progress_log_prefix=f"cv {fold_label} |",
+            )
+            fold_reports.append({"fold": fold_idx, "fold_label": fold_label, **report})
 
         if cancel_check is not None:
             cancel_check()
@@ -1542,11 +1529,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
         Returns:
             Dictionary with evaluation metrics for each outcome
         """
-        if not weights or not str(weights).strip():
-            raise ValueError(
-                "weights is required for evaluate(). "
-                f"Available: {self.list_available_weights()}"
-            )
+        weights = require_evaluate_weights(self, weights)
         self.load_weights_by_name(weights)
         
         test_df = self._to_pridict_dataframe(test_data)

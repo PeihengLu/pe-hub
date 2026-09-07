@@ -12,7 +12,7 @@ loads on any modern PyTorch, which is what :class:`OPEDModelWrapper` consumes.
 
 Usage::
 
-    python -m app.models.convert_oped_weights <input_pickle.pt> <output_weights.pt>
+    python -m pe_ensemble.models.convert_oped_weights <input_pickle.pt> <output_weights.pt>
 
 You normally only need this if the bundled ``*_weights.pt`` is missing or you
 have produced a new full-pickle checkpoint that must be made portable.

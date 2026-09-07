@@ -51,13 +51,13 @@ Adding a model today requires editing ~9 hardcoded locations that must agree:
 
 | Location                             | Constant / code                             |
 | ------------------------------------ | ------------------------------------------- |
-| `app/models/model_factory.py:13`     | `ModelFactory._models` dict                 |
-| `app/training/config.py:7`           | `SUPPORTED_MODELS`                          |
-| `app/training/config.py:9`           | `MODEL_FORMAT`                              |
-| `app/models/weights_registry.py:22`  | `MODEL_NAMES`                               |
-| `app/models/weights_registry.py:304` | per-model `register_trained_model` branches |
-| `app/main.py` `GET /models`          | static JSON catalog                         |
-| `app/training/model_architecture.py` | per-model hyperparameter mapping            |
+| `pe_ensemble/models/model_factory.py:13`     | `ModelFactory._models` dict                 |
+| `pe_ensemble/training/config.py:7`           | `SUPPORTED_MODELS`                          |
+| `pe_ensemble/training/config.py:9`           | `MODEL_FORMAT`                              |
+| `pe_ensemble/models/weights_registry.py:22`  | `MODEL_NAMES`                               |
+| `pe_ensemble/models/weights_registry.py:304` | per-model `register_trained_model` branches |
+| `pe_ensemble/main.py` `GET /models`          | static JSON catalog                         |
+| `pe_ensemble/training/model_architecture.py` | per-model hyperparameter mapping            |
 
 
 **PE Database**
@@ -253,7 +253,7 @@ method `save_to_registry(self, dest_dir) -> str`. Default raises
 OPED → `save_model(dest/"weights.pt")`, PRIDICT2 → copy `model_statedict/` +
 `config/`). This eliminates the per-model branch in
 `weights_registry.register_trained_model` (`weights_registry.py:304`).
-- **Model registry module** (`app/models/registry.py`, new): wraps
+- **Model registry module** (`pe_ensemble/models/registry.py`, new): wraps
 `ModelFactory` plus per-model metadata `{pe_db_format, weight_format, hyperparameters, display_name, source: "builtin"|"plugin"}`. Seed it with the
 three built-ins.
 - Derive at runtime (no more module constants):
@@ -362,7 +362,7 @@ model-facing service). New endpoints, multipart where files are involved:
 
 Implementation notes:
 
-- Reuse `app/compute/job_store.py` for validation job state (`validation_jobs/`):
+- Reuse `pe_ensemble/compute/job_store.py` for validation job state (`validation_jobs/`):
 validation can run through the plugin scheduler, streaming a `validation.log`
 like other jobs.
 - For the `format` half, PE Ensemble writes the bundle to the **shared**
@@ -458,20 +458,20 @@ plugin through the API.
 - `app/format_registry.py` (new).
 - `app/converter.py` — use registry dispatch (replace `:123` if/elif).
 - `app/formatted_cache.py` — derive formats from registry.
-- `app/main.py` — drop `Literal` on `/api/filter`; runtime validation;
+- `pe_ensemble/main.py` — drop `Literal` on `/api/filter`; runtime validation;
 add `POST /api/plugins/reload`.
-- `app/plugin_loader.py` (new) — startup scan + `register_format`.
+- `pe_ensemble/plugin_loader.py` (new) — startup scan + `register_format`.
 
 **pe-ensemble (`services/pe-ensemble`)**
 
-- `app/models/registry.py` (new) — model + metadata registry.
-- `app/models/model_factory.py` — back `_models` with the registry.
-- `app/training/config.py` — derive `SUPPORTED_MODELS`/`MODEL_FORMAT`.
-- `app/models/weights_registry.py` — derive `MODEL_NAMES`; use
+- `pe_ensemble/models/registry.py` (new) — model + metadata registry.
+- `pe_ensemble/models/model_factory.py` — back `_models` with the registry.
+- `pe_ensemble/training/config.py` — derive `SUPPORTED_MODELS`/`MODEL_FORMAT`.
+- `pe_ensemble/models/weights_registry.py` — derive `MODEL_NAMES`; use
 `save_to_registry` (replace `:304` branch).
-- `app/training/model_architecture.py` — read declared hyperparameters.
-- `app/main.py` — registry-driven `GET /models`; plugin CRUD endpoints.
-- `app/plugin_loader.py` (new) — startup scan + register wrapper/weights.
+- `pe_ensemble/training/model_architecture.py` — read declared hyperparameters.
+- `pe_ensemble/main.py` — registry-driven `GET /models`; plugin CRUD endpoints.
+- `pe_ensemble/plugin_loader.py` (new) — startup scan + register wrapper/weights.
 
 **pe-hub**
 

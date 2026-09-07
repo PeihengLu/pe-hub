@@ -23,6 +23,7 @@ from pe_common.training import regression_metrics
 
 from .vendor_path import resolve_vendor_models_path
 from . import weights_registry
+from .hparams import require_evaluate_weights, resolve_pretrained_weight_id
 
 logger = logging.getLogger(__name__)
 
@@ -379,8 +380,9 @@ class OptiPrimeModelWrapper(BasePEModel):
         be added in a future release.
         """
         hp = hyperparameters or {}
-        if hp.get("load_pretrained"):
-            self.load_weights_by_name(str(hp.get("weights", self.DEFAULT_WEIGHT_ID)))
+        weight_id = resolve_pretrained_weight_id(hp, default=self.DEFAULT_WEIGHT_ID)
+        if weight_id:
+            self.load_weights_by_name(weight_id)
         self.is_trained = True
         return {
             "status": "pretrained_only",
@@ -390,6 +392,7 @@ class OptiPrimeModelWrapper(BasePEModel):
         }
 
     def evaluate(self, test_data: pd.DataFrame, weights: str) -> Dict[str, float]:
+        weights = require_evaluate_weights(self, weights)
         self.load_weights_by_name(weights)
         prepared = self.prepare_data(test_data)
         preds = self.predict(prepared)

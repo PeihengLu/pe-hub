@@ -102,27 +102,27 @@ Things worth knowing about this pipeline:
 
 ```
 POST /train  or  peen train
-  │   app/main.py → app/training/schemas.py (request validation, incl. splits)
+  │   pe_ensemble/main.py → pe_ensemble/training/schemas.py (request validation, incl. splits)
   ▼
-app/training/jobs.py            create_job() → jobs/<job_id>/{request,manifest}.json
+pe_ensemble/training/jobs.py            create_job() → jobs/<job_id>/{request,manifest}.json
   │
   ▼
-app/compute/device_scheduler.py Queue per device; one running job per device
+pe_ensemble/compute/device_scheduler.py Queue per device; one running job per device
   │
   ▼
-app/training/runner.py          execute_training()
-  │   1. fetch_training_dataframe()      app/training/data.py → PE-DB /api/filter
+pe_ensemble/training/runner.py          execute_training()
+  │   1. fetch_training_dataframe()      pe_ensemble/training/data.py → PE-DB /api/filter
   │   2. exclude_test_partition()        pe_common/splits.py
   │   3. record training loci            → leak audit sidecar
-  │   4. resolve_hyperparameters()       app/training/hyperparameter_presets.py
-  │   5. model.train(...)                app/models/<model>_wrapper.py
-  │   6. register_trained_model()        app/models/weights_registry.py
+  │   4. resolve_hyperparameters()       pe_ensemble/training/hyperparameter_presets.py
+  │   5. model.train(...)                pe_ensemble/models/<model>_wrapper.py
+  │   6. register_trained_model()        pe_ensemble/models/weights_registry.py
   ▼
 weights/<model>/<weight_id>/    Weight files + manifest.json + train_target_loci.json
 ```
 
 `peen tune` wraps the same `execute_training` per Optuna trial
-(`app/training/tune_runner.py`), writes the best hyperparameters to a local
+(`pe_ensemble/training/tune_runner.py`), writes the best hyperparameters to a local
 preset YAML, and optionally registers weights for the best trial.
 
 ### What the wrappers share, and where they differ
@@ -141,8 +141,11 @@ remaining differences are deliberate:
 | Needs disk round-trip to save | no | no | **yes** (vendor saver owns the layout) |
 
 The epoch-name divergence is historical and mirrors each vendor's own
-hyperparameter name; the search spaces in `app/training/search_spaces.py` use
-the matching name per model.
+hyperparameter name; the search spaces in `pe_ensemble/training/search_spaces.py` use
+the matching name per model. Wrappers read the documented aliases through
+`first_hyperparam` (`pe_common.training`) and resolve `load_pretrained` /
+`weights` through `pe_ensemble/models/hparams.py`. Lightning and JAX training loops
+stay separate.
 
 ### Cross-cutting training behaviour
 
@@ -170,7 +173,7 @@ the matching name per model.
   default `ModelCheckpoint` would only litter `<cwd>/checkpoints`.
 - **Training records its own data provenance.** The universal target-locus IDs
   behind each run are written to `train_target_loci.json` so
-  `app/evaluation/leakage.py` can detect train/test overlap later.
+  `pe_ensemble/evaluation/leakage.py` can detect train/test overlap later.
 
 ## Code map: `packages/pe-common`
 
@@ -271,20 +274,20 @@ Adding a study means catalog rows in `studies.py` plus a pipeline module under
 | `session.py` | 55 | Engine and session lifecycle |
 | `base.py` | 7 | Declarative base |
 
-HTTP is `uvicorn pe_db.main:app`. Ensemble still uses a top-level `app` package.
+HTTP is `uvicorn pe_db.main:app`. Ensemble HTTP is `uvicorn pe_ensemble.main:app`.
 
 ## Code map: `services/pe-ensemble`
 
 Model service. Usage and API: [`services/pe-ensemble/README.md`](../services/pe-ensemble/README.md).
 
-### `app/` — top level
+### `pe_ensemble/` — FastAPI
 
 `main.py` (1014) holds every route: models and weights, `/train`, `/tune`,
 `/evaluate`, `/ensemble`, plugin management, and `/devices`. `plugin_loader.py`
 imports plugin wrappers. `train_models.py` and `tune_models.py` are thin script
 entry points.
 
-### `app/models/` — wrappers and the weight registry
+### `pe_ensemble/models/` — wrappers and the weight registry
 
 | Module | Lines | Responsibility |
 |---|---:|---|
@@ -292,6 +295,7 @@ entry points.
 | `oped_wrapper.py` | 1010 | k-mer tokenization and transformer training |
 | `deepprime_wrapper.py` | 726 | Ensemble fine-tuning and from-scratch training |
 | `optiprime_wrapper.py` | 424 | OptiPrime (JAX/Flax stack; no tuning search space) |
+| `hparams.py` | ~70 | Pretrained weight ID, evaluate() weight check, CV-fold shell |
 | `weights_registry.py` | 540 | The single place weights are written, indexed, resolved and provenance-stamped |
 | `registry.py` | 276 | `ModelSpec` catalog: the four built-in models plus active plugins |
 | `model_factory.py` | 89 | Name → wrapper instance |
@@ -303,7 +307,7 @@ entry points.
 Weight-set layout, ID conventions and manifest fields:
 [`services/pe-ensemble/weights/README.md`](../services/pe-ensemble/weights/README.md).
 
-### `app/training/` — training and tuning
+### `pe_ensemble/training/` — training and tuning
 
 | Module | Lines | Responsibility |
 |---|---:|---|
@@ -330,7 +334,7 @@ Hyperparameters resolve in this order, later winning: `model_baselines.py` →
 the request's `hyperparameters`. `hyperparameter_mode: "replace"` skips the YAML
 layers entirely, which is what tuning trials use.
 
-### `app/compute/` — scheduling and job plumbing
+### `pe_ensemble/compute/` — scheduling and job plumbing
 
 | Module | Lines | Responsibility |
 |---|---:|---|
@@ -341,7 +345,7 @@ layers entirely, which is what tuning trials use.
 | `manifest_io.py` | 51 | Atomic JSON writes and truncation-tolerant reads |
 | `job_cancel.py` | 43 | In-memory cancellation flags |
 
-### `app/evaluation/`, `app/ensemble/`, `app/plugins/`
+### `pe_ensemble/evaluation/`, `pe_ensemble/ensemble/`, `pe_ensemble/plugins/`
 
 - `evaluation/` — `runner.py` (281) evaluates on the test partition only;
   `leakage.py` (554) compares a weight set's recorded training loci against the
@@ -354,7 +358,7 @@ layers entirely, which is what tuning trials use.
 
 `training/`, `evaluation/`, `ensemble/`, and `plugins/` keep domain `create_job`
 and `mark_succeeded` helpers; the shared filesystem mechanics live in
-`app/compute/job_store.py`. On-disk layout is unchanged — see
+`pe_ensemble/compute/job_store.py`. On-disk layout is unchanged — see
 [`services/pe-ensemble/jobs/README.md`](../services/pe-ensemble/jobs/README.md).
 
 ### `pe_ensemble/` — CLI

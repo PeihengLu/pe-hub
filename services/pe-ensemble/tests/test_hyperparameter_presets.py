@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from app.training.dataset_key import candidate_preset_keys, dataset_preset_key
-from app.training.hyperparameter_presets import (
+from pe_ensemble.training.dataset_key import candidate_preset_keys, dataset_preset_key
+from pe_ensemble.training.hyperparameter_presets import (
     SCHEDULER_KEYS,
     load_preset_bundle,
     resolve_hyperparameters,
     write_dataset_preset,
 )
-from app.training.schemas import TrainingRequest
-from app.training.search_spaces import (
+from pe_ensemble.training.schemas import TrainingRequest
+from pe_ensemble.training.search_spaces import (
     get_search_space,
     materialize_hyperparameters,
     resolve_study_name,
@@ -21,7 +21,7 @@ from app.training.search_spaces import (
     search_space_study_suffix,
     suggest_trial_hyperparameters,
 )
-from app.training.tune_runner import extract_validation_metric
+from pe_ensemble.training.tune_runner import extract_validation_metric
 
 
 def test_dataset_preset_key_specificity():
@@ -312,7 +312,7 @@ def test_materialize_hyperparameters_applies_fixed_and_oped_aliases():
 def test_pridict2_seqlevel_featdim_uses_datatensor_colnames():
     from types import SimpleNamespace
 
-    from app.models.pridict2_wrapper import PRIDICT2ModelWrapper
+    from pe_ensemble.models.pridict2_wrapper import PRIDICT2ModelWrapper
 
     dtensor = SimpleNamespace(
         seqlevel_feat_colnames=["a"] * 18,

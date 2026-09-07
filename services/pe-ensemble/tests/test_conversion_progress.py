@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from app.training.conversion_progress import pe_db_filter_progress
+from pe_ensemble.training.conversion_progress import pe_db_filter_progress
 from pe_common.conversion_progress import append_progress
 
 

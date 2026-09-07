@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from app.models import pridict2_wrapper  # noqa: F401 — vendor import path setup
+from pe_ensemble.models import pridict2_wrapper  # noqa: F401 — vendor import path setup
 from pridict2.pridict.pridictv2.predict_outcomedistrib import _batch_seq_ids_to_list
 
 

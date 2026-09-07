@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.evaluation.schemas import EvaluationRequest
-from app.models import weights_registry
+from pe_ensemble.evaluation.schemas import EvaluationRequest
+from pe_ensemble.models import weights_registry
 
 
 def test_evaluation_request_requires_weights():

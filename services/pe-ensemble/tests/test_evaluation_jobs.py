@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from app.evaluation.jobs import create_job, get_job, job_summary, mark_succeeded, wait_for_job
-from app.evaluation.schemas import EvaluationRequest
+from pe_ensemble.evaluation.jobs import create_job, get_job, job_summary, mark_succeeded, wait_for_job
+from pe_ensemble.evaluation.schemas import EvaluationRequest
 
 
 @pytest.fixture()

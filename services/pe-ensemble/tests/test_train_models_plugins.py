@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture()
 def dummy_plugins_root(monkeypatch: pytest.MonkeyPatch) -> Path:
-    from app.plugin_loader import _loaded_plugins, _quarantined_plugins
+    from pe_ensemble.plugin_loader import _loaded_plugins, _quarantined_plugins
 
     plugins = Path(__file__).resolve().parents[3] / "testdata" / "plugins"
     monkeypatch.setenv("PLUGINS_ROOT", str(plugins))
@@ -18,7 +18,7 @@ def dummy_plugins_root(monkeypatch: pytest.MonkeyPatch) -> Path:
     # Plugin loading mutates process-global registries, so undo it afterwards;
     # otherwise later tests see 'dummy_model' among the built-in models.
     yield plugins
-    from app.plugin_loader import unregister_plugin
+    from pe_ensemble.plugin_loader import unregister_plugin
 
     for name in list(_loaded_plugins):
         unregister_plugin(name)
@@ -27,7 +27,7 @@ def dummy_plugins_root(monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_cli_bootstrap_registers_active_plugins(dummy_plugins_root: Path):
-    from app.training.config import supported_models
+    from pe_ensemble.training.config import supported_models
     from pe_ensemble.cli import _bootstrap_plugins
 
     loaded = _bootstrap_plugins()

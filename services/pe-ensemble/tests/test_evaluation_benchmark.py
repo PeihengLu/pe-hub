@@ -5,13 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
-from app.evaluation.benchmark import (
+from pe_ensemble.evaluation.benchmark import (
     BenchmarkResolutionError,
     benchmark_label_from_training,
     resolve_evaluation_request,
 )
-from app.evaluation.schemas import EvaluationRequest
-from app.training.schemas import SplitQueryParams
+from pe_ensemble.evaluation.schemas import EvaluationRequest
+from pe_ensemble.training.schemas import SplitQueryParams
 
 
 def _training_metadata() -> dict:
@@ -53,7 +53,7 @@ def test_resolve_uses_training_filters_and_split():
         weights="trained-weights",
     )
     with patch(
-        "app.evaluation.benchmark.weights_registry.load_training_metadata",
+        "pe_ensemble.evaluation.benchmark.weights_registry.load_training_metadata",
         return_value=_training_metadata(),
     ):
         resolved = resolve_evaluation_request(request)
@@ -74,7 +74,7 @@ def test_resolve_preserves_explicit_filter_overrides():
         dataset=["other"],
     )
     with patch(
-        "app.evaluation.benchmark.weights_registry.load_training_metadata",
+        "pe_ensemble.evaluation.benchmark.weights_registry.load_training_metadata",
         return_value=_training_metadata(),
     ):
         resolved = resolve_evaluation_request(request)
@@ -95,7 +95,7 @@ def test_manual_mode_preserves_custom_split():
         split=SplitQueryParams(split_strategy="holdout_2", train_pct=0.8, test_pct=0.2),
     )
     with patch(
-        "app.evaluation.benchmark.weights_registry.load_training_metadata",
+        "pe_ensemble.evaluation.benchmark.weights_registry.load_training_metadata",
         return_value=_training_metadata(),
     ):
         resolved = resolve_evaluation_request(request)
@@ -109,7 +109,7 @@ def test_resolve_requires_manual_filters_for_vendor_weights():
         weights="DeepPrime_base",
     )
     with patch(
-        "app.evaluation.benchmark.weights_registry.load_training_metadata",
+        "pe_ensemble.evaluation.benchmark.weights_registry.load_training_metadata",
         return_value=None,
     ):
         with pytest.raises(BenchmarkResolutionError, match="no recorded training metadata"):
@@ -124,7 +124,7 @@ def test_resolve_allows_vendor_weights_with_manual_filters():
         dataset=["library2"],
     )
     with patch(
-        "app.evaluation.benchmark.weights_registry.load_training_metadata",
+        "pe_ensemble.evaluation.benchmark.weights_registry.load_training_metadata",
         return_value=None,
     ):
         resolved = resolve_evaluation_request(request)

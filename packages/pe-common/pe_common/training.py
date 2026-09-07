@@ -77,6 +77,26 @@ def lightning_accelerator_from_device(device: torch.device) -> str:
 DEFAULT_TRAINING_SEED = 42
 
 
+def first_hyperparam(
+    hyperparameters: Optional[Mapping[str, Any]],
+    *keys: str,
+    default: Any = None,
+) -> Any:
+    """Return the first present hyperparameter key.
+
+    Matches chained ``dict.get``: an explicit ``None`` is returned rather than
+    falling through. Vendor wire names stay distinct (``epoch_num`` vs
+    ``epochs`` vs ``num_epochs``); this only reads the aliases callers already
+    accept.
+    """
+    if not hyperparameters:
+        return default
+    for key in keys:
+        if key in hyperparameters:
+            return hyperparameters[key]
+    return default
+
+
 def seed_training_run(hyperparameters: Optional[Mapping[str, Any]] = None) -> Optional[int]:
     """Seed global RNGs at the very start of a training run.
 

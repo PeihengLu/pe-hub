@@ -96,7 +96,7 @@ def _http_routes(app) -> set[tuple[str, str]]:
 
 
 def _stub_queue_validation(name: str) -> dict[str, Any]:
-    from app.plugins.validation_jobs import create_job, get_job
+    from pe_ensemble.plugins.validation_jobs import create_job, get_job
 
     job_id = create_job(name)
     manifest = get_job(job_id)
@@ -340,13 +340,13 @@ def ensemble_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     monkeypatch.setenv("TRAINING_PRESETS_ROOT", str(tmp_path / "presets"))
     (tmp_path / "plugins").mkdir()
 
-    from app.main import app
+    from pe_ensemble.main import app
 
     scheduler = _QueueOnlyScheduler()
-    monkeypatch.setattr("app.main.get_scheduler", lambda: scheduler)
-    monkeypatch.setattr("app.main.ModelFactory.create_model", lambda *a, **k: _DummyModel())
+    monkeypatch.setattr("pe_ensemble.main.get_scheduler", lambda: scheduler)
+    monkeypatch.setattr("pe_ensemble.main.ModelFactory.create_model", lambda *a, **k: _DummyModel())
     monkeypatch.setattr(
-        "app.main._request_pe_db_filtered",
+        "pe_ensemble.main._request_pe_db_filtered",
         lambda params: {
             "status": "success",
             "groups": [],
@@ -355,8 +355,8 @@ def ensemble_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
             "target_format": "std",
         },
     )
-    monkeypatch.setattr("app.plugins.manager.queue_validation", _stub_queue_validation)
-    monkeypatch.setattr("app.main.asyncio.create_task", _drop_task)
+    monkeypatch.setattr("pe_ensemble.plugins.manager.queue_validation", _stub_queue_validation)
+    monkeypatch.setattr("pe_ensemble.main.asyncio.create_task", _drop_task)
 
     original_lifespan = app.router.lifespan_context
     app.router.lifespan_context = _noop_lifespan
@@ -368,7 +368,7 @@ def ensemble_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
 
 
 def test_api_route_inventory_matches_app():
-    from app.main import app
+    from pe_ensemble.main import app
 
     actual = _http_routes(app)
     declared = set(ROUTE_CASES)

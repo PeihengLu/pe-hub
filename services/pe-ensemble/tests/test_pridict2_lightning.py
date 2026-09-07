@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import torch
 
-from app.models.pridict2_wrapper import (
+from pe_ensemble.models.pridict2_wrapper import (
     build_pernn_distribution_model,
     build_pridict_loss,
     predictions_from_decoder_output,

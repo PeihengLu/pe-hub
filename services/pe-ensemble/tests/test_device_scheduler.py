@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from app.compute.device_scheduler import ComputeDeviceScheduler
-from app.training.jobs import create_job, get_job, update_job, wait_for_job
-from app.training.schemas import TrainingRequest
+from pe_ensemble.compute.device_scheduler import ComputeDeviceScheduler
+from pe_ensemble.training.jobs import create_job, get_job, update_job, wait_for_job
+from pe_ensemble.training.schemas import TrainingRequest
 
 
 @pytest.fixture()
@@ -42,7 +42,7 @@ def test_one_job_per_device(jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
             update_job(job_id, status="succeeded", result={"weights_id": job_id})
             finished.append(job_id)
 
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     job_a = create_job(_training_request(dataset_name="a"))
@@ -63,14 +63,14 @@ def test_one_job_per_device(jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_failed_job_updates_manifest(jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
-    from app.training.jobs import mark_running
+    from pe_ensemble.training.jobs import mark_running
 
     def fake_execute(request, *, job_id=None, device_id=None):
         if job_id:
             mark_running(job_id)
         raise ValueError("Unsupported PE system: pe2")
 
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     job_id = create_job(_training_request())
@@ -102,9 +102,9 @@ def test_auto_assignment_waits_for_accelerator_not_cpu(
         if job_id:
             update_job(job_id, status="succeeded", result={"weights_id": job_id})
 
-    monkeypatch.setattr("app.compute.device_scheduler.list_device_ids", fake_list_device_ids)
-    monkeypatch.setattr("app.compute.device_scheduler.list_accelerator_ids", fake_list_accelerator_ids)
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_device_ids", fake_list_device_ids)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_accelerator_ids", fake_list_accelerator_ids)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     running_id = create_job(_training_request(device="auto", dataset_name="running"))
@@ -138,9 +138,9 @@ def test_device_snapshot_auto_jobs_not_counted_on_cpu(
     def fake_execute(request, *, job_id=None, device_id=None):
         gate.wait(timeout=5)
 
-    monkeypatch.setattr("app.compute.device_scheduler.list_device_ids", fake_list_device_ids)
-    monkeypatch.setattr("app.compute.device_scheduler.list_accelerator_ids", fake_list_accelerator_ids)
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_device_ids", fake_list_device_ids)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_accelerator_ids", fake_list_accelerator_ids)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     for index in range(3):
@@ -167,8 +167,8 @@ def test_device_snapshot_explicit_cpu_jobs_counted_on_cpu(
     def fake_execute(request, *, job_id=None, device_id=None):
         gate.wait(timeout=5)
 
-    monkeypatch.setattr("app.compute.device_scheduler.list_device_ids", fake_list_device_ids)
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_device_ids", fake_list_device_ids)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     running_id = create_job(_training_request(device="cpu", dataset_name="running"))
@@ -185,9 +185,9 @@ def test_device_snapshot_explicit_cpu_jobs_counted_on_cpu(
 
 
 def test_auto_assignment_fails_without_accelerators(jobs_root: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("app.compute.device_scheduler.list_accelerator_ids", lambda: [])
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.list_accelerator_ids", lambda: [])
     monkeypatch.setattr(
-        "app.compute.device_scheduler.list_device_ids",
+        "pe_ensemble.compute.device_scheduler.list_device_ids",
         lambda *, include_cpu=True: ["cpu"] if include_cpu else [],
     )
 
@@ -207,7 +207,7 @@ def test_explicit_device_assignment(jobs_root: Path, monkeypatch: pytest.MonkeyP
         if job_id:
             update_job(job_id, status="succeeded", result={"weights_id": job_id})
 
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     job_id = create_job(_training_request(device="cpu"))
@@ -222,7 +222,7 @@ def test_shutdown_cancels_queued_jobs(jobs_root: Path, monkeypatch: pytest.Monke
     def fake_execute(request, *, job_id=None, device_id=None):
         gate.wait(timeout=5)
 
-    monkeypatch.setattr("app.compute.device_scheduler.execute_training", fake_execute)
+    monkeypatch.setattr("pe_ensemble.compute.device_scheduler.execute_training", fake_execute)
 
     scheduler = ComputeDeviceScheduler()
     running_id = create_job(_training_request(dataset_name="running"))

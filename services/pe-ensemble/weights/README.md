@@ -36,13 +36,13 @@ If you have an older checkout where weights still live under `vendor/models`, ru
 
 ```bash
 cd services/pe-ensemble
-python -m app.models.migrate_weights --dry-run   # preview
-python -m app.models.migrate_weights             # move files and register
+python -m pe_ensemble.models.migrate_weights --dry-run   # preview
+python -m pe_ensemble.models.migrate_weights             # move files and register
 ```
 
 Fresh clones include vendor weights under this directory. Rebuild indexes after
 adding manifests with:
 
 ```bash
-python -c "from app.models import weights_registry; weights_registry.rebuild_index()"
+python -c "from pe_ensemble.models import weights_registry; weights_registry.rebuild_index()"
 ```

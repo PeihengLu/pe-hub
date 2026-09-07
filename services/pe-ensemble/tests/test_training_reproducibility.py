@@ -24,8 +24,8 @@ from pe_common.training import (
     resolve_training_seed,
 )
 
-from app.models import weights_registry
-from app.models.deepprime_wrapper import DeepPrimeModelWrapper
+from pe_ensemble.models import weights_registry
+from pe_ensemble.models.deepprime_wrapper import DeepPrimeModelWrapper
 
 # Tabular features DeepPrime's `select_cols` reads, alongside the two 74-mers.
 _NUMERIC_FEATURES = (

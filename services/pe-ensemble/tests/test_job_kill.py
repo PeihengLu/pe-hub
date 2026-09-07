@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from app.compute import device_scheduler as device_scheduler_module
-from app.compute.device_scheduler import ComputeDeviceScheduler, get_scheduler
-from app.compute.job_lifecycle import begin_job_kill, finalize_job_kill, kill_and_remove_job
-from app.training.jobs import create_job, get_job
-from app.training.jobs import delete_job as delete_train_job
-from app.training.schemas import TrainingRequest
+from pe_ensemble.compute import device_scheduler as device_scheduler_module
+from pe_ensemble.compute.device_scheduler import ComputeDeviceScheduler, get_scheduler
+from pe_ensemble.compute.job_lifecycle import begin_job_kill, finalize_job_kill, kill_and_remove_job
+from pe_ensemble.training.jobs import create_job, get_job
+from pe_ensemble.training.jobs import delete_job as delete_train_job
+from pe_ensemble.training.schemas import TrainingRequest
 
 
 @pytest.fixture()
@@ -52,7 +52,7 @@ def test_cancel_queued_job_and_delete(jobs_root: Path):
 
 
 def test_begin_kill_marks_running_job_stopping(jobs_root: Path, scheduler: ComputeDeviceScheduler):
-    from app.training.jobs import mark_running
+    from pe_ensemble.training.jobs import mark_running
 
     job_id = create_job(_training_request())
     mark_running(job_id)
@@ -64,7 +64,7 @@ def test_begin_kill_marks_running_job_stopping(jobs_root: Path, scheduler: Compu
     assert manifest["status"] == "stopping"
     assert get_job(job_id)["status"] == "stopping"
 
-    from app.training.jobs import mark_cancelled
+    from pe_ensemble.training.jobs import mark_cancelled
 
     mark_cancelled(job_id)
     finalize_job_kill(
@@ -77,7 +77,7 @@ def test_begin_kill_marks_running_job_stopping(jobs_root: Path, scheduler: Compu
 
 
 def test_delete_terminal_job(jobs_root: Path):
-    from app.training.jobs import mark_succeeded
+    from pe_ensemble.training.jobs import mark_succeeded
 
     job_id = create_job(_training_request())
     mark_succeeded(job_id, {"weights_id": "w1", "weights_label": "W1"})

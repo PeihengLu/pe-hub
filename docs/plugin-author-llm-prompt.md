@@ -219,7 +219,7 @@ Resolve registry id → files on disk:
 
 ```python
 def load_weights_by_name(self, name: str) -> None:
-    from app.models import weights_registry
+    from pe_ensemble.models import weights_registry
 
     entry_dir = weights_registry.resolve_dir("my_model", name)
     self.load_model(str(entry_dir / "model.pt"))  # or your artifact name
@@ -232,7 +232,7 @@ Shipped plugin weights live at `plugins/<name>/weights/<id>/` and are copied int
 ```python
 @staticmethod
 def list_available_weights() -> List[str]:
-    from app.models import weights_registry
+    from pe_ensemble.models import weights_registry
     return weights_registry.list_weight_ids("my_model")
 ```
 
@@ -281,7 +281,7 @@ Or copy to `plugins/<name>/` on the server and activate via API.
 
 ```bash
 export PLUGINS_ROOT=/path/to/plugins
-python -m app.train_models \
+python -m pe_ensemble.train_models \
   --model my_model \
   --dataset-id <pe_db_dataset_id> \
   --hyperparameters-json '{"epochs": 10, "lr": 0.001}'

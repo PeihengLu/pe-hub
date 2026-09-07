@@ -61,13 +61,13 @@ class MyModelWrapper(BasePEModel):
         return "my_model_weights"
 
     def load_weights_by_name(self, name: str) -> None:
-        from app.models import weights_registry
+        from pe_ensemble.models import weights_registry
 
         entry_dir = weights_registry.resolve_dir("my_model", name)
         self.load_model(str(entry_dir / ARTIFACT_NAME))
 
     @staticmethod
     def list_available_weights() -> List[str]:
-        from app.models import weights_registry
+        from pe_ensemble.models import weights_registry
 
         return weights_registry.list_weight_ids("my_model")

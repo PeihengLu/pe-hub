@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app.ensemble.combine import combine_predictions, validate_combine_method
+from pe_ensemble.ensemble.combine import combine_predictions, validate_combine_method
 
 
 def test_mean_combine():

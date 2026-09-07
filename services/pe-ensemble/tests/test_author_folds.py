@@ -1,7 +1,7 @@
 """Tests for vendor provenance fold predicates."""
 from __future__ import annotations
 
-from app.models.author_folds import (
+from pe_ensemble.models.author_folds import (
     deepprime_is_author_train_fold,
     oped_is_author_train_fold,
     optiprime_is_author_train_fold,

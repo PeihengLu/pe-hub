@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from app.training.runner import TrainingError
-from app.training.schemas import TrainingRequest
-from app.training.tune_study import execute_tuning
-from app.training.tuning_schemas import TuningRequest
+from pe_ensemble.training.runner import TrainingError
+from pe_ensemble.training.schemas import TrainingRequest
+from pe_ensemble.training.tune_study import execute_tuning
+from pe_ensemble.training.tuning_schemas import TuningRequest
 
 
 @pytest.fixture()
@@ -36,7 +36,7 @@ def test_execute_tuning_runs_trials(tuning_env, monkeypatch: pytest.MonkeyPatch)
 
     def fake_trial(request, *, suggested, register_weights=False):
         calls.append(dict(suggested))
-        from app.training.tune_runner import TrialResult
+        from pe_ensemble.training.tune_runner import TrialResult
 
         # Distinct metrics so Optuna has a stable best trial (maximize).
         return TrialResult(
@@ -45,9 +45,9 @@ def test_execute_tuning_runs_trials(tuning_env, monkeypatch: pytest.MonkeyPatch)
             train_result={},
         )
 
-    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(
-        "app.training.tune_study.suggest_trial_hyperparameters",
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
         lambda model_name, trial: {"epochs": trial.number + 1},
     )
 
@@ -63,7 +63,7 @@ def test_execute_tuning_resumes_remaining_trials_only(
 
     def fake_trial(request, *, suggested, register_weights=False):
         calls.append(dict(suggested))
-        from app.training.tune_runner import TrialResult
+        from pe_ensemble.training.tune_runner import TrialResult
 
         return TrialResult(
             metric=float(suggested.get("epochs", 0)),
@@ -71,9 +71,9 @@ def test_execute_tuning_resumes_remaining_trials_only(
             train_result={},
         )
 
-    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(
-        "app.training.tune_study.suggest_trial_hyperparameters",
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
         lambda model_name, trial: {"epochs": trial.number + 1},
     )
 
@@ -88,14 +88,14 @@ def test_execute_tuning_resumes_remaining_trials_only(
 
 
 def test_execute_tuning_requires_dataset_key(tuning_env, monkeypatch: pytest.MonkeyPatch):
-    from app.training.tune_runner import TrialResult
+    from pe_ensemble.training.tune_runner import TrialResult
 
     def fake_trial(request, *, suggested, register_weights=False):
         return TrialResult(metric=0.1, hyperparameters=dict(suggested), train_result={})
 
-    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(
-        "app.training.tune_study.suggest_trial_hyperparameters",
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
         lambda model_name, trial: {},
     )
 
@@ -107,17 +107,17 @@ def test_execute_tuning_requires_dataset_key(tuning_env, monkeypatch: pytest.Mon
 
 
 def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: pytest.MonkeyPatch):
-    from app.training.tune_runner import TrialResult
+    from pe_ensemble.training.tune_runner import TrialResult
 
     def fake_trial(request, *, suggested, register_weights=False):
         return TrialResult(metric=0.1, hyperparameters=dict(suggested), train_result={})
 
-    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(
-        "app.training.tune_study.suggest_trial_hyperparameters",
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
         lambda model_name, trial: {"lr": 1e-4},
     )
-    monkeypatch.setattr("app.training.tune_study.execute_training", lambda *args, **kwargs: {})
+    monkeypatch.setattr("pe_ensemble.training.tune_study.execute_training", lambda *args, **kwargs: {})
 
     # The shared helper suppresses preset writing; this test is about the
     # written preset, so opt back in (TRAINING_PRESETS_ROOT is a tmp dir).
@@ -139,7 +139,7 @@ def test_execute_tuning_writes_merged_dataset_preset(tuning_env, monkeypatch: py
 def test_register_best_weights_keeps_training_hyperparameter_mode(
     tuning_env, monkeypatch: pytest.MonkeyPatch
 ):
-    from app.training.tune_runner import TrialResult
+    from pe_ensemble.training.tune_runner import TrialResult
 
     captured: list[str] = []
 
@@ -150,12 +150,12 @@ def test_register_best_weights_keeps_training_hyperparameter_mode(
         captured.append(request.hyperparameter_mode)
         return {"weights_id": "w1"}
 
-    monkeypatch.setattr("app.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
     monkeypatch.setattr(
-        "app.training.tune_study.suggest_trial_hyperparameters",
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
         lambda model_name, trial: {"lr": 1e-4},
     )
-    monkeypatch.setattr("app.training.tune_study.execute_training", fake_train)
+    monkeypatch.setattr("pe_ensemble.training.tune_study.execute_training", fake_train)
 
     training = TrainingRequest(
         model_name="deepprime",

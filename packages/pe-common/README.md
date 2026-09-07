@@ -108,6 +108,7 @@ from pe_common import (
     build_lr_scheduler,
     resolve_training_seed,
     seed_training_run,
+    first_hyperparam,
 )
 ```
 
@@ -117,6 +118,8 @@ PRIDICT2 and OPED at once. Notable behaviour:
 - `seed_training_run(hyperparameters)` is called by each wrapper **before** the
   model is built, so weight init and data-loader shuffling are both seeded.
   `resolve_training_seed` returns the same value for `LightningTrainerConfig`.
+- `first_hyperparam` reads vendor aliases (`epoch_num`/`epochs`, `drop_out`/`dropout`,
+  `p_dropout`/`dropout`) without renaming the wire keys.
 - `fit_lightning_module` sets `enable_checkpointing=False` and returns the best
   state itself; callers decide where weights are persisted.
 - `build_lr_scheduler` defaults `CosineAnnealingLR`'s `T_max` to the run's

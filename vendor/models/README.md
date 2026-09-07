@@ -39,7 +39,7 @@ full-pickle, run:
 
 ```bash
 cd services/pe-ensemble
-python -m app.models.convert_oped_weights \
+python -m pe_ensemble.models.convert_oped_weights \
   ../../vendor/models/oped/pegRNA_PredictingCodes/Model_Trained/pegRNA_Model_Merged_saved.order3_decoder.pt \
   ../../vendor/models/oped/pegRNA_PredictingCodes/Model_Trained/pegRNA_Model_Merged_saved.order3_decoder_weights.pt
 ```
@@ -64,6 +64,6 @@ python -m app.models.convert_oped_weights \
   `pegRNA_Model_Merged_saved.order3_decoder_weights`). Source training code
   remains under `oped/pegRNA_PredictingCodes/`.
 - Do **not** load the legacy full-pickle checkpoints (`*.order3_decoder.pt`);
-  the PE Ensemble wrapper rejects them. Use `python -m app.models.convert_oped_weights`
+  the PE Ensemble wrapper rejects them. Use `python -m pe_ensemble.models.convert_oped_weights`
   to regenerate the state_dict if needed.
 

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from pe_common.data_utils import target_uid_series
 
-from app.models.pridict2_vendor_provenance import (
+from pe_ensemble.models.pridict2_vendor_provenance import (
     parse_pridict2_vendor_run,
     sheet_target_uids,
 )

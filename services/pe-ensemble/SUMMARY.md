@@ -6,14 +6,14 @@ Concise snapshot of what exists today. Full usage docs: [README.md](README.md).
 
 | Model | Wrapper | Weights |
 |-------|---------|---------|
-| DeepPrime | `app/models/deepprime_wrapper.py` | `weights/deepprime/<id>/` |
-| OPED | `app/models/oped_wrapper.py` | `weights/oped/<id>/` |
-| PRIDICT2 | `app/models/pridict2_wrapper.py` | `weights/pridict2/<id>/` |
+| DeepPrime | `pe_ensemble/models/deepprime_wrapper.py` | `weights/deepprime/<id>/` |
+| OPED | `pe_ensemble/models/oped_wrapper.py` | `weights/oped/<id>/` |
+| PRIDICT2 | `pe_ensemble/models/pridict2_wrapper.py` | `weights/pridict2/<id>/` |
 
 All wrappers implement `pe_common.model_interface.BasePEModel`. Create via
 `ModelFactory.create_model(name, device=..., **kwargs)`.
 
-## API (FastAPI `app/main.py`)
+## API (FastAPI `pe_ensemble/main.py`)
 
 - **Catalog** — `GET /models`, `GET /models/{name}/weights`
 - **Data** — `GET /data/filter` (PE-DB proxy)
@@ -26,16 +26,15 @@ All wrappers implement `pe_common.model_interface.BasePEModel`. Create via
 ## Training infrastructure
 
 ```
-app/training/
+pe_ensemble/training/
   config.py           # Supported models and format mapping
   data.py             # PE-DB filter client
-  device_scheduler.py # Per-device queue (one active job per device)
   jobs.py             # Filesystem job manifests under jobs/
   runner.py           # Training execution
   schemas.py          # TrainingRequest, split params
 ```
 
-CLI: `python -m app.train_models` (see [jobs/README.md](jobs/README.md)).
+CLI: `peen train` (see [jobs/README.md](jobs/README.md)).
 
 ## Tests
 

@@ -286,7 +286,7 @@ start_pe_db() {
 
 start_pe_ensemble() {
     local -a uvicorn_args=(
-        app.main:app
+        pe_ensemble.main:app
         --host "${PE_ENSEMBLE_HOST}"
         --port "${PE_ENSEMBLE_PORT}"
         --timeout-graceful-shutdown 5
@@ -294,7 +294,7 @@ start_pe_ensemble() {
     if [[ "${RELOAD}" == true ]]; then
         uvicorn_args+=(
             --reload
-            --reload-dir "${PE_ENSEMBLE_DIR}/app"
+            --reload-dir "${PE_ENSEMBLE_DIR}/pe_ensemble"
             --reload-dir "${REPO_ROOT}/packages/pe-common/pe_common"
         )
     fi
@@ -353,8 +353,8 @@ if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main"); then
     exit 1
 fi
 
-if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn, prettytable"); then
-    echo "Error: PE Ensemble dependencies missing (need uvicorn and prettytable for PRIDICT2)." >&2
+if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn, prettytable, pe_ensemble.main"); then
+    echo "Error: PE Ensemble dependencies missing (need uvicorn, prettytable, pe_ensemble)." >&2
     echo "Run: $(basename "$0") --install" >&2
     echo "Active Python: ${PYTHON}" >&2
     exit 1

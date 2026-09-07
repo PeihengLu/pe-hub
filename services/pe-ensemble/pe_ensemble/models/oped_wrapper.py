@@ -22,6 +22,7 @@ from pe_common.training import (
     apply_fine_tune_freezing,
     build_lr_scheduler,
     dataloader_kwargs,
+    first_hyperparam,
     fit_lightning_module,
     LightningTrainerConfig,
     pearson_spearman,
@@ -29,13 +30,14 @@ from pe_common.training import (
     resolve_training_seed,
     seed_training_run,
 )
-from pe_common.splits import (
-    has_assigned_cv_folds,
-    iter_assigned_cv_folds,
-    resolve_train_val_from_splits,
-)
+from pe_common.splits import resolve_train_val_from_splits
 
 from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
+from .hparams import (
+    iter_cv_training_folds,
+    require_evaluate_weights,
+    resolve_pretrained_weight_id,
+)
 
 # Ensure that the OPED model code directory is in sys.path
 _vendor_root = resolve_vendor_models_path()
@@ -109,7 +111,7 @@ class _OPEDLightningRegressor(pl.LightningModule):
             optimizer,
             scheduler_name=self.hparams_map.get("scheduler", "step"),
             scheduler_kwargs=self.hparams_map.get("scheduler_kwargs", {"step_size": 10, "gamma": 0.95}),
-            max_epochs=int(self.hparams_map.get("epoch_num", self.hparams_map.get("epochs", 100))),
+            max_epochs=int(first_hyperparam(self.hparams_map, "epoch_num", "epochs", default=100)),
         )
         if scheduler is None:
             return optimizer
@@ -210,7 +212,7 @@ class OPEDModelWrapper(BasePEModel):
                 "OPED's legacy full-pickle files (e.g. '*.order3_decoder.pt' and "
                 "'*_torch2.pt') are not compatible across PyTorch versions and must "
                 "not be loaded directly. Convert them once with "
-                "`python -m app.models.convert_oped_weights <pickle> <out_weights.pt>` "
+                "`python -m pe_ensemble.models.convert_oped_weights <pickle> <out_weights.pt>` "
                 "and load the resulting state_dict instead."
             ) from exc
 
@@ -218,7 +220,7 @@ class OPEDModelWrapper(BasePEModel):
             raise ValueError(
                 f"File '{weights_path}' is not an OPED state_dict. Expected a dict of "
                 "tensors; got a full pickled model. Convert it with "
-                "`python -m app.models.convert_oped_weights` first."
+                "`python -m pe_ensemble.models.convert_oped_weights` first."
             )
         return obj
 
@@ -495,7 +497,7 @@ class OPEDModelWrapper(BasePEModel):
         Notes:
             Only state_dict files are supported. OPED's legacy full-pickle
             artifacts are version-fragile and are explicitly rejected; convert
-            them once with ``app.models.convert_oped_weights``.
+            them once with ``pe_ensemble.models.convert_oped_weights``.
 
             Architecture is inferred from the checkpoint. The vendored
             ``order3_decoder`` weights are an encoder–decoder Order-3 model, not
@@ -660,7 +662,7 @@ class OPEDModelWrapper(BasePEModel):
             output_size=int(hparams.get("output_size", 1)),
             nhead=nhead,
             num_encoder_layers=num_encoder_layers,
-            dropout=float(hparams.get("drop_out", hparams.get("dropout", 0.1))),
+            dropout=float(first_hyperparam(hparams, "drop_out", "dropout", default=0.1)),
             other_size=int(hparams.get("other_size", 0)),
         )
         return model
@@ -709,7 +711,7 @@ class OPEDModelWrapper(BasePEModel):
         run_label: str = "",
     ) -> Tuple[torch.nn.Module, Dict[str, Any]]:
         batch_size = int(hparams.get("batch_size", 128))
-        num_epochs = int(hparams.get("epoch_num", hparams.get("epochs", 100)))
+        num_epochs = int(first_hyperparam(hparams, "epoch_num", "epochs", default=100))
         if progress_log is not None:
             label = f"{run_label} " if run_label else ""
             progress_log(
@@ -827,17 +829,12 @@ class OPEDModelWrapper(BasePEModel):
 
         freezing = bool(default_params.get("freezing", freezing))
 
-        load_pretrained = bool(default_params.get("load_pretrained", False))
-        pretrained_weights = default_params.get("weights")
-
         def build_trainable_model() -> torch.nn.Module:
-            if load_pretrained:
-                weight_name = (
-                    str(pretrained_weights)
-                    if pretrained_weights
-                    else self.DEFAULT_WEIGHT_ID
-                )
-                self.load_weights_by_name(weight_name)
+            weight_id = resolve_pretrained_weight_id(
+                default_params, default=self.DEFAULT_WEIGHT_ID
+            )
+            if weight_id:
+                self.load_weights_by_name(weight_id)
                 model_obj = self.model
                 if model_obj is None:
                     raise ValueError("Failed to load OPED pretrained weights.")
@@ -859,42 +856,39 @@ class OPEDModelWrapper(BasePEModel):
         source_df = train_data.copy().reset_index(drop=True)
         cv_reports: List[Dict[str, Any]] = []
 
-        if val_data is None and has_assigned_cv_folds(source_df):
-            for fold_idx, (fold_label, fold_train, fold_val) in enumerate(
-                iter_assigned_cv_folds(source_df)
-            ):
-                if cancel_check is not None:
-                    cancel_check()
-                fold_model = build_trainable_model()
-                apply_freezing_if_needed(fold_model)
-                fold_model, fold_metrics = self._run_training_loop(
-                    fold_model,
-                    fold_train,
-                    fold_val,
-                    default_params,
-                    progress_log=progress_log,
-                    cancel_check=cancel_check,
-                    run_label=f"{fold_label} |",
-                )
-                fold_pred = self._predict_encoded_df(
-                    fold_model,
-                    fold_val.drop(columns=["Efficiency"], errors="ignore"),
-                    batch_size=int(default_params.get("batch_size", 128)),
-                )
-                fold_true = fold_val["Efficiency"].astype(float).to_numpy()
-                fold_corr = pearson_spearman(fold_true.tolist(), fold_pred.tolist())
-                cv_reports.append(
-                    {
-                        "fold": fold_idx,
-                        "fold_label": fold_label,
-                        "n_train": int(len(fold_train)),
-                        "n_val": int(len(fold_val)),
-                        "best_epoch": int(fold_metrics["best_epoch"]),
-                        "best_val_loss": float(fold_metrics["best_val_loss"]),
-                        "val_pearson": float(fold_corr["pearson"]),
-                        "val_spearman": float(fold_corr["spearman"]),
-                    }
-                )
+        for fold_idx, fold_label, fold_train, fold_val in iter_cv_training_folds(
+            source_df, val_data, cancel_check=cancel_check
+        ):
+            fold_model = build_trainable_model()
+            apply_freezing_if_needed(fold_model)
+            fold_model, fold_metrics = self._run_training_loop(
+                fold_model,
+                fold_train,
+                fold_val,
+                default_params,
+                progress_log=progress_log,
+                cancel_check=cancel_check,
+                run_label=f"{fold_label} |",
+            )
+            fold_pred = self._predict_encoded_df(
+                fold_model,
+                fold_val.drop(columns=["Efficiency"], errors="ignore"),
+                batch_size=int(default_params.get("batch_size", 128)),
+            )
+            fold_true = fold_val["Efficiency"].astype(float).to_numpy()
+            fold_corr = pearson_spearman(fold_true.tolist(), fold_pred.tolist())
+            cv_reports.append(
+                {
+                    "fold": fold_idx,
+                    "fold_label": fold_label,
+                    "n_train": int(len(fold_train)),
+                    "n_val": int(len(fold_val)),
+                    "best_epoch": int(fold_metrics["best_epoch"]),
+                    "best_val_loss": float(fold_metrics["best_val_loss"]),
+                    "val_pearson": float(fold_corr["pearson"]),
+                    "val_spearman": float(fold_corr["spearman"]),
+                }
+            )
 
         final_train, final_val = resolve_train_val_from_splits(source_df, val_data)
 
@@ -951,11 +945,7 @@ class OPEDModelWrapper(BasePEModel):
         Returns:
             Dictionary with evaluation metrics
         """
-        if not weights or not str(weights).strip():
-            raise ValueError(
-                "weights is required for evaluate(). "
-                f"Available: {self.list_available_weights()}"
-            )
+        weights = require_evaluate_weights(self, weights)
         self.load_weights_by_name(weights)
         
         from oped.pegRNA_PredictingCodes.evaluate_model import evaluate_transformer_order3

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.training.jobs import (
+from pe_ensemble.training.jobs import (
     append_log,
     create_job,
     get_job,
@@ -18,7 +18,7 @@ from app.training.jobs import (
     update_job,
     wait_for_job,
 )
-from app.training.schemas import TrainingRequest
+from pe_ensemble.training.schemas import TrainingRequest
 
 
 @pytest.fixture()

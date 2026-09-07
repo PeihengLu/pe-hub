@@ -3,7 +3,7 @@
 A model's evaluation is only meaningful when its test data was not seen during
 training. This module compares the universal target-locus IDs (``target_uid``)
 of an evaluation's test partition against the loci a weight set was trained on
-(recorded at training time by :mod:`app.models.weights_registry`).
+(recorded at training time by :mod:`pe_ensemble.models.weights_registry`).
 
 When leakage is detected -- or cannot be ruled out (e.g. the dataset provided
 no original test split and the weight set has no recorded provenance) -- a

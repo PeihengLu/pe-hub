@@ -117,12 +117,9 @@ def dataset_label(args: argparse.Namespace) -> str:
 
 def bootstrap_peen() -> None:
     """Match ``peen`` CLI: in-process PE-DB + active plugins."""
-    from pe_ensemble._bootstrap import ensure_service_root_on_path
-
-    ensure_service_root_on_path()
-    from app.plugin_loader import load_active_plugins
-    from app.training.config import enable_cli_pe_db_access
-    from app.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins
+    from pe_ensemble.plugin_loader import load_active_plugins
+    from pe_ensemble.training.config import enable_cli_pe_db_access
+    from pe_ensemble.training.pe_db_access import PeDbAccessError, reload_pe_db_plugins
 
     enable_cli_pe_db_access()
     loaded = load_active_plugins()
@@ -227,7 +224,7 @@ def _training_request(
     device: str,
     notes: str,
 ):
-    from app.training.schemas import SplitQueryParams, TrainingRequest
+    from pe_ensemble.training.schemas import SplitQueryParams, TrainingRequest
 
     return TrainingRequest(
         model_name=model,
@@ -263,8 +260,8 @@ def evaluate_assigned(
     assigned: pd.DataFrame,
     device: str,
 ) -> dict[str, Any]:
-    from app.evaluation.schemas import EvaluationRequest
-    from app.training.schemas import SplitQueryParams
+    from pe_ensemble.evaluation.schemas import EvaluationRequest
+    from pe_ensemble.training.schemas import SplitQueryParams
     from pe_ensemble.library import execute_evaluation
 
     records = dataframe_to_records(assigned)
@@ -320,7 +317,7 @@ def run_tune_and_eval(
     extra_hyperparameters: Optional[dict[str, Any]] = None,
     skip_eval: bool = False,
 ) -> dict[str, Any]:
-    from app.training.tuning_schemas import TuningRequest
+    from pe_ensemble.training.tuning_schemas import TuningRequest
     from pe_ensemble.library import execute_tuning
 
     seed_all(seed)
@@ -615,7 +612,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"Error: unknown model {model!r}; supported: {', '.join(supported_models())}", file=sys.stderr)
         return 2
     try:
-        from app.training.search_spaces import get_search_space
+        from pe_ensemble.training.search_spaces import get_search_space
 
         get_search_space(model)
     except ValueError as exc:
@@ -730,7 +727,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     state_dir = out_dir / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []
-    from app.training.dataset_key import dataset_preset_key
+    from pe_ensemble.training.dataset_key import dataset_preset_key
 
     base_preset = dataset_preset_key(
         study=filter_kwargs.get("study"),
