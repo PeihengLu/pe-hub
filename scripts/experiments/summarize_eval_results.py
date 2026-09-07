@@ -159,6 +159,7 @@ def comparison_table(
                 "pridict2_head",
                 "benchmark_name",
                 "cell_line",
+                "pe_system",
                 "error_type",
                 "leak_reason",
                 "ensemble",

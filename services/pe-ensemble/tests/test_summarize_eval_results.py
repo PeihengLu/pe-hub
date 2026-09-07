@@ -276,7 +276,7 @@ def test_optiprime_clinvar_leak_is_not_filled_with_hsu_number():
     assert row["paper_id"] is None
 
 
-def test_pridict2_library1_leak_is_not_filled_with_pridict1_number():
+def test_pridict2_hek_library1_leak_is_author_fill():
     row = annotate_row_with_paper(
         flatten_row(
             {
@@ -295,9 +295,101 @@ def test_pridict2_library1_leak_is_not_filled_with_pridict1_number():
             }
         )
     )
+    assert row["value_source"] == "author_fill"
+    assert row["plot_hatch"] == "///"
+    assert row["pearson_plot"] == 0.86
+    assert row["paper_id"] == "pridict2-library1-cv"
+
+
+def test_pridict2_k562_library1_leak_is_not_filled():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "pridict2",
+                "weights": "ensemble__run_0__K562",
+                "benchmark_name": "pridict1-library1",
+                "study": "pridict1",
+                "datasets": ["library1"],
+                "cell_line": "hek293t",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 18399,
+                "metrics": None,
+                "ensemble": True,
+            }
+        )
+    )
     assert row["value_source"] == "leak_unfilled"
     assert row["pearson_plot"] is None
-    assert row["paper_id"] is None
+
+
+def test_oped_deeppe_hek_keeps_measured():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "oped",
+                "weights": "base",
+                "benchmark_name": "deeppe-pooled__hek293t",
+                "study": "deeppe",
+                "datasets": ["pooled"],
+                "cell_line": "hek293t",
+                "status": "ok",
+                "n_samples": 5060,
+                "metrics": {"pearson": 0.722, "spearman": 0.768},
+            }
+        )
+    )
+    assert row["value_source"] == "measured"
+    assert abs(row["pearson_plot"] - 0.722) < 1e-9
+    assert row["paper_pearson"] == 0.769
+    assert row["paper_id"] == "oped-deeppe-ht-test"
+
+
+def test_oped_deeppe_hct_leak_is_author_fill():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "oped",
+                "weights": "base",
+                "benchmark_name": "deeppe-pooled__hct116",
+                "study": "deeppe",
+                "datasets": ["pooled"],
+                "cell_line": "hct116",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 15,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "author_fill"
+    assert row["pearson_plot"] == 0.590
+    assert row["paper_id"] == "oped-deeppe-hct"
+
+
+def test_oped_deeppe_mda_leak_is_author_fill():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "oped",
+                "weights": "base",
+                "benchmark_name": "deeppe-pooled__mda_mb_231",
+                "study": "deeppe",
+                "datasets": ["pooled"],
+                "cell_line": "mda_mb_231",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 15,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "author_fill"
+    assert row["pearson_plot"] == 0.650
+    assert row["paper_id"] == "oped-deeppe-mda"
 
 
 def test_deepprime_clinvar_keeps_measured_and_joins_paper():
@@ -354,9 +446,11 @@ def test_comparison_table_uses_cv_mean_for_pridict2():
 
 def test_bar_fill_kind_distinguishes_measured_author_and_missing():
     from plot_base_model_eval import (
+        BENCH_ORDER,
         FILL_AUTHOR,
         FILL_MEASURED,
         FILL_MISSING,
+        HEATMAP_PANELS,
         cell_fill_kind,
     )
 
@@ -373,4 +467,9 @@ def test_bar_fill_kind_distinguishes_measured_author_and_missing():
         cell_fill_kind({"plot_marker": "", "value_source": "leak_unfilled", "pearson_plot": ""})
         == FILL_MISSING
     )
+    bench_keys = [key for key, _label in BENCH_ORDER]
+    panel_keys = [key for panel in HEATMAP_PANELS for key, _label, _study in panel]
+    assert "minsepie-insert-pooled__rc__pe2" not in bench_keys
+    assert "minsepie-insert-pooled__rc__pe2" not in panel_keys
+    assert "minsepie-insert-pooled__hek293t__pe2" in bench_keys
 

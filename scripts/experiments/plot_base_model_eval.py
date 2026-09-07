@@ -15,8 +15,73 @@ from typing import Any, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import TwoSlopeNorm
+import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Patch, Rectangle
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DIAGRAM_DIR = REPO_ROOT / "txt" / "diagrams"
+
+# Same Tableau-style study palette as ``txt/diagrams/generate_data_summary.py``.
+STUDY_COLORS = [
+    "#4E79A7",
+    "#F28E2B",
+    "#E15759",
+    "#76B7B2",
+    "#59A14F",
+    "#B07AA1",
+    "#FF9DA7",
+    "#9C755F",
+]
+SUMMARY_BLUE = STUDY_COLORS[0]
+SUMMARY_ORANGE = STUDY_COLORS[1]
+SUMMARY_RED = STUDY_COLORS[2]
+SUMMARY_TEAL = STUDY_COLORS[3]
+SUMMARY_GREEN = STUDY_COLORS[4]
+SUMMARY_PURPLE = STUDY_COLORS[5]
+MISSING_CELL = "#F4F4F4"
+
+
+def _hex_to_rgb(color: str) -> tuple[float, float, float]:
+    raw = color.lstrip("#")
+    return tuple(int(raw[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*(max(0, min(255, int(round(c * 255)))) for c in rgb))
+
+
+def _lerp_hex(start: str, end: str, weight: float) -> str:
+    t = min(max(weight, 0.0), 1.0)
+    rgb = tuple(a + (b - a) * t for a, b in zip(_hex_to_rgb(start), _hex_to_rgb(end)))
+    return _rgb_to_hex(rgb)
+
+
+# Full-strength poles at |r|=1 so a unit of Pearson r has the same color change
+# on both sides. Displayed range is typically −0.2…1.0.
+PEARSON_NEG_POLE = SUMMARY_RED
+PEARSON_POS_POLE = "#1F4E79"
+
+
+def _color_at_pearson(value: float) -> str:
+    if value >= 0:
+        return _lerp_hex("#FFFFFF", PEARSON_POS_POLE, value)
+    return _lerp_hex("#FFFFFF", PEARSON_NEG_POLE, -value)
+
+
+def _pearson_cmap(vmin: float, vmax: float) -> LinearSegmentedColormap:
+    """White at r=0; red/blue poles at ±1 so the positive ramp is not washed out."""
+    span = vmax - vmin
+    if span <= 0:
+        cmap = LinearSegmentedColormap.from_list("pehub_pearson", ["#FFFFFF", "#FFFFFF"])
+        cmap.set_bad(MISSING_CELL)
+        return cmap
+    stops = np.linspace(0.0, 1.0, 21)
+    colors = [(float(stop), _color_at_pearson(vmin + stop * span)) for stop in stops]
+    cmap = LinearSegmentedColormap.from_list("pehub_pearson", colors)
+    cmap.set_bad(MISSING_CELL)
+    return cmap
 
 
 # Display order for the heatmap (rows / columns).
@@ -28,46 +93,63 @@ MODEL_ORDER = [
     ("pridict2", "K562", "PRIDICT2 K562"),
 ]
 
-BENCH_ORDER = [
-    ("deeppe-pooled__hek293t", "DeepPE HEK"),
-    ("deeppe-pooled__hct116", "DeepPE HCT"),
-    ("deeppe-pooled__mda_mb_231", "DeepPE MDA"),
-    ("deepprime-clinvar", "ClinVar"),
-    ("pridict1-library1", "Library 1"),
-    ("pridict2-library-diverse__hek293t", "Diverse HEK"),
-    ("pridict2-library-diverse__k562", "Diverse K562"),
-    ("pridict2-library-diverse__k562mlh1dn", "Diverse MLH1dn"),
-    ("optiprime-lib-mmr__hek293t__pe2", "Lib-MMR HEK PE2"),
-    ("optiprime-lib-mmr__hek293t__pe4", "Lib-MMR HEK PE4"),
-    ("optiprime-lib-mmr__hela__pe2", "Lib-MMR HeLa PE2"),
-    ("optiprime-lib-mmr__hela__pe4", "Lib-MMR HeLa PE4"),
-    ("optiprime-lib-cv__hek293t__pe2", "Lib-CV HEK PE2"),
-    ("optiprime-lib-cv__hek293t__pe4", "Lib-CV HEK PE4"),
-    ("optiprime-lib-cv__hela__pe2", "Lib-CV HeLa PE2"),
-    ("optiprime-lib-cv__hela__pe4", "Lib-CV HeLa PE4"),
-    ("minsepie-insert-pooled__hek293t", "MinSePIE HEK"),
-    ("minsepie-insert-pooled__rc", "MinSePIE RC"),
+# (benchmark_key, column label, study group label)
+BENCH_META = [
+    ("deeppe-pooled__hek293t", "HEK", "DeepPE"),
+    ("deeppe-pooled__hct116", "HCT", "DeepPE"),
+    ("deeppe-pooled__mda_mb_231", "MDA", "DeepPE"),
+    ("deepprime-clinvar", "ClinVar", "DeepPrime"),
+    ("pridict1-library1", "Library 1", "PRIDICT1"),
+    ("pridict2-library-diverse__hek293t", "HEK", "PRIDICT2 Library-Diverse"),
+    ("pridict2-library-diverse__k562", "K562", "PRIDICT2 Library-Diverse"),
+    ("pridict2-library-diverse__k562mlh1dn", "MLH1dn", "PRIDICT2 Library-Diverse"),
+    ("optiprime-lib-mmr__hek293t__pe2", "HEK PE2", "OptiPrime Lib-MMR"),
+    ("optiprime-lib-mmr__hek293t__pe4", "HEK PE4", "OptiPrime Lib-MMR"),
+    ("optiprime-lib-mmr__hela__pe2", "HeLa PE2", "OptiPrime Lib-MMR"),
+    ("optiprime-lib-mmr__hela__pe4", "HeLa PE4", "OptiPrime Lib-MMR"),
+    ("optiprime-lib-cv__hek293t__pe2", "HEK PE2", "OptiPrime Lib-CV"),
+    ("optiprime-lib-cv__hek293t__pe4", "HEK PE4", "OptiPrime Lib-CV"),
+    ("optiprime-lib-cv__hela__pe2", "HeLa PE2", "OptiPrime Lib-CV"),
+    ("optiprime-lib-cv__hela__pe4", "HeLa PE4", "OptiPrime Lib-CV"),
+    ("minsepie-insert-pooled__hek293t__pe2", "HEK PE2", "MinSePIE"),
 ]
+BENCH_ORDER = [(key, f"{study} {label}" if study not in label else label) for key, label, study in BENCH_META]
+
+# Two heatmap rows; MinSePIE RC (n=57) is dropped.
+HEATMAP_PANELS = [
+    BENCH_META[:8],
+    BENCH_META[8:],
+]
+
+STUDY_GROUP_COLORS = {
+    "DeepPE": STUDY_COLORS[0],
+    "DeepPrime": STUDY_COLORS[1],
+    "PRIDICT1": STUDY_COLORS[2],
+    "PRIDICT2 Library-Diverse": STUDY_COLORS[3],
+    "OptiPrime Lib-MMR": STUDY_COLORS[4],
+    "OptiPrime Lib-CV": STUDY_COLORS[5],
+    "MinSePIE": STUDY_COLORS[6],
+}
 
 FILL_MEASURED = "measured"
 FILL_AUTHOR = "author_fill"
 FILL_MISSING = "missing"
 
-# Wong-inspired, colorblind-safe. One hue per model; fill pattern encodes source.
+# One hue per model, taken from the data-summary study palette.
 MODEL_COLORS = {
-    "DeepPrime": "#0072B2",
-    "OPED": "#E69F00",
-    "OptiPrime": "#009E73",
-    "PRIDICT2 HEK": "#CC79A7",
-    "PRIDICT2 K562": "#56B4E9",
+    "DeepPrime": SUMMARY_ORANGE,
+    "OPED": SUMMARY_BLUE,
+    "OptiPrime": SUMMARY_TEAL,
+    "PRIDICT2 HEK": SUMMARY_PURPLE,
+    "PRIDICT2 K562": SUMMARY_GREEN,
 }
 
 # Extra x-gap after these labels so library families stay readable.
 FAMILY_GAP_AFTER = {
     "DeepPE MDA": 0.45,
-    "Library 1": 0.45,
-    "Diverse MLH1dn": 0.45,
-    "Lib-CV HeLa PE4": 0.45,
+    "PRIDICT1 Library 1": 0.45,
+    "PRIDICT2 Library-Diverse MLH1dn": 0.45,
+    "OptiPrime Lib-CV HeLa PE4": 0.45,
 }
 
 
@@ -121,22 +203,26 @@ def index_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str, str], dict[st
 
 
 def apply_style() -> None:
+    sns.set_theme(style="white", context="notebook", font_scale=1.05)
     plt.rcParams.update(
         {
             "font.family": "sans-serif",
             "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
             "axes.spines.top": False,
             "axes.spines.right": False,
-            "axes.labelcolor": "#222222",
-            "axes.titlecolor": "#111111",
-            "xtick.color": "#444444",
-            "ytick.color": "#444444",
+            "axes.labelcolor": "#444444",
+            "axes.titlecolor": "#222222",
+            "axes.titleweight": "600",
+            "xtick.color": "#555555",
+            "ytick.color": "#555555",
+            "grid.color": "#E6E6E6",
+            "grid.linewidth": 0.8,
             "figure.facecolor": "white",
             "axes.facecolor": "white",
             "pdf.fonttype": 42,
             "ps.fonttype": 42,
             "savefig.bbox": "tight",
-            "savefig.dpi": 400,
+            "savefig.dpi": 600,
             "hatch.linewidth": 0.7,
         }
     )
@@ -296,15 +382,36 @@ def plot_benchmark_bars(rows: list[dict[str, Any]], out_path: Path) -> Path:
     return out_path
 
 
-def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
-    by_key = index_rows(rows)
+def _label_on_color(hex_color: str) -> str:
+    raw = hex_color.lstrip("#")
+    red, green, blue = int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+    luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0
+    return "#222222" if luminance > 0.62 else "#FFFFFF"
+
+
+def _study_spans(panel: list[tuple[str, str, str]]) -> list[tuple[int, int, str]]:
+    spans: list[tuple[int, int, str]] = []
+    start = 0
+    while start < len(panel):
+        study = panel[start][2]
+        end = start
+        while end + 1 < len(panel) and panel[end + 1][2] == study:
+            end += 1
+        spans.append((start, end, study))
+        start = end + 1
+    return spans
+
+
+def _heatmap_values(
+    by_key: dict[tuple[str, str, str], dict[str, Any]],
+    panel: list[tuple[str, str, str]],
+) -> tuple[np.ndarray, np.ndarray]:
     n_models = len(MODEL_ORDER)
-    n_benches = len(BENCH_ORDER)
+    n_benches = len(panel)
     values = np.full((n_models, n_benches), np.nan)
     hatch = np.zeros((n_models, n_benches), dtype=bool)
-
     for i, (model, head, _label) in enumerate(MODEL_ORDER):
-        for j, (bench, _blabel) in enumerate(BENCH_ORDER):
+        for j, (bench, _blabel, _study) in enumerate(panel):
             row = by_key.get((model, head, bench))
             if row is None:
                 continue
@@ -313,32 +420,55 @@ def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
                 continue
             values[i, j] = plot_r
             hatch[i, j] = row.get("plot_marker") == "author_fill"
+    return values, hatch
 
-    fig, ax = plt.subplots(figsize=(15.4, 4.6))
-    cmap = plt.get_cmap("RdBu_r").copy()
-    cmap.set_bad("#F4F4F4")
-    finite = values[np.isfinite(values)]
-    vmax = max(0.95, float(np.nanmax(finite)) if finite.size else 1.0)
-    vmin = min(-0.2, float(np.nanmin(finite)) if finite.size else -0.2)
-    norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+
+def _points_to_data(ax: Any, points: float, *, horizontal: bool) -> float:
+    """Convert a length in typographic points to axis data units."""
+    bbox = ax.get_position()
+    fig_w, fig_h = ax.figure.get_size_inches()
+    if horizontal:
+        axis_in = bbox.width * fig_w
+        data_range = abs(ax.get_xlim()[1] - ax.get_xlim()[0])
+    else:
+        axis_in = bbox.height * fig_h
+        data_range = abs(ax.get_ylim()[1] - ax.get_ylim()[0])
+    if axis_in <= 0:
+        return 0.0
+    return (points / 72.0) * (data_range / axis_in)
+
+
+def _draw_heatmap_panel(
+    ax: Any,
+    values: np.ndarray,
+    hatch: np.ndarray,
+    panel: list[tuple[str, str, str]],
+    *,
+    cmap: Any,
+    norm: Any,
+    max_cols: int,
+    show_ylabel: bool,
+) -> Any:
+    n_models, n_benches = values.shape
     im = ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
     ax.set_xticks(range(n_benches))
-    ax.set_xticklabels([label for _key, label in BENCH_ORDER], rotation=55, ha="right")
+    ax.set_xticklabels([label for _key, label, _study in panel], rotation=32, ha="right")
     ax.set_yticks(range(n_models))
-    ax.set_yticklabels([label for _m, _h, label in MODEL_ORDER])
-    ax.set_title("Pearson r on PE-hub base-model evaluation", loc="left", fontsize=13, pad=10)
-    ax.tick_params(length=0)
+    ax.set_yticklabels([label for _m, _h, label in MODEL_ORDER] if show_ylabel else [])
+    ax.tick_params(length=0, labelsize=10, colors="#555555")
     ax.set_xticks(np.arange(-0.5, n_benches, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, n_models, 1), minor=True)
     ax.grid(which="minor", color="white", linestyle="-", linewidth=1.4)
     ax.tick_params(which="minor", bottom=False, left=False)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
 
     for i in range(n_models):
         for j in range(n_benches):
             value = values[i, j]
             if not np.isfinite(value):
                 continue
-            text_color = "white" if abs(value) >= 0.55 else "#111111"
+            text_color = "white" if abs(value) >= 0.55 else "#444444"
             ax.text(
                 j,
                 i,
@@ -363,24 +493,128 @@ def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
                     )
                 )
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
-    cbar.set_label("Pearson r", fontsize=10)
+    header_h = 0.46
+    ax.set_xlim(-0.5, max_cols - 0.5)
+    ax.set_ylim(n_models - 0.5, -0.5 - header_h - 0.04)
+    body_lw = 2.2
+    pad_x = 0.5 * _points_to_data(ax, body_lw, horizontal=True)
+    pad_y = 0.5 * _points_to_data(ax, body_lw, horizontal=False)
+    for start, end, study in _study_spans(panel):
+        color = STUDY_GROUP_COLORS[study]
+        width = end - start + 1
+        ax.add_patch(
+            Rectangle(
+                (start - 0.5 + pad_x, -0.5 + pad_y),
+                width - 2.0 * pad_x,
+                n_models - 2.0 * pad_y,
+                fill=False,
+                edgecolor=color,
+                linewidth=body_lw,
+                zorder=5,
+                clip_on=False,
+                joinstyle="miter",
+            )
+        )
+        ax.add_patch(
+            Rectangle(
+                (start - 0.5, -0.5 - header_h),
+                width,
+                header_h,
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.0,
+                zorder=6,
+                clip_on=False,
+            )
+        )
+        ax.text(
+            (start + end) / 2.0,
+            -0.5 - header_h / 2.0,
+            study,
+            ha="center",
+            va="center",
+            fontsize=7.5 if len(study) > 16 else 9,
+            fontweight="600",
+            color=_label_on_color(color),
+            zorder=7,
+            clip_on=False,
+        )
+
+    return im
+
+
+def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
+    by_key = index_rows(rows)
+    matrices = [_heatmap_values(by_key, panel) for panel in HEATMAP_PANELS]
+    finite = np.concatenate([values[np.isfinite(values)] for values, _hatch in matrices if np.isfinite(values).any()])
+    data_max = float(np.nanmax(finite)) if finite.size else 1.0
+    data_min = float(np.nanmin(finite)) if finite.size else -0.2
+    vmin = min(-0.2, np.floor(data_min * 10.0) / 10.0)
+    vmax = max(1.0, np.ceil(data_max * 10.0) / 10.0)
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    cmap = _pearson_cmap(vmin, vmax)
+    max_cols = max(len(panel) for panel in HEATMAP_PANELS)
+
+    fig = plt.figure(figsize=(14.4, 6.6))
+    grid = fig.add_gridspec(
+        2,
+        1,
+        height_ratios=[1.0, 1.0],
+        hspace=0.24,
+        left=0.10,
+        right=0.82,
+        top=0.96,
+        bottom=0.18,
+    )
+    axes = [fig.add_subplot(grid[0]), fig.add_subplot(grid[1])]
+    images = []
+    for ax, panel, (values, hatch) in zip(axes, HEATMAP_PANELS, matrices):
+        images.append(
+            _draw_heatmap_panel(
+                ax,
+                values,
+                hatch,
+                panel,
+                cmap=cmap,
+                norm=norm,
+                max_cols=max_cols,
+                show_ylabel=True,
+            )
+        )
+    fig.canvas.draw()
+    top_pos = axes[0].get_position()
+    bot_pos = axes[1].get_position()
+    colorbar_ax = fig.add_axes(
+        [top_pos.x1 + 0.005, bot_pos.y0, 0.016, top_pos.y1 - bot_pos.y0]
+    )
+    cbar = fig.colorbar(images[0], cax=colorbar_ax)
+    cbar.set_label("Pearson r", fontsize=12, color="#444444")
+    cbar.set_ticks(np.arange(vmin, vmax + 1e-9, 0.2))
+    cbar.ax.tick_params(labelsize=11, colors="#555555")
     cbar.outline.set_visible(False)
-    ax.legend(
+    fig.legend(
         handles=[
-            Patch(facecolor="#F4F4F4", edgecolor="#CCCCCC", label="Not scored / leak unfilled"),
+            Patch(facecolor=MISSING_CELL, edgecolor="#D0D0D0", label="Not scored / leak unfilled"),
             Patch(facecolor="white", edgecolor="#888888", hatch="///", label="Author-reported fill"),
         ],
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.42),
+        bbox_to_anchor=(0.46, 0.10),
         ncol=2,
-        frameon=False,
-        fontsize=9,
+        frameon=True,
+        facecolor="white",
+        edgecolor="#D0D0D0",
+        framealpha=1.0,
+        fontsize=11,
     )
-    fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path)
-    fig.savefig(out_path.with_suffix(".png"))
+    fig.savefig(out_path, dpi=600, facecolor="white", bbox_inches="tight", pad_inches=0.18)
+    fig.savefig(
+        out_path.with_suffix(".png"),
+        dpi=600,
+        facecolor="white",
+        bbox_inches="tight",
+        pad_inches=0.18,
+    )
     plt.close(fig)
     return out_path
 
@@ -451,21 +685,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--out-dir",
         type=Path,
         default=None,
-        help="Figure directory (default: <csv-dir>/figures)",
+        help=(
+            "Figure directory. Default: txt/diagrams for the heatmap "
+            "(same folder as data_composition.png)."
+        ),
+    )
+    parser.add_argument(
+        "--all-figures",
+        action="store_true",
+        help="Also write grouped-bar and close-match vs-paper figures.",
     )
     args = parser.parse_args(argv)
     csv_path = args.comparison_csv.resolve()
     if not csv_path.is_file():
         raise SystemExit(f"Error: {csv_path} not found")
-    out_dir = args.out_dir or (csv_path.parent / "figures")
+    out_dir = args.out_dir or DEFAULT_DIAGRAM_DIR
     apply_style()
     rows = load_comparison(csv_path)
-    bars = plot_benchmark_bars(rows, out_dir / "eval_benchmark_bars.pdf")
     heat = plot_heatmap(rows, out_dir / "eval_pearson_heatmap.pdf")
-    vs_paper = plot_vs_paper(rows, out_dir / "eval_vs_paper.pdf")
-    print(f"Wrote {bars}")
     print(f"Wrote {heat}")
-    print(f"Wrote {vs_paper}")
+    print(f"Wrote {heat.with_suffix('.png')}")
+    if args.all_figures:
+        bars = plot_benchmark_bars(rows, out_dir / "eval_benchmark_bars.pdf")
+        vs_paper = plot_vs_paper(rows, out_dir / "eval_vs_paper.pdf")
+        print(f"Wrote {bars}")
+        print(f"Wrote {vs_paper}")
     return 0
 
 

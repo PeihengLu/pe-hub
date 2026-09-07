@@ -71,10 +71,27 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "pearson": 0.86,
         "spearman": 0.85,
         "citation": "Mathis et al. Nat. Biotechnol. 2023 Fig. 2b–e",
-        "protocol": "PRIDICT (not PRIDICT2) grouped 5-fold CV on Library 1",
-        "protocol_match": "different_model",
+        "protocol": "PRIDICT grouped 5-fold CV on Library 1",
+        "protocol_match": "close",
         "fill_on_leak": False,
-        "notes": "Do not fill PRIDICT2 library1 leak cells with this; different model, and PRIDICT2 trained on all of library1.",
+        "notes": "Catalogued under pridict1. PRIDICT2 HEK leak fills use pridict2-library1-cv.",
+    },
+    {
+        "id": "pridict2-library1-cv",
+        "model": "pridict2",
+        "benchmark": "pridict1-library1",
+        "cell_line": "hek293t",
+        "pridict2_head": "HEK",
+        "pearson": 0.86,
+        "spearman": 0.85,
+        "citation": "Mathis et al. Nat. Biotechnol. 2023 Fig. 2b–e",
+        "protocol": (
+            "Author Library 1 number is PRIDICT grouped 5-fold CV "
+            "(r=0.86, R=0.85). PRIDICT2.0 has no Library 1 holdout "
+            "(trained on every locus); K562 head is not filled"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
     },
     {
         "id": "oped-deeppe-ht-test",
@@ -91,6 +108,36 @@ PAPER_METRICS: list[dict[str, Any]] = [
         ),
         "protocol_match": "loose",
         "fill_on_leak": False,
+    },
+    {
+        "id": "oped-deeppe-hct",
+        "model": "oped",
+        "benchmark": "deeppe-pooled__hct116",
+        "cell_line": "hct116",
+        "pearson": 0.590,
+        "spearman": 0.703,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2g",
+        "protocol": (
+            "Midpoint of HCT116 replicate range r=0.569–0.611, "
+            "R=0.677–0.728 (Fig. 2g / Ext. Data Fig. 2g–i)"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
+    },
+    {
+        "id": "oped-deeppe-mda",
+        "model": "oped",
+        "benchmark": "deeppe-pooled__mda_mb_231",
+        "cell_line": "mda_mb_231",
+        "pearson": 0.650,
+        "spearman": 0.748,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2h",
+        "protocol": (
+            "Midpoint of MDA-MB-231 replicate range r=0.636–0.663, "
+            "R=0.730–0.766 (Fig. 2h / Ext. Data Fig. 2j–l)"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
     },
     {
         "id": "optiprime-lib-mmr-hek",
@@ -196,6 +243,17 @@ def _norm(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _pe_system_from_row(row: dict[str, Any]) -> str:
+    """Prefer an explicit PE-system field; else the trailing ``__pe2`` / ``__pe4`` suffix."""
+    explicit = _norm(row.get("pe_system"))
+    if explicit:
+        return explicit.replace("-", "")
+    bench = str(row.get("benchmark_name") or "")
+    if "__" not in bench:
+        return ""
+    return bench.rsplit("__", 1)[-1].strip().lower().replace("-", "")
+
+
 def match_paper_metric(row: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Return the best paper metric for an eval/summary row, or None."""
     model = _norm(row.get("model"))
@@ -215,7 +273,7 @@ def match_paper_metric(row: dict[str, Any]) -> Optional[dict[str, Any]]:
         if want_cell and _norm(want_cell) != cell:
             continue
         want_pe = metric.get("pe_system")
-        if want_pe and _norm(want_pe) != _norm(row.get("pe_system")):
+        if want_pe and _norm(want_pe) != _pe_system_from_row(row):
             continue
         want_head = metric.get("pridict2_head")
         if want_head:
