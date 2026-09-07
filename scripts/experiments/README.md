@@ -6,6 +6,30 @@ Shared helpers (`check_tuning_status`, `tune_hpo_cv5`, `_common`) live in
 Data loading goes through **`peen` → `pe_db.library`** (same filter/merge/split path as
 [`pedb filter`](../../services/pe-db/README.md#filter-and-export); no PE-DB HTTP server).
 
+## How these scripts are organized
+
+Three layers, so a run can be traced from the shell command down to the code:
+
+1. **Recipes** — the scripts in this directory. Each pins one model × dataset ×
+   protocol and nothing else.
+2. **Generic runners** — [`../hyperparameter/`](../hyperparameter/README.md)
+   (`tune_hpo_cv5.sh`, `tune_hpo_holdout3.sh`) plus `_common.sh` for defaults and
+   `SKIP_IF_TUNED` handling.
+3. **CLI and service code** — `peen train` / `peen tune` / `peen evaluate`, which
+   are the same runners the HTTP API uses
+   (`services/pe-ensemble/app/training/runner.py`,
+   `app/training/tune_runner.py`, `app/evaluation/runner.py`).
+
+Multi-step experiments get their own subdirectory with numbered stage scripts and
+a `run_all.sh`: [`pridict2-reproduction/`](pridict2-reproduction/README.md),
+[`scratch-benchmark/`](scratch-benchmark/README.md),
+[`datasheet-benchmark/`](datasheet-benchmark/README.md).
+
+Runs are seeded (`SPLIT_RANDOM_STATE` for splits, the training `seed`
+hyperparameter for the model), so re-running a recipe with the same inputs
+reproduces it. The scratch and datasheet benchmarks vary the seed deliberately
+across repeats to measure run-to-run spread.
+
 ## Default split protocol
 
 1. **Most datasets** — random group split:
@@ -63,7 +87,7 @@ Cross-benchmark evaluation of base vendor weights with leak prevention on:
   and can still be scored there.
 
 ```bash
-conda activate pedb
+conda activate pe-hub
 # Optional: backfill vendor train_target_loci
 # DeepPrime/OPED: author train folds only. PRIDICT2: all library1 (+ ClinVar
 # train folds for Model B) and library-diverse minus the held-out fold.
@@ -81,9 +105,8 @@ DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
 python scripts/experiments/summarize_eval_results.py results/base_model_eval/<RUN_ID>/results.jsonl
 python scripts/experiments/plot_base_model_eval.py \
   results/base_model_eval/<RUN_ID>/paper_comparison.csv
-# Writes figures/eval_benchmark_bars.pdf (page-width grouped bars: solid =
-# measured, /// = author fill, xxx = not scored), plus the heatmap and
-# close-match vs-paper bars.
+# Writes txt/diagrams/eval_pearson_heatmap.pdf (and .png) using the same
+# Tableau palette as data_composition.png. Pass --all-figures for bars too.
 
 # Partial rerun: reuse RUN_ID so new cells replace matching rows, then summary.csv
 # is rewritten. Skip DeepPrime (already good); OptiPrime lib-* data_leak rows stay.
@@ -175,7 +198,7 @@ OPED, and PRIDICT2 on library1, library-diverse, and DeepPrime ClinVar. Streams
 peen output and prints each job's full `train.log`.
 
 ```bash
-conda activate pedb
+conda activate pe-hub
 DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
 SMOKE=1 DEVICE=mps ./scripts/experiments/probe_scratch_train.sh
 MODELS=oped DATASET_NAMES=pridict1-library1 DEVICE=mps \
@@ -188,17 +211,35 @@ SMOKE=1 DEVICE=cuda:0 MODELS=oped DATASET_NAMES=deepprime-clinvar \
   NUM_WORKERS=15 ./scripts/experiments/probe_scratch_train.sh
 ```
 
-## Other recipes
+## Entry points at a glance
 
-| Script                                 | Purpose                                       |
-| -------------------------------------- | --------------------------------------------- |
-| `tune_pridict2_minsepie.sh`          | PRIDICT2 on MinSePIE`library-insert-set12`  |
-| `tune_oped_deeppe_ht.sh`             | OPED on DeepPE HT                             |
-| `tune_deepprime_author_folds.sh`     | DeepPrime ClinVar with**author** folds  |
-| `tune_pridict2_merged_l1_clinvar.sh` | → redirect to`pridict2-reproduction/02_…` |
-| `tune_pridict2_library_diverse.sh`   | → redirect to`pridict2-reproduction/05_…` |
+| Path | Purpose |
+| --- | --- |
+| `evaluate_base_model_benchmarks.sh` | Pooled evaluation of vendor base weights with leak prevention |
+| `probe_scratch_train.sh` | Quick sequential from-scratch trains |
+| [`pridict2-reproduction/run_all.sh`](pridict2-reproduction/README.md) | PRIDICT 2.0 transfer + ensemble reproduction |
+| [`scratch-benchmark/run_all.sh`](scratch-benchmark/README.md) | Cross-model from-scratch matrix (tune → train → evaluate) |
+| [`datasheet-benchmark/run.sh`](datasheet-benchmark/README.md) | Nested Optuna benchmark for one dataset or datasheet |
+
+One-off per-model tuning is done by calling the generic runners directly with
+the dataset flags, rather than by a dedicated script per dataset:
 
 ```bash
-./scripts/hyperparameter/check_tuning_status.sh pridict2
-SKIP_IF_TUNED=1 ./scripts/experiments/tune_pridict2_minsepie.sh
+./scripts/hyperparameter/check_tuning_status.sh pridict2 minsepie/library_insert_set12/hek293t/pe2
+SKIP_IF_TUNED=1 ./scripts/hyperparameter/tune_hpo_cv5.sh --model pridict2 \
+  --dataset-name minsepie-insert --study minsepie --dataset library-insert-set12 \
+  --cell-line hek293t --pe-system pe2
 ```
+
+## Analysis helpers
+
+Python utilities used by the shell scripts, and runnable on their own against a
+finished run:
+
+| Script | Purpose |
+| --- | --- |
+| `summarize_eval_results.py` | `results.jsonl` → `summary.csv`; `--repair-from-logs` recovers mislabelled `cli_failure` rows |
+| `plot_base_model_eval.py` | Pearson heatmap (and `--all-figures` bars) into `txt/diagrams/` |
+| `expand_eval_cell_lines.py` | Expands a benchmark into its per-cell-line, per-PE-system cells |
+| `eval_split_args.py` | Chooses author-fold versus random-holdout split flags per benchmark |
+| `paper_reported_metrics.py` | Published reference metrics for the comparison table |

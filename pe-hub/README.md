@@ -20,6 +20,8 @@ Unified React frontend for the PE Database and PE Ensemble APIs.
 - **Train** — submit training jobs, pick compute device, stream logs, view job history
 - **Ensemble** — combine model outputs
 - **Docs** — inline API reference (full docs at `/docs` on each backend)
+- **Add model** — upload, validate and activate a model plugin (see
+  [`plugins/README.md`](../plugins/README.md))
 
 ## Getting started
 
@@ -52,20 +54,40 @@ From the repository root:
 
 ```
 src/
+├── App.tsx                 # Top-level section switch (no react-router)
 ├── apps/
 │   ├── database/
 │   │   ├── pages/          # CatalogPage, ExportPage
 │   │   ├── services/       # peDbApi client
-│   │   └── components/     # ExportFilterBuilder
+│   │   └── components/     # ExportFilterBuilder, StatisticsCharts
 │   └── ensemble/
-│       ├── pages/          # Prediction, Training, Ensemble, Documentation
-│       ├── services/       # api client (train, evaluate, devices)
-│       └── config/         # split param defaults
+│       ├── pages/          # Benchmark, Design, Training, Ensemble,
+│       │                   #   Documentation, AddModel
+│       ├── components/     # ComputeJobList, TrainingHyperparametersPanel, …
+│       ├── services/       # api client (train, tune, evaluate, devices)
+│       ├── utils/          # Request builders, job status/sort, result export
+│       └── config/         # Split params, model formats, scheduler defaults
 ├── components/             # Card, ServiceGate, HubNavbar, …
-├── config/                 # Service URLs and startup hints
-├── context/                # ServiceHealthProvider
+├── config/                 # Service URLs from VITE_* and startup hints
+├── context/                # ServiceHealthProvider (health gating)
 └── pages/                  # HomePage
 ```
+
+### How the UI is structured
+
+- **Routing is state, not URLs.** `App.tsx` switches on a `HubSection`
+  (`home`, `database`, `ensemble`, `add-model`); the ensemble section switches
+  again between `benchmark`, `design`, `train`, `ensemble` and `docs`. There is
+  no react-router, so deep links are not available.
+- **Backends are gated on health.** `ServiceHealthProvider` polls each backend
+  and `ServiceGate` renders an offline screen with copy-paste startup commands
+  instead of letting requests fail.
+- **Requests are built in `utils/`, not in pages.** `trainingRequest.ts`,
+  `benchmarkRequest.ts` and `ensembleRequest.ts` translate form state into API
+  payloads, so a schema change touches one file per workflow.
+- **Async jobs share one polling pattern.** `utils/jobStatus.ts` decides the
+  refetch interval from job status and sorts job lists newest-first;
+  `ComputeJobList` renders training, tuning, evaluation and ensemble jobs alike.
 
 The legacy standalone frontend under `services/pe-ensemble/frontend/` has been
 retired; all UI development happens here.

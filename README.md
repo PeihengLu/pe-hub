@@ -12,6 +12,70 @@ A platform for prime editing efficiency data management, model evaluation, and t
 
 Shared Python utilities live in `packages/pe-common`.
 
+## Documentation index
+
+New to the codebase? Read [`docs/architecture.md`](docs/architecture.md) — it maps
+every module to what it does. For a command cheat sheet, see [`QUICKREF.md`](QUICKREF.md).
+
+**Orientation**
+
+| Document | What it covers |
+|---|---|
+| [`QUICKREF.md`](QUICKREF.md) | One-page cheat sheet: URLs, start commands, make targets, troubleshooting |
+| [`docs/architecture.md`](docs/architecture.md) | Code map for every service and package, plus the data and training flows |
+| This file | Install, project structure, API overview, data contribution guide |
+
+**Services and packages**
+
+| Document | What it covers |
+|---|---|
+| [`services/pe-db/README.md`](services/pe-db/README.md) | Catalog schema, the export/standardize pipeline, `pedb` CLI, filter and split semantics |
+| [`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) | Model wrappers, training/tuning/evaluation APIs, `peen` CLI, hyperparameters |
+| [`packages/pe-common/README.md`](packages/pe-common/README.md) | Shared constants, splits, devices, sequence helpers, training utilities |
+| [`pe-hub/README.md`](pe-hub/README.md) | Frontend setup, pages, environment variables |
+
+**Data**
+
+| Document | What it covers |
+|---|---|
+| [`datasets/README.md`](datasets/README.md) | Directory layout for raw / exported / standardized / formatted data |
+| [Standardized edit format](#standardized-edit-format-pe-core) | The shared schema contributed data must use |
+| [`txt/diagrams/illustration/database_er.mmd`](txt/diagrams/illustration/database_er.mmd) | Catalog ER diagram (Mermaid source) |
+
+**Models, weights, and training output**
+
+| Document | What it covers |
+|---|---|
+| [`services/pe-ensemble/weights/README.md`](services/pe-ensemble/weights/README.md) | Weight-set layout, ID conventions, manifest fields, DVC guidance |
+| [`services/pe-ensemble/jobs/README.md`](services/pe-ensemble/jobs/README.md) | Filesystem job state, logs, retention, and where each job kind writes |
+| [`services/pe-ensemble/config/training_presets/README.md`](services/pe-ensemble/config/training_presets/README.md) | Preset YAML schema and how hyperparameters resolve |
+| [`vendor/models/README.md`](vendor/models/README.md) | Vendor submodules, PyTorch unification, per-model quirks |
+
+**Plugins (adding your own model)**
+
+| Document | What it covers |
+|---|---|
+| [`plugins/README.md`](plugins/README.md) | Authoritative plugin guide: layout, manifest, contracts, activation |
+| [`docs/plugin-author-llm-prompt.md`](docs/plugin-author-llm-prompt.md) | Copy-paste prompt for generating a plugin bundle |
+| [`docs/add-new-model-plugins.md`](docs/add-new-model-plugins.md) | Design document for the plugin system |
+| [`plugins/_template/README.md`](plugins/_template/README.md) | Template starting point |
+
+**Experiments, tuning, and clusters**
+
+| Document | What it covers |
+|---|---|
+| [`scripts/README.md`](scripts/README.md) | What each script directory is for |
+| [`scripts/experiments/README.md`](scripts/experiments/README.md) | Experiment catalog, split protocols, base-model evaluation |
+| [`scripts/hyperparameter/README.md`](scripts/hyperparameter/README.md) | Optuna HPO runners and shared options |
+| [`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md) | Cross-model from-scratch benchmark matrix |
+| [`scripts/experiments/datasheet-benchmark/README.md`](scripts/experiments/datasheet-benchmark/README.md) | Single-datasheet nested Optuna benchmark |
+| [`scripts/experiments/pridict2-reproduction/README.md`](scripts/experiments/pridict2-reproduction/README.md) | PRIDICT 2.0 transfer + ensemble reproduction |
+| [`scripts/cluster/oxford-arc/README.md`](scripts/cluster/oxford-arc/README.md) | Oxford ARC setup, DVC, job submission, monitoring |
+| [`testdata/vendor_eval/README.md`](testdata/vendor_eval/README.md) | Vendor evaluation fixtures and how to regenerate them |
+
+**Legacy** — [`src/README.md`](src/README.md) records where the old `src/` code
+moved. `src/` and `services/pe-ensemble/frontend/` contain no active code.
+
 ## Installation
 
 PE-Hub requires **Python 3.11** (CLI and web portal). Python 3.13+ is unsupported —
@@ -116,30 +180,42 @@ weights are versioned in `services/pe-ensemble/weights/` — see
 
 ## Project structure
 
+Module-by-module descriptions live in [`docs/architecture.md`](docs/architecture.md).
+
 ```
-pe-db/
+pe-hub/
 ├── packages/pe-common/       # Shared constants, splits, devices, training helpers
-├── pe-hub/                   # Unified web UI
+├── pe-hub/                   # Unified web UI (React + Vite)
 ├── services/
 │   ├── pe-db/                # FastAPI catalog + data service
-│   │   └── app/
-│   │       ├── catalog/      # Study/dataset/scaffold registries (seeded)
-│   │       ├── converter.py  # Export + standardize pipeline
-│   │       ├── db/           # SQLAlchemy catalog repository
-│   │       └── utils/        # Standardization and format conversion
+│   │   ├── app/
+│   │   │   ├── catalog/      # Study/dataset/scaffold registries (seeded)
+│   │   │   ├── converter.py  # Export + standardize orchestration
+│   │   │   ├── db/           # SQLAlchemy catalog repository
+│   │   │   └── utils/        # Standardization and model-format conversion
+│   │   └── pe_db/            # `pedb` CLI + headless library
 │   └── pe-ensemble/          # FastAPI model service
 │       ├── app/
-│       │   ├── models/       # DeepPrime, OPED, PRIDICT2 wrappers
-│       │   └── training/     # Job queue, device scheduler, runner
+│       │   ├── models/       # Model wrappers + weight registry
+│       │   ├── training/     # Training runner, Optuna tuning, job state
+│       │   ├── evaluation/   # Benchmarking + train/test leakage checks
+│       │   ├── ensemble/     # Multi-model prediction fusion
+│       │   ├── plugins/      # Plugin upload, validation, activation
+│       │   └── compute/      # Per-device job scheduler and job plumbing
+│       ├── pe_ensemble/      # `peen` CLI + headless library
+│       ├── config/           # Shipped hyperparameter presets
 │       ├── jobs/             # Filesystem-backed training job state
 │       └── weights/          # Registered pretrained + trained checkpoints
 ├── datasets/
 │   ├── raw/                  # Original study files (Excel, CSV, …)
 │   ├── exported/             # Normalized CSV per datasheet (generated)
 │   ├── standardized/         # Parquet in shared schema (generated)
+│   ├── formatted/            # Cached model-native columns (generated)
 │   └── catalog/              # SQLite catalog DB (generated)
 ├── vendor/models/            # Third-party model code (submodules)
-├── scripts/                  # start-all, start-pe-db-backend, smoke tests, setup
+├── plugins/                  # User-contributed model plugins
+├── docs/                     # Architecture map + plugin design docs
+├── scripts/                  # Setup, experiments, HPO runners, cluster jobs
 └── Makefile                  # install, test, lint, format
 ```
 
@@ -151,9 +227,14 @@ On PE Database startup, `initialize_database()` runs three steps:
 2. **Export** — write `datasets/exported/` from raw files; register **Datasheet** rows in the catalog
 3. **Standardize** — write `datasets/standardized/` parquet from exported CSVs
 
-Edit-level measurements are **not** stored in SQL. They are loaded with Pandas from parquet/CSV behind the API. Catalog tables (`study`, `dataset`, `scaffold`, `datasheet`) are described in `services/pe-db/README.md` and `diagrams/illustration/database_er.mmd`.
+Edit-level measurements are **not** stored in SQL. They are loaded with Pandas from parquet/CSV behind the API. Catalog tables (`study`, `dataset`, `scaffold`, `datasheet`) are described in [`services/pe-db/README.md`](services/pe-db/README.md) and [`txt/diagrams/illustration/database_er.mmd`](txt/diagrams/illustration/database_er.mmd).
 
-Supported studies include DeepPrime, PRIDICT1, PRIDICT2, MinsePIE, and DeepPE (see `app/catalog/studies.py`).
+Supported studies include DeepPrime, DeepPE, PRIDICT1, PRIDICT2, MinsePIE, and OptiPrime (see [`app/catalog/studies.py`](services/pe-db/app/catalog/studies.py)).
+
+A few datasets are only *partially* standardizable (`pridict1/endogenous`,
+`pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`): their parquet files
+carry filter metadata but no sequence or coordinate columns, so they are readable
+via `/api/data` but cannot be exported in a model format.
 
 ### Output formats
 
@@ -161,10 +242,11 @@ Supported studies include DeepPrime, PRIDICT1, PRIDICT2, MinsePIE, and DeepPE (s
 | -------------------------- | ------------------------------------------------------- |
 | `std`                    | Shared standardized schema (default for`/api/data`)   |
 | `deepprime`              | DeepPrime native columns                                |
-| `pridict` / `pridict2` | PRIDICT native columns                                  |
+| `pridict` / `pridict2` | PRIDICT native columns (both run the PRIDICT2 feature pipeline) |
 | `oped`                   | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
+| `optiprime`              | OptiPrime native RNA columns                            |
 
-Model-format conversion is owned by **PE Database** (`GET /api/filter?format=…`). PE Ensemble proxies the same contract at `GET /data/filter` and uses it for training and evaluation.
+Active plugins can register additional formats. Model-format conversion is owned by **PE Database** (`GET /api/filter?format=…`). PE Ensemble proxies the same contract at `GET /data/filter` and uses it for training and evaluation.
 
 ## PE Database API (overview)
 
@@ -215,7 +297,16 @@ curl "http://localhost:8000/api/filter?format=deepprime&study=pridict1&dataset=l
 | POST   | `/predict`                  | Prediction endpoint (stub)          |
 | GET    | `/health`                   | Health check                        |
 
-Models: **DeepPrime**, **PRIDICT2**, **OPED**. Training supports per-device queuing (CUDA, MPS, CPU, …). See `services/pe-ensemble/README.md` and `services/pe-ensemble/jobs/README.md` for CLI and SLURM usage.
+The service also exposes `/tune` (Optuna hyperparameter search), `/ensemble`
+(multi-model fusion) and plugin management routes; see
+[`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) for the full list.
+
+Built-in models: **DeepPrime**, **PRIDICT2**, **OPED**, **OptiPrime**, plus any
+active plugins. Training supports per-device queuing (CUDA, MPS, CPU, …). See
+[`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) for CLI usage,
+[`services/pe-ensemble/jobs/README.md`](services/pe-ensemble/jobs/README.md) for
+job state and artifacts, and
+[`scripts/cluster/oxford-arc/README.md`](scripts/cluster/oxford-arc/README.md) for SLURM.
 
 ## PE Hub
 
@@ -233,7 +324,27 @@ Environment variables (`.env` in `pe-hub/`):
 
 ## Work with CLI on Remote Cluster
 
-We recognize that a lot of CLI usage would be done on remote clusters. 
+Most heavy training and tuning happens on a cluster, so both CLIs run fully
+in-process — no HTTP server needed. `peen` talks to PE-DB through
+`pe_db.library` directly when `PE_DB_URL` is unset, which means a SLURM job needs
+only the conda environment and the dataset files.
+
+```bash
+# On the cluster, after ./scripts/setup-python-env.sh --install
+conda activate pe-hub
+peen train --model deepprime --dataset-name my-run \
+    --study pridict1 --dataset library1 \
+    --split-strategy holdout_3 --train-pct 0.7 --val-pct 0.15 --test-pct 0.15 \
+    --device auto
+```
+
+Job state, logs and registered weights land on the filesystem under
+`services/pe-ensemble/{jobs,weights}/`, so `peen jobs` and `peen logs` work
+after the batch job exits. Large inputs and outputs are moved with DVC.
+
+A worked setup for Oxford ARC — module loading, DVC remotes, `sbatch` templates,
+walltime guidance and a smoke checklist — is in
+[`scripts/cluster/oxford-arc/README.md`](scripts/cluster/oxford-arc/README.md).
 
 ## Shared package: pe-common
 
@@ -251,10 +362,18 @@ Install: `pip install -e packages/pe-common`. Details in `packages/pe-common/REA
 ## Development
 
 ```bash
-make test           # pytest
-make format         # black
-make lint           # flake8
+make test                 # all suites (isolated pytest processes)
+make test GROUP=smoke     # HTTP/CLI operation paths only
+make test-list            # named groups (training, plugins, models, …)
+./scripts/run-tests.sh training evaluation
+make format
+make lint
 ```
+
+pe-db and pe-ensemble both own a top-level `app` package, so a bare `pytest`
+at the repo root can import the wrong service. Use `./scripts/run-tests.sh`
+(or `make test`). Pass one or more group names to run a functional subset;
+`./scripts/run-tests.sh --list` prints the groups.
 
 Re-export or re-standardize data:
 

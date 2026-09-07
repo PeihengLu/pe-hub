@@ -1,6 +1,14 @@
 # PE Database Service
 
-FastAPI service aligned with `diagrams/illustration/database_er.mmd`.
+FastAPI service aligned with
+[`txt/diagrams/illustration/database_er.mmd`](../../txt/diagrams/illustration/database_er.mmd).
+
+PE-DB owns two things: the **catalog** (what data exists) and the **data
+pipeline** (turning published files into model-ready frames). It is also the only
+place that converts standardized rows into a model's native columns — PE-Ensemble
+requests data in a given format rather than converting it itself.
+
+Jump to: [Code layout](#code-layout) · [Initialization](#database-initialization-three-steps) · [CLI](#cli-no-http-server)
 
 ## What lives in the catalog database
 
@@ -49,6 +57,103 @@ pe-ensemble web ──HTTP──► FastAPI
 
 Installable packages: `pe_db` (console scripts `pedb` / `pe-db` + `pe_db.library`) and the FastAPI app under `app/`. Both the CLI and HTTP handlers call the same headless library — no localhost hop for CLI use.
 
+## Code layout
+
+Where to look when you need to change something. Full cross-service context is in
+[`docs/architecture.md`](../../docs/architecture.md).
+
+### `app/` — service internals
+
+| File | Responsibility |
+|---|---|
+| `main.py` | FastAPI route definitions and query-parameter parsing |
+| `library.py` | The same operations as a plain Python API; what `pedb` and in-process `peen` call. **Add features here, not in `main.py`**, so both surfaces get them |
+| `converter.py` | Orchestrates export → standardize → format conversion and consults the cache |
+| `format_registry.py` | Format name → converter function. Register a new format here |
+| `formatted_cache.py` | Revision-gated disk cache under `datasets/formatted/` |
+| `loaders.py` | Reads standardized parquet, normalizing `-`/`_` in path segments |
+| `plugin_loader.py` | Pulls converters out of active plugins into the format registry |
+| `process_pool.py` | Worker pool for the expensive ViennaRNA MFE pass |
+| `config.py` | Path and environment-flag resolution |
+
+### `app/catalog/` — the declarative source of truth
+
+| File | Responsibility |
+|---|---|
+| `studies.py` | `STUDY_REGISTRY` and `DATASET_REGISTRY`. Every study, dataset, and its `standardizable` flag |
+| `scaffolds.py` | pegRNA scaffold sequences and IDs |
+| `datasheets.py` | Scans `datasets/exported/` to index `Datasheet` rows; infers each sheet's scaffold |
+| `seed.py` | Writes the registries into SQL and migrates legacy columns |
+| `initialize.py` | The startup sequence: seed → export → standardize |
+
+### `app/utils/` — the pipeline
+
+| File | Responsibility |
+|---|---|
+| `standardize_data.py` | Every per-study exporter and standardizer (the largest file in the repo) |
+| `convert_data.py` | Standardized → DeepPrime / PRIDICT / OPED / OptiPrime converters |
+| `deepspcas9.py` | 30-mer window extraction and SpCas9 score backfill (TensorFlow 1.x) |
+| `json_utils.py` | NaN/Inf-safe JSON encoding for API responses |
+
+`standardize_data.py` is organized by study: shared helpers and the standardized
+column lists first, then one `_export_<study>_datasheets` and one
+`_standardize_<study>_<dataset>` per study. **To trace a single dataset, find its
+pair of functions** — that is the whole story for that dataset.
+
+### `app/db/` — SQL layer
+
+| File | Responsibility |
+|---|---|
+| `repository.py` | Filtering, conversion dispatch, split assignment, multi-datasheet merge |
+| `models.py` | SQLAlchemy tables (`study`, `dataset`, `scaffold`, `datasheet`) |
+| `schemas.py` | Pydantic response models |
+| `session.py` | Engine and session lifecycle |
+
+### `pe_db/` — installable CLI and library
+
+`cli.py` is the `pedb` entry point. `library.py` re-exports `app.library` as a
+stable import path, `mfe_worker.py` is the MFE subprocess body, and
+`_bootstrap.py` fixes `sys.path` for editable installs.
+
+### Common tasks
+
+| Task | Where |
+|---|---|
+| Add a study or dataset | `app/catalog/studies.py`, then an exporter + standardizer in `app/utils/standardize_data.py` |
+| Add a model output format | `app/utils/convert_data.py`, register in `app/format_registry.py` |
+| Change filtering or splits | `app/db/repository.py` and `packages/pe-common/pe_common/splits.py` |
+| Add an endpoint | `app/library.py` first, then a thin route in `app/main.py` |
+
+## Data pipeline behaviour
+
+Worth knowing before debugging a missing or wrong-looking datasheet:
+
+- **The standardized schema is the contract.** Geometry columns are 0-based
+  half-open `[left, right)` offsets into `wt_sequence` / `mut_sequence`, which are
+  `N`-padded to a common length. The `_l` bounds index WT; `rtt_location_r` and
+  `rha_location_r` index the mutated sequence. Full column list:
+  [root README § Standardized edit format](../../README.md#standardized-edit-format-pe-core).
+- **Export skips per dataset, not per study.** A newly registered dataset is
+  exported on the next startup without needing `force_reexport`.
+- **Standardization failures do not abort startup**, but they are collected and
+  re-reported in a single summary line. Grep the logs for
+  `Standardized N datasheet(s); M failed`.
+- **Rows without an efficiency measurement are dropped.** A blank label means
+  the edit was never measured in that cell line, not that it was measured as
+  zero, so `standardized/` defines "rows you can train on". The drop is logged
+  per datasheet (`no editing_efficiency measurement`); genuine `0.0`
+  measurements are kept. Enforced in `_drop_unmeasured_efficiency_rows`, applied
+  by `standardize_pe_data` after the per-study standardizers finish.
+- **Partially standardizable datasets** (`pridict1/endogenous`,
+  `pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`) produce parquet
+  with filter metadata but no sequences, so they work with `/api/data` and not
+  with `format=` exports.
+- **Bad coordinates are coerced to 0 with a warning.** If a datasheet's
+  sequences look subtly wrong, search the logs for `non-numeric value(s) replaced`
+  or `inverted interval` — that points at the upstream standardizer.
+- **`pridict` and `pridict2` share a converter**, so both get the full PRIDICT2
+  feature set including ViennaRNA MFE.
+
 ## Manual usage
 
 ### CLI (no HTTP server)
@@ -59,7 +164,7 @@ pip install -e packages/pe-common
 pip install -e services/pe-db
 ```
 
-Or from the repo root (same requirement): `./scripts/install-clis.sh` (installs **pedb** / **peen** and bash/zsh tab completion, then prints usage). Reload completion with `conda deactivate && conda activate pedb`, then `pedb <TAB>`. Skip completion with `SKIP_CLI_COMPLETION=1 ./scripts/install-clis.sh`.
+Or from the repo root (same requirement): `./scripts/install-clis.sh` (installs **pedb** / **peen** and bash/zsh tab completion, then prints usage). Reload completion with `conda deactivate && conda activate pe-hub`, then `pedb <TAB>`. Skip completion with `SKIP_CLI_COMPLETION=1 ./scripts/install-clis.sh`.
 
 Short alias: **`pedb`** (also installed as `pe-db`).
 

@@ -2,11 +2,35 @@
 
 Shared utilities package for PE Database and PE Ensemble services.
 
+Anything both services must agree on lives here — device naming, split
+assignment, the standardized-sequence conventions, the training loop, and the
+plugin contract. Everything else stays in the service that owns it.
+
 ## Installation
 
 ```bash
 pip install -e packages/pe-common
 ```
+
+## Module map
+
+| Module | Purpose | Import cost |
+|---|---|---|
+| `constants.py` | Repository paths and the default device | free |
+| `devices.py` | Device discovery and `"auto"` / `"cuda:0"` resolution | free |
+| `splits.py` | Train/val/test assignment; the one source of split semantics | free |
+| `sequence_utils.py` | WT/mutant alignment and padding | free |
+| `data_utils.py` | Evaluation partition masks | free |
+| `cell_lines.py` | Cell-line name normalization across studies | free |
+| `model_interface.py` | The `BasePEModel` contract | free |
+| `plugins.py` | Plugin manifest discovery and loading | free |
+| `plugin_validation.py` | Validates a plugin against the contract | free |
+| `conversion_progress.py` | Progress callbacks for long conversions | free |
+| `training.py` | Training loops, Lightning glue, seeding, metrics | needs PyTorch (lazy) |
+| `features.py` | MFE, melting temperature, GC content | needs ViennaRNA (lazy) |
+
+The two lazy modules are re-exported through the `pe_common` namespace so
+importing `pe_common` never pulls in PyTorch or ViennaRNA on its own.
 
 ## Contents
 
@@ -70,8 +94,23 @@ from pe_common import (
     fit_lightning_module,
     pearson_spearman,
     EarlyStopping,
+    LightningTrainerConfig,
+    build_lr_scheduler,
+    resolve_training_seed,
+    seed_training_run,
 )
 ```
+
+All three model wrappers share this module, so a change here affects DeepPrime,
+PRIDICT2 and OPED at once. Notable behaviour:
+
+- `seed_training_run(hyperparameters)` is called by each wrapper **before** the
+  model is built, so weight init and data-loader shuffling are both seeded.
+  `resolve_training_seed` returns the same value for `LightningTrainerConfig`.
+- `fit_lightning_module` sets `enable_checkpointing=False` and returns the best
+  state itself; callers decide where weights are persisted.
+- `build_lr_scheduler` defaults `CosineAnnealingLR`'s `T_max` to the run's
+  `max_epochs` rather than a fixed constant.
 
 ### Feature calculations (`pe_common.features`, lazy-loaded)
 

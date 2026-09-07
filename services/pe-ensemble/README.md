@@ -15,6 +15,100 @@ A FastAPI-based web service for evaluating, training, and creating ensembles of 
 - **DeepPrime** - CNN-GRU model for PE efficiency prediction
 - **PRIDICT2** - Attention-based bidirectional LSTM model for PE efficiency prediction
 - **OPED** - Transformer-based model for PE efficiency prediction
+- **OptiPrime** - JAX/Flax model; optional, installed by `scripts/install-optiprime-deps.sh`
+
+Plus conventional baselines (XGBoost and friends) in `app/training/model_baselines.py`.
+
+## Code layout
+
+Five subpackages under `app/`, each owning one stage. Cross-service context is in
+[`docs/architecture.md`](../../docs/architecture.md).
+
+| Package | Owns |
+|---|---|
+| `app/models/` | Model wrappers and the weights registry |
+| `app/training/` | Train and tune orchestration, data fetching, search spaces |
+| `app/evaluation/` | Benchmark jobs and leakage checks |
+| `app/ensemble/` | Post-hoc fusion of multiple models' predictions |
+| `app/compute/` | Device scheduling, job lifecycle, logging, manifest I/O |
+| `app/plugins/` | Third-party model plugin discovery and validation |
+
+`main.py` holds every route; `train_models.py` and `tune_models.py` are the
+`peen train` / `peen tune` CLI bodies. Routes and CLI both go through the same
+runner modules, so behaviour cannot drift between them.
+
+### `app/models/` — wrappers and weights
+
+Every wrapper implements the same lifecycle: `prepare_data` → `train` →
+`predict` → `save_model` / `load_model`. `model_factory.py` maps a model name to
+its wrapper and `registry.py` describes the vendor weight sets.
+
+| File | Notes |
+|---|---|
+| `deepprime_wrapper.py` | `GeneInteractionModel`. Trains on `log1p(efficiency)`; `predict` inverts with `expm1`. From-scratch runs fit their own feature normalization and persist `mean.csv` / `std.csv` / `architecture.json` |
+| `pridict2_wrapper.py` | `PERNNDistributionModel` from the vendor `prieml_model`. Each run gets a unique scratch `output_dir` |
+| `oped_wrapper.py` | `TransformerEncoderModelOrder3` over k-mer tokens. Requires `embedding_size % nhead == 0` |
+| `optiprime_wrapper.py` | JAX/Flax; import is lazy so the service still starts without JAX |
+| `weights_registry.py` | Disk-backed registry under `weights/`. Manifests are written atomically and index rebuilds take an `fcntl` lock |
+| `*_vendor_provenance.py` | Records which vendor checkpoint a weight set descends from |
+| `migrate_weights.py`, `convert_oped_weights.py` | One-off layout and format migrations |
+
+### `app/training/` — orchestration
+
+| File | Notes |
+|---|---|
+| `runner.py` | The end-to-end run: fetch data → split → train → collect metrics → register weights → mark the job succeeded |
+| `data.py` | Fetches formatted data from PE-DB, in-process on the CLI and over HTTP in the service |
+| `schemas.py` | Request models. `SplitQueryParams` validates split strategy and fractions up front, so bad requests get a 422 instead of failing mid-run |
+| `config.py` | Paths, defaults, environment flags |
+| `model_architecture.py` | Architecture override parsing and validation |
+| `hyperparameter_presets.py` | Named hyperparameter bundles per model |
+| `search_spaces.py` | Optuna distributions per model |
+| `tune_runner.py`, `tune_study.py`, `tune_jobs.py` | Optuna study creation, trial execution, and tuning job state |
+| `jobs.py` | Training job manifests under `jobs/` |
+| `dataset_key.py` | Canonical cache/identity key for a dataset + filter combination |
+| `progress_log.py`, `conversion_progress.py` | Streaming progress for `GET /train/logs/{job_id}` |
+| `model_baselines.py` | Non-deep-learning baselines |
+| `pe_db_access.py` | Chooses the in-process library vs HTTP transport |
+
+### `app/compute/` — shared job machinery
+
+`device_scheduler.py` allocates GPUs and queues work per device;
+`job_lifecycle.py` handles the `queued → running → succeeded/failed`
+transitions; `job_logging.py` and `manifest_io.py` provide the append-only logs
+and atomic manifest writes used by all four job types.
+
+### Common tasks
+
+| Task | Where |
+|---|---|
+| Add a model | New wrapper in `app/models/`, register in `model_factory.py`, add a search space in `app/training/search_spaces.py` |
+| Change what a training run records | `app/training/runner.py` (`_training_metadata_from_request`) |
+| Change tunable hyperparameters | `app/training/search_spaces.py` and `hyperparameter_presets.py` |
+| Add a request field | `app/training/schemas.py`, then thread it through `runner.py` |
+| Debug a stuck job | Read the manifest and log under `jobs/<job_id>/` — see [`jobs/README.md`](jobs/README.md) |
+
+## Training and output invariants
+
+Behaviour that is easy to break and worth knowing:
+
+- **Runs are seeded.** Each wrapper calls `seed_training_run` before building the
+  model, so weight init and data-loader shuffling are both covered. An explicit
+  `seed` reproduces a run exactly.
+- **Lightning's own checkpointing is off.** `fit_lightning_module` keeps the best
+  state in memory and the registry persists it, so no stray `checkpoints/`
+  directory appears in the working directory.
+- **Missing efficiency labels are a hard error.** PE-DB drops unmeasured rows
+  during standardization, so this only fires for data that bypassed that
+  pipeline; wrappers raise rather than imputing `0.0` and training on
+  fabricated zeros.
+- **Non-finite validation loss is a hard error**, so a diverged run fails visibly
+  instead of registering unusable weights.
+- **DeepPrime weight sets are self-describing.** `save_model` refuses to write
+  without normalization stats, so a reloaded model cannot silently fall back to
+  vendor statistics.
+- **Job state is filesystem-backed**, not in-memory: it survives restarts and is
+  readable without the API. Layout: [`jobs/README.md`](jobs/README.md).
 
 ## API Endpoints
 

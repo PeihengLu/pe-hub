@@ -25,7 +25,42 @@ not in GitHub; the store is Oxford ARC (see
 [`scripts/cluster/oxford-arc/README.md`](../scripts/cluster/oxford-arc/README.md#dvc-selective-artifacts)).
 
 The PE Database service generates `exported/`, `standardized/`, and `catalog/` on
-startup via `initialize_database()` (see `services/pe-db/README.md`).
+startup via `initialize_database()` (see
+[`services/pe-db/README.md`](../services/pe-db/README.md)).
+
+## Who writes each stage
+
+Each directory has exactly one producer, so a wrong value can be traced to one
+file:
+
+| Stage | Written by | Trigger |
+|---|---|---|
+| `raw/` | Humans (committed) | — |
+| `exported/` | `_export_<study>_datasheets` in `services/pe-db/app/utils/standardize_data.py` | Startup, per missing dataset, or `force_reexport` |
+| `standardized/` | `_standardize_<study>_<dataset>` in the same file | Startup, or `force_standardize` |
+| `formatted/` | converters in `services/pe-db/app/utils/convert_data.py` | On demand from `format=` requests, then cached |
+| `catalog/` | `services/pe-db/app/catalog/seed.py` + `datasheets.py` | Startup |
+
+Export is skipped **per dataset**, not per study, so registering a new dataset
+picks it up on the next startup without a forced rebuild. Standardization
+failures do not abort startup; they are summarized in one log line
+(`Standardized N datasheet(s); M failed`).
+
+### Unmeasured edits are dropped, not zero-filled
+
+An edit with a blank efficiency cell was never measured in that cell line,
+which is not the same as an efficiency of zero. Standardization drops those rows
+and logs the count:
+
+```
+Dropped 2 of 33 row(s) from deeppe/deeppe_endo hek293t-pe2: no editing_efficiency measurement.
+```
+
+So `standardized/` is the definition of "rows you can train on", and a genuine
+measurement of `0.0` is preserved. Converters no longer substitute `0.0` for a
+missing label either, so if one ever reaches a model wrapper (from data that did
+not come through this pipeline) training fails loudly instead of learning that
+unmeasured edits are inefficient.
 
 ## Standardized format
 
@@ -42,9 +77,16 @@ Key columns (hyphenated in parquet):
 | `edit-length` | Edit size |
 | `original-fold` | Author train/test assignment when available |
 
-Model-specific columns are produced on demand by `GET /api/filter?format=…`.
-Converted outputs for each model format are cached under ``formatted/{format}/…``
-and cleared when data is rebuilt via ``force_reexport`` or ``force_standardize``.
+Geometry columns (`pbs-location-l`, `rtt-location-r`, …) are **0-based half-open
+offsets** into the padded sequences, not genomic coordinates. The full column list
+and the padding convention are in
+[root README § Standardized edit format](../README.md#standardized-edit-format-pe-core).
+
+Model-specific columns are produced on demand by `GET /api/filter?format=…`
+(`std`, `deepprime`, `pridict`, `pridict2`, `oped`, `optiprime`, plus any format
+registered by an active plugin). Converted outputs are cached under
+``formatted/{format}/…`` and cleared when data is rebuilt via ``force_reexport``
+or ``force_standardize``.
 
 ## Studies
 

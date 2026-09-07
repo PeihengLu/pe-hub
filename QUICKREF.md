@@ -1,4 +1,9 @@
-# PE-DB Quick Reference
+# Quick reference
+
+Commands and environment variables for day-to-day use. For what the code is and
+where it lives, start at the
+[documentation index](README.md#documentation-index) and
+[`docs/architecture.md`](docs/architecture.md).
 
 ## Quick start
 
@@ -52,7 +57,10 @@ cd pe-hub && npm run dev
 
 ```bash
 make install        # Install editable packages + dev deps
-make test           # Run pytest
+make test           # Run all test suites
+make test GROUP=smoke
+make test-list      # List functional groups
+./scripts/run-tests.sh training plugins
 make format         # black
 make lint           # flake8
 make clean          # Remove caches and build artifacts
@@ -85,6 +93,10 @@ curl http://localhost:8001/devices
 | `PE_DB_URL` | Ensemble web service | PE Database base URL for HTTP access (default `http://localhost:8000`) |
 | `WEIGHTS_ROOT` | Ensemble | Override weights directory |
 | `TRAINING_JOBS_ROOT` | Ensemble | Override `jobs/` location |
+| `TUNING_JOBS_ROOT` | Ensemble | Override `tune_jobs/` location |
+| `TUNING_STUDIES_ROOT` | Ensemble | Override Optuna storage location |
+| `EVAL_JOBS_ROOT` | Ensemble | Override `eval_jobs/` location |
+| `PRIDICT2_SCRATCH_ROOT` | Ensemble | Parent for PRIDICT2 per-run scratch dirs |
 | `DATABASE_URL` | Database | Override SQLite catalog path |
 | `PE_DB_FORCE_EXPORT` | Database | Re-export on startup |
 | `PE_DB_FORCE_STANDARDIZE` | Database | Re-standardize on startup |
@@ -119,11 +131,14 @@ lsof -ti:5173 | xargs kill -9
 
 ## Documentation
 
+The full, maintained list is the
+[documentation index](README.md#documentation-index). Most-used entries:
+
 | Path | Contents |
 |------|----------|
-| `README.md` | Project overview |
-| `services/pe-db/README.md` | Catalog schema and database init |
-| `services/pe-ensemble/README.md` | Models, training, weights |
-| `services/pe-ensemble/jobs/README.md` | Training job filesystem layout |
-| `packages/pe-common/README.md` | Shared utilities |
-| `pe-hub/README.md` | Frontend setup |
+| [`docs/architecture.md`](docs/architecture.md) | Code map for every service and package |
+| [`services/pe-db/README.md`](services/pe-db/README.md) | Catalog schema, data pipeline, `pedb` CLI |
+| [`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) | Models, training, tuning, `peen` CLI |
+| [`services/pe-ensemble/jobs/README.md`](services/pe-ensemble/jobs/README.md) | Job filesystem layout and training output |
+| [`packages/pe-common/README.md`](packages/pe-common/README.md) | Shared utilities |
+| [`pe-hub/README.md`](pe-hub/README.md) | Frontend setup |
