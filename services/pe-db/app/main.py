@@ -366,6 +366,8 @@ async def get_data(
             "data": dataframe_to_json_records(data),
         }
 
+    except HTTPException:
+        raise
     except FileNotFoundError as exc:
         logger.error("Data file not found: %s", exc)
         raise HTTPException(status_code=404, detail=str(exc)) from exc

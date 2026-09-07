@@ -699,7 +699,7 @@ def cmd_ensemble(args: argparse.Namespace) -> int:
 def cmd_methods(args: argparse.Namespace) -> int:
     del args
     for entry in combine_method_help():
-        print(f"{entry['method']}: {entry['description']}")
+        print(f"{entry['id']}: {entry['description']}")
     return 0
 
 

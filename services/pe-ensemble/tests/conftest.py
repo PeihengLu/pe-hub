@@ -4,7 +4,7 @@ Ensures ``app`` resolves to ``services/pe-ensemble/app``. Paths are applied only
 while ensemble tests are being collected (not at conftest import time), so
 pe-db and pe-ensemble suites can coexist in one pytest invocation.
 
-For isolated runs, ``scripts/run-smoke-tests.sh`` is still the recommended entry point.
+For isolated runs, ``scripts/run-tests.sh`` is the recommended entry point.
 """
 from __future__ import annotations
 
@@ -84,3 +84,30 @@ def pytest_runtest_setup(item) -> None:
         return
     _ensemble_path_in_sys_path()
     _purge_conflicting_app_modules()
+
+
+_PE_DB_MODE_MODULES = (
+    "app.training.config",
+    "pe_ensemble_service_app.training.config",
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_pe_db_access_mode():
+    """Keep the in-process/HTTP PE-DB mode from leaking between tests.
+
+    ``enable_cli_pe_db_access()`` sets a process-global flag (mirrored across
+    both copies of the config module) and nothing resets it, so any test that
+    invokes the CLI would otherwise leave every later test in library mode.
+    That silently changes which branch code under test takes.
+    """
+    saved = {
+        name: getattr(module, "_use_pe_db_library", None)
+        for name in _PE_DB_MODE_MODULES
+        if (module := sys.modules.get(name)) is not None
+    }
+    yield
+    for name, value in saved.items():
+        module = sys.modules.get(name)
+        if module is not None and value is not None:
+            module._use_pe_db_library = value

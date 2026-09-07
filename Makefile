@@ -1,4 +1,4 @@
-.PHONY: help setup install clean test format lint jupyter data-prep
+.PHONY: help setup install clean test test-list format lint jupyter data-prep
 
 help:
 	@echo "PE-DB Project Makefile"
@@ -7,7 +7,8 @@ help:
 	@echo "  make setup          - Set up the development environment"
 	@echo "  make install        - Install all dependencies"
 	@echo "  make clean          - Clean up generated files"
-	@echo "  make test           - Run tests"
+	@echo "  make test           - Run all tests (GROUP=smoke to select a group)"
+	@echo "  make test-list      - List test groups"
 	@echo "  make format         - Format code with black"
 	@echo "  make lint           - Lint code with flake8"
 	@echo "  make jupyter        - Start Jupyter Lab locally"
@@ -39,7 +40,10 @@ clean:
 	rm -rf build/ dist/ .coverage htmlcov/
 
 test:
-	pytest tests/ -v
+	./scripts/run-tests.sh $(GROUP)
+
+test-list:
+	./scripts/run-tests.sh --list --check
 
 format:
 	black src/ services/ packages/

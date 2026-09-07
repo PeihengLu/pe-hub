@@ -7,7 +7,7 @@ runs the wrapper's ``evaluate`` method end-to-end on CPU.
 Skips gracefully when vendor weights or optional runtime deps are missing
 (same expectation as ``test_weights_loading.py``).
 
-Run via pe-ensemble tests or ``./scripts/run-smoke-tests.sh``.
+Run via pe-ensemble tests or ``./scripts/run-tests.sh models`` / ``integration``.
 """
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from typing import Any, Dict
 import pandas as pd
 import pytest
 import torch
+
+pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TESTDATA = REPO_ROOT / "testdata" / "vendor_eval"
@@ -124,6 +126,11 @@ class TestPRIDICT2Evaluation:
 
 
 def test_all_vendor_wrappers_listed() -> None:
-    """Guard that the system test stays aligned with ModelFactory registrations."""
+    """Guard that the system test stays aligned with ModelFactory registrations.
+
+    Checks containment rather than equality: plugins register extra models, and
+    an earlier test in the same session may have left some registered.
+    """
     ModelFactory = _model_factory()
-    assert set(ModelFactory.list_models()) == {"deepprime", "oped", "pridict2"}
+    registered = set(ModelFactory.list_models())
+    assert {"deepprime", "oped", "pridict2", "optiprime"} <= registered
