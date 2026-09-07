@@ -53,3 +53,18 @@ def test_align_seqs_survives_pandas_include_groups_default():
     aligned = proc.align_seqs(df, "wide_initial_target", "wide_mutated_target")
     assert aligned["seq_id"].is_unique
     assert {"wide_initial_target_align", "wide_mutated_target_align"}.issubset(aligned.columns)
+
+
+def test_process_init_mut_seqs_annotation_width_covers_longer_mut():
+    """PBS{i} matrices must be as wide as the longer aligned strand (DeepPE/lib-cv)."""
+    proc = PESeqProcessor()
+    df = _minimal_align_df(n=2)
+    df.loc[1, "Correction_Type"] = "Insertion"
+    df.loc[1, "Correction_Length"] = 1
+    df.loc[1, "wide_mutated_target"] = "ACGTACGT" + "T" * 20
+    _tdf, _init, _n_init, mut, n_mut = proc.process_init_mut_seqs(
+        df, "wide_initial_target", "wide_mutated_target"
+    )
+    pbs_cols = [f"PBS{i}" for i in range(n_mut)]
+    missing = [c for c in pbs_cols if c not in mut.columns]
+    assert missing == []

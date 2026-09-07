@@ -119,6 +119,38 @@ def test_load_training_loci_returns_none_without_sidecar(weights_root: Path):
     assert weights_registry.load_training_provenance("deepprime", "no-loci") is None
 
 
+def test_load_training_metadata_strips_pridict2_head_suffix(weights_root: Path):
+    entry_dir = weights_root / "pridict2" / "pridict1_1__exp_demo__run_0"
+    entry_dir.mkdir(parents=True)
+    (entry_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "pridict1_1__exp_demo__run_0",
+                "model": "pridict2",
+                "label": "demo",
+                "source": "vendor",
+                "format": "pridict2",
+                "created_at": "2026-06-08T00:00:00Z",
+                "files": [],
+                "training": {
+                    "filters": {"dataset": ["library1"]},
+                    "data_provenance": {"library1_has_original_test_split": False},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (entry_dir / weights_registry.TRAIN_LOCI_FILENAME).write_text(
+        json.dumps({"target_uids": ["ps:lib1"]}),
+        encoding="utf-8",
+    )
+    headed = "pridict1_1__exp_demo__run_0__HEK"
+    meta = weights_registry.load_training_metadata("pridict2", headed)
+    assert meta is not None
+    assert meta["filters"]["dataset"] == ["library1"]
+    assert weights_registry.load_training_loci("pridict2", headed) == {"ps:lib1"}
+
+
 def test_sync_deepprime_vendor_provenance_backfills_manifest_and_loci(
     weights_root: Path,
     monkeypatch: pytest.MonkeyPatch,

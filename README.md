@@ -19,59 +19,59 @@ every module to what it does. For a command cheat sheet, see [`QUICKREF.md`](QUI
 
 **Orientation**
 
-| Document | What it covers |
-|---|---|
-| [`QUICKREF.md`](QUICKREF.md) | One-page cheat sheet: URLs, start commands, make targets, troubleshooting |
-| [`docs/architecture.md`](docs/architecture.md) | Code map for every service and package, plus the data and training flows |
-| This file | Install, project structure, API overview, data contribution guide |
+| Document                                        | What it covers                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------- |
+| [`QUICKREF.md`](QUICKREF.md)                   | One-page cheat sheet: URLs, start commands, make targets, troubleshooting |
+| [`docs/architecture.md`](docs/architecture.md) | Code map for every service and package, plus the data and training flows  |
+| This file                                       | Install, project structure, API overview, data contribution guide         |
 
 **Services and packages**
 
-| Document | What it covers |
-|---|---|
-| [`services/pe-db/README.md`](services/pe-db/README.md) | Catalog schema, the export/standardize pipeline, `pedb` CLI, filter and split semantics |
-| [`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) | Model wrappers, training/tuning/evaluation APIs, `peen` CLI, hyperparameters |
-| [`packages/pe-common/README.md`](packages/pe-common/README.md) | Shared constants, splits, devices, sequence helpers, training utilities |
-| [`pe-hub/README.md`](pe-hub/README.md) | Frontend setup, pages, environment variables |
+| Document                                                            | What it covers                                                                           |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`services/pe-db/README.md`](services/pe-db/README.md)             | Catalog schema, the export/standardize pipeline,`pedb` CLI, filter and split semantics |
+| [`services/pe-ensemble/README.md`](services/pe-ensemble/README.md) | Model wrappers, training/tuning/evaluation APIs,`peen` CLI, hyperparameters            |
+| [`packages/pe-common/README.md`](packages/pe-common/README.md)     | Shared constants, splits, devices, sequence helpers, training utilities                  |
+| [`pe-hub/README.md`](pe-hub/README.md)                             | Frontend setup, pages, environment variables                                             |
 
 **Data**
 
-| Document | What it covers |
-|---|---|
-| [`datasets/README.md`](datasets/README.md) | Directory layout for raw / exported / standardized / formatted data |
-| [Standardized edit format](#standardized-edit-format-pe-core) | The shared schema contributed data must use |
-| [`txt/diagrams/illustration/database_er.mmd`](txt/diagrams/illustration/database_er.mmd) | Catalog ER diagram (Mermaid source) |
+| Document                                                                                  | What it covers                                                      |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`datasets/README.md`](datasets/README.md)                                               | Directory layout for raw / exported / standardized / formatted data |
+| [Standardized edit format](#standardized-edit-format-pe-core)                              | The shared schema contributed data must use                         |
+| [`txt/diagrams/illustration/database_er.mmd`](txt/diagrams/illustration/database_er.mmd) | Catalog ER diagram (Mermaid source)                                 |
 
 **Models, weights, and training output**
 
-| Document | What it covers |
-|---|---|
-| [`services/pe-ensemble/weights/README.md`](services/pe-ensemble/weights/README.md) | Weight-set layout, ID conventions, manifest fields, DVC guidance |
-| [`services/pe-ensemble/jobs/README.md`](services/pe-ensemble/jobs/README.md) | Filesystem job state, logs, retention, and where each job kind writes |
-| [`services/pe-ensemble/config/training_presets/README.md`](services/pe-ensemble/config/training_presets/README.md) | Preset YAML schema and how hyperparameters resolve |
-| [`vendor/models/README.md`](vendor/models/README.md) | Vendor submodules, PyTorch unification, per-model quirks |
+| Document                                                                                                            | What it covers                                                        |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`services/pe-ensemble/weights/README.md`](services/pe-ensemble/weights/README.md)                                 | Weight-set layout, ID conventions, manifest fields, DVC guidance      |
+| [`services/pe-ensemble/jobs/README.md`](services/pe-ensemble/jobs/README.md)                                       | Filesystem job state, logs, retention, and where each job kind writes |
+| [`services/pe-ensemble/config/training_presets/README.md`](services/pe-ensemble/config/training_presets/README.md) | Preset YAML schema and how hyperparameters resolve                    |
+| [`vendor/models/README.md`](vendor/models/README.md)                                                               | Vendor submodules, PyTorch unification, per-model quirks              |
 
 **Plugins (adding your own model)**
 
-| Document | What it covers |
-|---|---|
-| [`plugins/README.md`](plugins/README.md) | Authoritative plugin guide: layout, manifest, contracts, activation |
-| [`docs/plugin-author-llm-prompt.md`](docs/plugin-author-llm-prompt.md) | Copy-paste prompt for generating a plugin bundle |
-| [`docs/add-new-model-plugins.md`](docs/add-new-model-plugins.md) | Design document for the plugin system |
-| [`plugins/_template/README.md`](plugins/_template/README.md) | Template starting point |
+| Document                                                                | What it covers                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`plugins/README.md`](plugins/README.md)                               | Authoritative plugin guide: layout, manifest, contracts, activation |
+| [`docs/plugin-author-llm-prompt.md`](docs/plugin-author-llm-prompt.md) | Copy-paste prompt for generating a plugin bundle                    |
+| [`docs/add-new-model-plugins.md`](docs/add-new-model-plugins.md)       | Design document for the plugin system                               |
+| [`plugins/_template/README.md`](plugins/_template/README.md)           | Template starting point                                             |
 
 **Experiments, tuning, and clusters**
 
-| Document | What it covers |
-|---|---|
-| [`scripts/README.md`](scripts/README.md) | What each script directory is for |
-| [`scripts/experiments/README.md`](scripts/experiments/README.md) | Experiment catalog, split protocols, base-model evaluation |
-| [`scripts/hyperparameter/README.md`](scripts/hyperparameter/README.md) | Optuna HPO runners and shared options |
-| [`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md) | Cross-model from-scratch benchmark matrix |
-| [`scripts/experiments/datasheet-benchmark/README.md`](scripts/experiments/datasheet-benchmark/README.md) | Single-datasheet nested Optuna benchmark |
-| [`scripts/experiments/pridict2-reproduction/README.md`](scripts/experiments/pridict2-reproduction/README.md) | PRIDICT 2.0 transfer + ensemble reproduction |
-| [`scripts/cluster/oxford-arc/README.md`](scripts/cluster/oxford-arc/README.md) | Oxford ARC setup, DVC, job submission, monitoring |
-| [`testdata/vendor_eval/README.md`](testdata/vendor_eval/README.md) | Vendor evaluation fixtures and how to regenerate them |
+| Document                                                                                                      | What it covers                                             |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [`scripts/README.md`](scripts/README.md)                                                                     | What each script directory is for                          |
+| [`scripts/experiments/README.md`](scripts/experiments/README.md)                                             | Experiment catalog, split protocols, base-model evaluation |
+| [`scripts/hyperparameter/README.md`](scripts/hyperparameter/README.md)                                       | Optuna HPO runners and shared options                      |
+| [`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md)         | Cross-model from-scratch benchmark matrix                  |
+| [`scripts/experiments/datasheet-benchmark/README.md`](scripts/experiments/datasheet-benchmark/README.md)     | Single-datasheet nested Optuna benchmark                   |
+| [`scripts/experiments/pridict2-reproduction/README.md`](scripts/experiments/pridict2-reproduction/README.md) | PRIDICT 2.0 transfer + ensemble reproduction               |
+| [`scripts/cluster/oxford-arc/README.md`](scripts/cluster/oxford-arc/README.md)                               | Oxford ARC setup, DVC, job submission, monitoring          |
+| [`testdata/vendor_eval/README.md`](testdata/vendor_eval/README.md)                                           | Vendor evaluation fixtures and how to regenerate them      |
 
 **Legacy** — [`src/README.md`](src/README.md) records where the old `src/` code
 moved. `src/` and `services/pe-ensemble/frontend/` contain no active code.
@@ -121,11 +121,11 @@ conda activate pe-hub
 
 ### Setup scripts
 
-| Script | What it does |
-|--------|----------------|
-| `./scripts/setup-python-env.sh --install` | Create/update Python 3.11 env **and** install project packages |
-| `./scripts/install-clis.sh` | Install packages only (env must already be active) |
-| `./scripts/start-all.sh --install` | Run `install-clis.sh` + `npm install`, then start all services |
+| Script                                      | What it does                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `./scripts/setup-python-env.sh --install` | Create/update Python 3.11 env**and** install project packages |
+| `./scripts/install-clis.sh`               | Install packages only (env must already be active)                  |
+| `./scripts/start-all.sh --install`        | Run`install-clis.sh` + `npm install`, then start all services   |
 
 Environment recipe: `environment.yml`. Pip version pins: `requirements/constraints.txt`.
 
@@ -232,34 +232,34 @@ Edit-level measurements are **not** stored in SQL. They are loaded with Pandas f
 Supported studies include DeepPrime, DeepPE, PRIDICT1, PRIDICT2, MinsePIE, and OptiPrime (see [`pe_db/catalog/studies.py`](services/pe-db/pe_db/catalog/studies.py)).
 
 - **Some datasets are only partially standardizable.** `pridict1/endogenous`,
-`pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`: their parquet files
-carry filter metadata but no sequence or coordinate columns, so they are readable
-via `/api/filter` but cannot be exported in a model format.
+  `pridict2/trip_analysis`, `deepprime/deepprime_off_subpool`: their parquet files
+  carry filter metadata but no sequence or coordinate columns, so they are readable
+  via `/api/filter` but cannot be exported in a model format.
 
 ### Output formats
 
-| Format                     | Use                                                     |
-| -------------------------- | ------------------------------------------------------- |
-| `std`                    | Shared standardized schema (use `format=std` on `/api/filter`) |
-| `deepprime`              | DeepPrime native columns                                |
-| `pridict` / `pridict2` | PRIDICT native columns (both run the PRIDICT2 feature pipeline) |
-| `oped`                   | OPED native columns (`Target(47bp)`, `PBS`, `RT`) |
-| `optiprime`              | OptiPrime native RNA columns                            |
+| Format                     | Use                                                               |
+| -------------------------- | ----------------------------------------------------------------- |
+| `std`                    | Shared standardized schema (use`format=std` on `/api/filter`) |
+| `deepprime`              | DeepPrime native columns                                          |
+| `pridict` / `pridict2` | PRIDICT native columns (both run the PRIDICT2 feature pipeline)   |
+| `oped`                   | OPED native columns (`Target(47bp)`, `PBS`, `RT`)           |
+| `optiprime`              | OptiPrime native RNA columns                                      |
 
 Active plugins can register additional formats. Model-format conversion is owned by **PE Database** (`GET /api/filter?format=…`). PE Ensemble proxies the same contract at `GET /data/filter` and uses it for training and evaluation.
 
 ## PE Database API (overview)
 
-| Method | Path                | Description                                                |
-| ------ | ------------------- | ---------------------------------------------------------- |
-| GET    | `/api/studies`    | List studies                                               |
-| GET    | `/api/datasets`   | List datasets                                              |
-| GET    | `/api/datasheets` | List datasheet catalog entries                             |
-| GET    | `/api/scaffolds`  | List pegRNA scaffolds                                      |
-| GET    | `/api/filter`     | Filter catalog and/or export model-format data with splits |
-| GET    | `/api/statistics` | Aggregate edit statistics                                  |
-| POST   | `/api/plugins/reload` | Reload plugin converters                               |
-| GET    | `/health`         | Health check                                               |
+| Method | Path                    | Description                                                |
+| ------ | ----------------------- | ---------------------------------------------------------- |
+| GET    | `/api/studies`        | List studies                                               |
+| GET    | `/api/datasets`       | List datasets                                              |
+| GET    | `/api/datasheets`     | List datasheet catalog entries                             |
+| GET    | `/api/scaffolds`      | List pegRNA scaffolds                                      |
+| GET    | `/api/filter`         | Filter catalog and/or export model-format data with splits |
+| GET    | `/api/statistics`     | Aggregate edit statistics                                  |
+| POST   | `/api/plugins/reload` | Reload plugin converters                                   |
+| GET    | `/health`             | Health check                                               |
 
 ### Examples
 

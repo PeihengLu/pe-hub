@@ -93,9 +93,36 @@ def test_use_original_fold_assigns_test_fold():
     assert test_rows["split_source"].eq("original_fold").all()
     assert train_rows["split"].eq("train").all()
     assert train_rows["split_source"].eq("original_fold").all()
+    assert synthetic_rows["split"].eq("train").all()
     assert synthetic_rows["split_source"].eq("group_id").all()
     assert summary["by_source"]["original_fold"] == 6
     assert summary["by_source"]["group_id"] == 2
+
+
+def test_use_original_fold_all_unlabeled_still_gets_synthetic_holdout():
+    df = pd.DataFrame(
+        {
+            "group_id": list(range(10)),
+            "original_fold": pd.NA,
+            "wt_sequence": [
+                f"{'N' * 4}{('A' * 19 + base)}{'N' * 10}" for base in "ACGTACGTAC"
+            ],
+            "protospacer_location_l": [4] * 10,
+            "protospacer_location_r": [24] * 10,
+        }
+    )
+    config = split_config_from_params(
+        strategy="holdout_2",
+        train_pct=0.8,
+        test_pct=0.2,
+        use_original_fold=True,
+        original_fold_test_value=-1.0,
+        random_state=7,
+    )
+    out, summary = assign_splits(df, config)
+    assert set(out["split"]) == {"train", "test"}
+    assert out["split_source"].eq("group_id").all()
+    assert summary["by_partition"]["test"] >= 1
 
 
 def test_holdout_3_without_original_fold_splits_test_then_train_val():

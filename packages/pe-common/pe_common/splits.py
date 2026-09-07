@@ -362,12 +362,16 @@ def assign_splits(
 
     When ``use_original_fold=True``, author ``original_fold`` values drive assignment
     and stored ``group_id`` values are ignored. Rows without author folds fall back to
-    target-location grouping (protospacer). After merging datasheets, callers should
-    reassign ``group_id`` via ``reassign_group_ids_by_target_location`` before calling
-    this function with ``use_original_fold=False``. When merging DeepPrime with a
-    sheet that lacks folds, call ``propagate_original_fold_by_target_uid`` first
-    (PE-DB ``--merge`` does this automatically) so overlapping loci inherit
-    DeepPrime ``original_fold``; leftover NaN rows still fall back to target-location
+    target-location grouping (protospacer). For ``holdout_2``, if an author test
+    fold is present those unlabeled rows go to train rather than a second
+    synthetic test (DeepPE endo mixed with HT/type/position ``-1``). If every row
+    lacks ``original_fold``, unlabeled groups still receive a synthetic holdout.
+    After merging datasheets, callers should reassign ``group_id`` via
+    ``reassign_group_ids_by_target_location`` before calling this function with
+    ``use_original_fold=False``. When merging DeepPrime with a sheet that lacks
+    folds, call ``propagate_original_fold_by_target_uid`` first (PE-DB ``--merge``
+    does this automatically) so overlapping loci inherit DeepPrime
+    ``original_fold``; leftover NaN rows still fall back to target-location
     grouping.
 
     Args:
@@ -425,13 +429,25 @@ def assign_splits(
 
         if synthetic_groups:
             if config.strategy == "holdout_2":
-                synthetic_map = _assign_holdout_groups(
-                    synthetic_groups,
-                    train_pct=float(config.train_pct),
-                    val_pct=None,
-                    test_pct=float(config.test_pct),
-                    random_state=config.random_state,
+                author_has_test = any(
+                    label == "test"
+                    for group, label in group_to_split.items()
+                    if isinstance(group, tuple)
+                    and len(group) == 2
+                    and group[0] == "author_fold"
                 )
+                if author_has_test:
+                    # Author already defined the test set; unlabeled rows (e.g.
+                    # DeepPE endo) are not a second holdout.
+                    synthetic_map = {group: "train" for group in synthetic_groups}
+                else:
+                    synthetic_map = _assign_holdout_groups(
+                        synthetic_groups,
+                        train_pct=float(config.train_pct),
+                        val_pct=None,
+                        test_pct=float(config.test_pct),
+                        random_state=config.random_state,
+                    )
             elif config.strategy == "cv":
                 synthetic_map = _assign_cv_groups(
                     synthetic_groups,
