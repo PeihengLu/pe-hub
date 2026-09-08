@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
 from difflib import SequenceMatcher
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -13,6 +11,7 @@ import pandas as pd
 from pe_common.constants import DATA_ROOT
 from pe_common.sequence_utils import (
     align_wt_mut_sequences,
+    remove_padding,
     reverse_complement,
     shift_coords_after_indel_pad,
 )
@@ -27,6 +26,11 @@ from ..catalog.scaffolds import (
 )
 from ..catalog.studies import get_dataset_record
 from ..config import get_settings
+from ..pipeline.endo import (
+    expand_endogenous_frame,
+    load_deeppe_genomic_loci,
+    reference_windows_for_keys,
+)
 from ..pipeline.names import _normalize_name
 from ..pipeline.registry import StudyPipeline, register_study
 from ..pipeline.schema import (
@@ -232,24 +236,7 @@ def _export_deeppe_datasheets() -> None:
 
 def _load_deeppe_genomic_loci() -> dict[str, Any]:
     """Load hg38 protospacer anchors for DeepPE endogenous wide targets."""
-    if not _DEEPPE_GENOMIC_LOCI_PATH.exists():
-        raise FileNotFoundError(
-            f"Missing DeepPE genomic loci metadata: {_DEEPPE_GENOMIC_LOCI_PATH}"
-        )
-    with _DEEPPE_GENOMIC_LOCI_PATH.open(encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-@lru_cache(maxsize=1)
-def _load_pridict1_library2_genomic_loci() -> dict[str, Any]:
-    """Load hg38/mm39 anchors for PRIDICT1 library2-invivo Names."""
-    if not _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.exists():
-        raise FileNotFoundError(
-            "Missing PRIDICT1 library2 genomic loci metadata: "
-            f"{_PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH}"
-        )
-    with _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.open(encoding="utf-8") as handle:
-        return json.load(handle)
+    return load_deeppe_genomic_loci()
 
 
 def _deeppe_endo_coordinates(wt_sequences: pd.Series) -> pd.DataFrame:
@@ -500,21 +487,6 @@ def _prepare_deeppe_export_df(df: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
-def _parse_pridict_location_column(
-    location_series: pd.Series, column_name: str
-) -> tuple[pd.Series, pd.Series]:
-    """Vectorized parser for PRIDICT location strings like '[13, 26]'."""
-    series = pd.Series(location_series, copy=False)
-    extracted = series.astype('string').str.extract(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
-    invalid = pd.Series(extracted.isna().any(axis=1), index=series.index)
-    if bool(invalid.any()):
-        bad_examples = [str(value) for value in series[invalid].tolist()[:3]]
-        raise ValueError(
-            f"Invalid location format in column {column_name}: {bad_examples}"
-        )
-    return extracted[0].astype(int), extracted[1].astype(int)
-
-
 def _standardize_deeppe_ontarget(
     data: Optional[pd.DataFrame],
     cell_line: str,
@@ -527,7 +499,9 @@ def _standardize_deeppe_ontarget(
     DeepPE supplementary tables use 47 bp wide-target reporters. Library 1 includes
     a masked prime-edited sequence; libraries 2 and endogenous validation rebuild
     that sequence from the pegRNA 3' extension before applying the DeepPrime layout
-    rules (protospacer at positions 4–24).
+    rules (protospacer at positions 4–24). Endogenous sheets are then expanded onto
+    a cached 200 bp genomic window (spacer at offset 90) so vendor converters can
+    crop without inventing 3' sequence.
     """
     dataset = _normalize_name(dataset)
     cell_line = _normalize_name(cell_line)
@@ -536,10 +510,6 @@ def _standardize_deeppe_ontarget(
     if data is None:
         data = pd.read_csv(DATA_ROOT / "exported" / "deeppe" / dataset / input_name)
     prepared = _prepare_deeppe_export_df(data)
-    endo_coords = None
-    if dataset == "deeppe_endo":
-        # Map using the pre-alignment 47 bp wide target (alignment may inject Ns).
-        endo_coords = _deeppe_endo_coordinates(prepared["wt_sequence"])
     _standardize_deepprime_ontarget(
         prepared,
         cell_line,
@@ -547,14 +517,24 @@ def _standardize_deeppe_ontarget(
         dataset,
         study_key="deeppe",
     )
-    if endo_coords is not None:
-        output_path = (
-            DATA_ROOT / "standardized" / "deeppe" / dataset / f"{cell_line}-{pe_system}.parquet"
-        )
-        output_df = pd.read_parquet(output_path)
-        output_df = _attach_endo_coordinate_columns(output_df, endo_coords)
-        output_df.to_parquet(output_path, index=False)
-        logger.info("Attached DeepPE endogenous coordinates: %s", output_path)
+    if dataset != "deeppe_endo":
+        return
+    output_path = (
+        DATA_ROOT / "standardized" / "deeppe" / dataset / f"{cell_line}-{pe_system}.parquet"
+    )
+    output_df = pd.read_parquet(output_path)
+    keys = output_df["wt_sequence"].map(
+        lambda seq: remove_padding(str(seq).upper().replace("U", "T"))
+    )
+    output_df = _attach_endo_coordinate_columns(
+        output_df.reset_index(drop=True),
+        _deeppe_endo_coordinates(keys.reset_index(drop=True)),
+    )
+    loci = _load_deeppe_genomic_loci().get("loci", {})
+    windows = reference_windows_for_keys(loci, keys.reset_index(drop=True))
+    output_df = expand_endogenous_frame(output_df, windows)
+    output_df.to_parquet(output_path, index=False)
+    logger.info("Attached DeepPE endogenous coordinates and 200 bp windows: %s", output_path)
 
 
 def _scaffold_assignments(data_root=None):

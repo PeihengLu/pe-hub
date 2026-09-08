@@ -17,6 +17,8 @@ from pe_common.sequence_utils import (
     unpadded_coordinate,
 )
 
+from ..pipeline.endo import ENDO_SPACER_OFFSET
+
 from .common import (
     ProgressCallback,
     _col_as_series,
@@ -146,6 +148,37 @@ def _pridict_author_frame(df: pd.DataFrame) -> pd.DataFrame:
 
     _map_coords(wt, _WT_INDEXED_COORD_COLUMNS)
     _map_coords(mut, _MUT_INDEXED_COORD_COLUMNS)
+    return _crop_pridict_extra_upstream(out)
+
+
+PRIDICT_AUTHOR_SPACER_OFFSET = 10
+
+
+def _crop_pridict_extra_upstream(df: pd.DataFrame) -> pd.DataFrame:
+    """Crop extra 5' genomic context so the spacer starts at the author offset.
+
+    Endogenous standardized rows sit on a 200 bp window (spacer at 90). PRIDICT's
+    vendor preprocessor expects the author-like frame (spacer at 10). 3' sequence
+    including long insertions is kept.
+    """
+    if "protospacer_location_l" not in df.columns:
+        return df
+    spacer_l = _safe_int_series(_col_as_series(df, "protospacer_location_l", 0))
+    extra = (spacer_l - PRIDICT_AUTHOR_SPACER_OFFSET).clip(lower=0)
+    extra = extra.where(spacer_l.ge(ENDO_SPACER_OFFSET), other=0)
+    if not bool(extra.gt(0).any()):
+        return df
+    out = df.copy()
+    wt = out["wt_sequence"].astype(str).tolist()
+    mut = out["mut_sequence"].astype(str).tolist()
+    extras = extra.to_numpy()
+    out["wt_sequence"] = [seq[int(shift):] if int(shift) else seq for seq, shift in zip(wt, extras)]
+    out["mut_sequence"] = [seq[int(shift):] if int(shift) else seq for seq, shift in zip(mut, extras)]
+    coord_columns = _WT_INDEXED_COORD_COLUMNS + _MUT_INDEXED_COORD_COLUMNS
+    for column in coord_columns:
+        if column not in out.columns:
+            continue
+        out[column] = (_safe_int_series(_col_as_series(out, column, 0)) - extra).clip(lower=0)
     return out
 
 

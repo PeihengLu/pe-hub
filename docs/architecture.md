@@ -77,7 +77,9 @@ Things worth knowing about this pipeline:
   `lha_location_*`, `rha_location_*`) are 0-based half-open `[left, right)`
   offsets into `wt_sequence` / `mut_sequence`. WT and Mut are padded with `N` so
   they share a length; `rtt_location_r` and `rha_location_r` index the **mutated**
-  sequence while their `_l` counterparts index WT. The full column list is in
+  sequence while their `_l` counterparts index WT. Endogenous sheets keep this
+  full PE-core layout on a ~200 bp spacer-centered genomic window (offset 90)
+  plus `endo_*` coordinate columns. The full column list is in
   [README § Standardized edit format](../README.md#standardized-edit-format-pe-core).
 - **Export is skipped per dataset, not per study.** `_missing_exported_datasets`
   compares the dataset registry against what is on disk, so a newly registered
@@ -95,6 +97,9 @@ Things worth knowing about this pipeline:
   `pridict2/trip_analysis` and `deepprime/deepprime_off_subpool` get
   filter-only parquets that lack sequence and coordinate columns, so they are
   reachable through `GET /api/filter` but not through `format=` exports.
+  Fully standardizable endogenous sheets (DeepPE endo, MinSePIE, PRIDICT
+  library2-invivo) emit the same PE-core columns as reporter screens, on a
+  200 bp genomic window.
 - **`pridict` and `pridict2` share one converter.** Both run the full PRIDICT2
   feature pipeline, including the ViennaRNA MFE features.
 
