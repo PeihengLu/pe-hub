@@ -25,3 +25,15 @@ scripts/cluster/oxford-arc/env.sh
 
 # Eval / experiment outputs (DVC-tracked; see results.dvc)
 /results
+services/pe-ensemble/pe_ensemble.egg-info/dependency_links.txt
+services/pe-ensemble/pe_ensemble.egg-info/entry_points.txt
+services/pe-ensemble/pe_ensemble.egg-info/PKG-INFO
+services/pe-ensemble/pe_ensemble.egg-info/requires.txt
+services/pe-ensemble/pe_ensemble.egg-info/SOURCES.txt
+services/pe-ensemble/pe_ensemble.egg-info/top_level.txt
+services/pe-db/pe_db.egg-info/dependency_links.txt
+services/pe-db/pe_db.egg-info/entry_points.txt
+services/pe-db/pe_db.egg-info/PKG-INFO
+services/pe-db/pe_db.egg-info/requires.txt
+services/pe-db/pe_db.egg-info/SOURCES.txt
+services/pe-db/pe_db.egg-info/top_level.txt
