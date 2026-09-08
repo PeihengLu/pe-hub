@@ -213,7 +213,7 @@ def standardize_pe_data(
             f"{dataset_candidates} (study={study}, cell_line={cell_line}, pe_system={pe_system})"
         )
 
-    data = pd.read_csv(input_path)
+    data = pd.read_csv(input_path, low_memory=False)
     get_standardizer(study, normalized_dataset)(data, cell_line, pe_system, normalized_dataset)
 
     output_path = (

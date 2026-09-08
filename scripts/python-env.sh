@@ -103,3 +103,32 @@ pe_hub_export_pip_constraint() {
         export PIP_CONSTRAINT="${constraints}"
     fi
 }
+
+pe_hub_env_flag_on() {
+    local value
+    value="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')"
+    case "${value}" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+pe_hub_run_pe_db_force_init() {
+    # Run export/standardize in this shell before uvicorn. Lifespan init is skipped
+    # by /health until it finishes, and start-all kills PE-DB after 90s.
+    local python_bin="$1"
+    local pe_db_dir="$2"
+    local -a args=(init)
+    if pe_hub_env_flag_on "${PE_DB_FORCE_EXPORT:-}"; then
+        args+=(--force-export)
+    fi
+    if pe_hub_env_flag_on "${PE_DB_FORCE_STANDARDIZE:-}"; then
+        args+=(--force-standardize)
+    fi
+    if [[ ${#args[@]} -eq 1 ]]; then
+        return 0
+    fi
+    echo "Running PE-DB ${args[*]} before starting the API (this can take several minutes) ..."
+    (cd "${pe_db_dir}" && "${python_bin}" -m pe_db.cli "${args[@]}")
+    unset PE_DB_FORCE_EXPORT PE_DB_FORCE_STANDARDIZE
+}

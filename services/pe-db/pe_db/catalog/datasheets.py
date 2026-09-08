@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..config import get_settings
 from ..db.models import Dataset, Datasheet
 from ..db.session import get_session
-from .records import DatasheetScaffoldAssignment
+from .records import DatasheetScaffoldAssignment, canonical_dataset_name
 from .scaffolds import (
     MINSEPIE_DATASET_SCAFFOLD_ID,
     SCAFFOLD_ID_CONVENTIONAL,
@@ -32,7 +32,8 @@ def _normalize_study_key(value: str) -> str:
 
 
 def _normalize_dataset_name(value: str) -> str:
-    return str(value).strip().lower()
+    """Catalog dataset names use hyphens; export dirs may still use underscores."""
+    return canonical_dataset_name(value)
 
 
 def _normalize_datasheet_field(value: str) -> str:

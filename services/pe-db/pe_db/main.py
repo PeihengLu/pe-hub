@@ -54,10 +54,17 @@ async def lifespan(_app: FastAPI):
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pe-db-sync")
     loop.set_default_executor(executor)
     try:
+        force_export = _env_flag("PE_DB_FORCE_EXPORT")
+        force_standardize = _env_flag("PE_DB_FORCE_STANDARDIZE")
+        logger.info(
+            "Startup init force_export=%s force_standardize=%s",
+            force_export,
+            force_standardize,
+        )
         await asyncio.to_thread(
             run_init,
-            force_export=_env_flag("PE_DB_FORCE_EXPORT"),
-            force_standardize=_env_flag("PE_DB_FORCE_STANDARDIZE"),
+            force_export=force_export,
+            force_standardize=force_standardize,
         )
         from .plugin_loader import loaded_plugin_names
 

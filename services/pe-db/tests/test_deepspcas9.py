@@ -61,3 +61,33 @@ def test_fill_missing_spcas9_scores_deduplicates_and_preserves_existing():
 
     filled = fill_missing_spcas9_scores(df, score_fn=fake_scorer)
     assert filled["spcas9_score"].tolist() == [12.5, 42.0, 42.0]
+
+
+def test_failed_deepspcas9_load_is_not_retried(monkeypatch: pytest.MonkeyPatch):
+    import pe_db.utils.deepspcas9 as deepspcas9
+
+    monkeypatch.setattr(deepspcas9, "_scorer", None)
+    monkeypatch.setattr(deepspcas9, "_scorer_load_error", None)
+
+    calls = {"n": 0}
+
+    def boom(_model_dir):
+        calls["n"] += 1
+        raise RuntimeError("tf.placeholder() is not compatible with eager execution.")
+
+    monkeypatch.setattr(deepspcas9, "_DeepSpCas9Scorer", boom)
+    monkeypatch.setattr(deepspcas9, "_resolve_model_dir", lambda: Path("/missing"))
+
+    wt = _wt74()
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt, wt],
+            "protospacer_location_l": [4, 4],
+            "spcas9_score": [np.nan, np.nan],
+        }
+    )
+    first = fill_missing_spcas9_scores(df)
+    second = fill_missing_spcas9_scores(df)
+    assert first["spcas9_score"].isna().all()
+    assert second["spcas9_score"].isna().all()
+    assert calls["n"] == 1

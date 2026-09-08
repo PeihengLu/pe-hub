@@ -25,10 +25,16 @@ def initialize_database(
     logger.info("PE Database initialization: seeding catalog")
     init_catalog()
 
-    logger.info("PE Database initialization: exporting raw data")
+    logger.info(
+        "PE Database initialization: exporting raw data (force_export=%s)",
+        force_export,
+    )
     export_original_data(force_reexport=force_export)
 
-    logger.info("PE Database initialization: standardizing exported data")
+    logger.info(
+        "PE Database initialization: standardizing exported data (force_standardize=%s)",
+        force_standardize,
+    )
     standardize_exported_data(force=force_standardize)
 
     logger.info("PE Database initialization complete")
