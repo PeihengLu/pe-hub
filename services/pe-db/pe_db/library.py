@@ -62,6 +62,8 @@ def run_export(
     force_standardize: bool = False,
 ) -> dict[str, Any]:
     """Export raw study files and optionally standardize."""
+    if force_reexport and standardize:
+        force_standardize = True
     if study is None and not force_reexport and not force_standardize and standardize:
         run_init(force_export=force_reexport, force_standardize=force_standardize)
     else:

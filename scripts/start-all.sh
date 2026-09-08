@@ -41,7 +41,7 @@ Start PE Database, PE Ensemble API, and PE Hub (Vite frontend).
 Options:
   --install                 Init submodules and install Python and npm dependencies before starting
   --no-reload               Disable uvicorn auto-reload on both backends
-  --force-reexport          Re-export raw study files on PE-DB startup (also re-standardizes)
+  --force-reexport          Re-export and re-standardize before starting PE-DB (can take several minutes)
   --pe-db-port PORT         PE Database listen port (default: \$PE_DB_PORT or 8000)
   --ensemble-port PORT      PE Ensemble API listen port (default: \$PE_ENSEMBLE_PORT or 8001)
   --frontend-port PORT      PE Hub dev server port (default: \$FRONTEND_PORT or 5173)
@@ -51,7 +51,8 @@ Environment:
   Loads \${REPO_ROOT}/.env when present.
   PE_DB_URL defaults to http://localhost:<pe-db-port>
   VITE_ENSEMBLE_API_URL defaults to http://localhost:<ensemble-port>
-  --force-reexport sets PE_DB_FORCE_EXPORT / PE_DB_FORCE_STANDARDIZE for PE-DB startup.
+  --force-reexport runs pedb init --force-export --force-standardize before uvicorn so
+  the API health check is not blocked, then clears those env vars so reloads do not redo it.
 
 Press Ctrl+C to stop all services.
 
@@ -348,9 +349,13 @@ if [[ "${INSTALL_DEPS}" == true ]]; then
     echo "Dependencies installed."
 fi
 
-if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main"); then
+if ! (cd "${PE_DB_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main, pe_db.cli"); then
     echo "Error: PE Database dependencies missing. Run: $(basename "$0") --install" >&2
     exit 1
+fi
+
+if pe_hub_env_flag_on "${PE_DB_FORCE_EXPORT:-}" || pe_hub_env_flag_on "${PE_DB_FORCE_STANDARDIZE:-}"; then
+    pe_hub_run_pe_db_force_init "${PYTHON}" "${PE_DB_DIR}"
 fi
 
 if ! (cd "${PE_ENSEMBLE_DIR}" && "${PYTHON}" -c "import uvicorn, prettytable, pe_ensemble.main"); then

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -79,11 +78,25 @@ def _preprocess_seq(sequences: list[str], seq_length: int = _TARGET30_LENGTH) ->
     return encoded
 
 
+def _import_tensorflow():
+    """Load TF1-graph mode for the Kim et al. checkpoint; skip GPU probe spam."""
+    import os
+
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+    import tensorflow as tf
+
+    logging.getLogger("tensorflow").setLevel(logging.ERROR)
+    tf.compat.v1.disable_eager_execution()
+    return tf
+
+
 class _DeepSpCas9Scorer:
     """Load the Kim et al. DeepSpCas9 checkpoint once and score batches of 30-mers."""
 
     def __init__(self, model_dir: Path) -> None:
-        import tensorflow as tf
+        tf = _import_tensorflow()
 
         self._tf = tf
         checkpoint = model_dir / _BEST_MODEL
@@ -99,13 +112,14 @@ class _DeepSpCas9Scorer:
             node_2,
         ) = self._parse_model_name(_BEST_MODEL)
 
-        conf = tf.compat.v1.ConfigProto()
-        conf.gpu_options.allow_growth = True
+        conf = tf.compat.v1.ConfigProto(device_count={"GPU": 0})
+        conf.allow_soft_placement = True
         self._tf.compat.v1.reset_default_graph()
         self._session = tf.compat.v1.Session(config=conf)
         self._model = self._build_model(filter_size, filter_num, node_1, node_2, learning_rate)
         saver = tf.compat.v1.train.Saver()
         saver.restore(self._session, str(checkpoint))
+        logger.info("Loaded DeepSpCas9 checkpoint %s (CPU)", checkpoint)
 
     @staticmethod
     def _parse_model_name(model_name: str) -> tuple[list[int], list[int], float, int, int, int]:
@@ -148,6 +162,15 @@ class _DeepSpCas9Scorer:
                 self.targets = tf.compat.v1.placeholder(tf.float32, [None, 1])
                 self.is_training = tf.compat.v1.placeholder(tf.bool)
 
+                def apply_dropout(tensor):
+                    # TF1 nn.dropout has no weights. Keras Dropout adds SeedGenerator
+                    # variables that are not in the Kim et al. checkpoint.
+                    return tf.cond(
+                        self.is_training,
+                        lambda: tf.nn.dropout(tensor, rate=0.3),
+                        lambda: tensor,
+                    )
+
                 def conv_layer(input_data, in_channels, out_channels, kernel, pool, name):
                     weights = tf.compat.v1.Variable(
                         tf.compat.v1.truncated_normal(
@@ -161,7 +184,7 @@ class _DeepSpCas9Scorer:
                         name=f"{name}_b",
                     )
                     out = tf.nn.conv2d(input_data, weights, [1, 1, 1, 1], padding="VALID") + bias
-                    out = tf.keras.layers.Dropout(rate=0.3)(tf.nn.relu(out))
+                    out = apply_dropout(tf.nn.relu(out))
                     return tf.nn.avg_pool(
                         out,
                         ksize=[1, pool[0], pool[1], 1],
@@ -195,7 +218,7 @@ class _DeepSpCas9Scorer:
                             tf.compat.v1.get_variable("B_fcl1", shape=[node_1]),
                         )
                     )
-                    hidden = tf.keras.layers.Dropout(rate=0.3)(hidden)
+                    hidden = apply_dropout(hidden)
 
                 with tf.compat.v1.variable_scope("Fully_Connected_Layer2"):
                     hidden = tf.nn.relu(
@@ -204,7 +227,7 @@ class _DeepSpCas9Scorer:
                             tf.compat.v1.get_variable("B_fcl2", shape=[node_2]),
                         )
                     )
-                    hidden = tf.keras.layers.Dropout(rate=0.3)(hidden)
+                    hidden = apply_dropout(hidden)
 
                 with tf.compat.v1.variable_scope("Output_Layer"):
                     self.outputs = tf.nn.bias_add(
@@ -235,9 +258,23 @@ class _DeepSpCas9Scorer:
         return [float(value) for value in outputs.reshape(-1).tolist()]
 
 
-@lru_cache(maxsize=1)
+_scorer: Optional["_DeepSpCas9Scorer"] = None
+_scorer_load_error: Optional[BaseException] = None
+
+
 def _get_scorer() -> _DeepSpCas9Scorer:
-    return _DeepSpCas9Scorer(_resolve_model_dir())
+    """Load the checkpoint once; cache failures so every datasheet does not re-import TF."""
+    global _scorer, _scorer_load_error
+    if _scorer is not None:
+        return _scorer
+    if _scorer_load_error is not None:
+        raise _scorer_load_error
+    try:
+        _scorer = _DeepSpCas9Scorer(_resolve_model_dir())
+    except Exception as exc:
+        _scorer_load_error = exc
+        raise
+    return _scorer
 
 
 def score_target30_sequences(sequences: list[str]) -> list[float]:
@@ -280,13 +317,12 @@ def fill_missing_spcas9_scores(
         return output
 
     unique_targets = sorted(set(row_targets.values()))
+    if score_fn is None and _scorer_load_error is not None:
+        return output
     scorer = score_fn or score_target30_sequences
     try:
         scores = scorer(unique_targets)
-    except RuntimeError as exc:
-        logger.warning("Skipping DeepSpCas9 scoring: %s", exc)
-        return output
-    except FileNotFoundError as exc:
+    except Exception as exc:
         logger.warning("Skipping DeepSpCas9 scoring: %s", exc)
         return output
 

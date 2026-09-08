@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +46,24 @@ from ._pridict import (
     _attach_pridict_outcome_distribution,
     _parse_pridict_location_column,
 )
+
+
+def _pridict2_exported_csv(dataset: str, input_name: str) -> Path:
+    """Resolve a PRIDICT2 export CSV whether the directory uses hyphens or underscores."""
+    root = DATA_ROOT / "exported" / "pridict2"
+    names = (
+        dataset,
+        dataset.replace("_", "-"),
+        dataset.replace("-", "_"),
+    )
+    for name in dict.fromkeys(names):
+        path = root / name / input_name
+        if path.is_file():
+            return path
+    raise FileNotFoundError(
+        f"Exported PRIDICT2 file not found for dataset={dataset} file={input_name}"
+    )
+
 
 def _export_pridict2_library_diverse_datasheets() -> None:
     """
@@ -97,10 +116,13 @@ def _export_pridict2_endogenous_datasheets() -> None:
 
     cell_line = "k562"
     pe_system = "pe2"
-    out_dir = DATA_ROOT / "exported" / "pridict2" / "trip_analysis"
+    out_dir = DATA_ROOT / "exported" / "pridict2" / "trip-analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{cell_line}-{pe_system}.csv"
     trip_df.to_csv(output_path, index=False)
+    legacy_dir = DATA_ROOT / "exported" / "pridict2" / "trip_analysis"
+    if legacy_dir.exists() and legacy_dir.resolve() != out_dir.resolve():
+        shutil.rmtree(legacy_dir)
     logger.info(
         "Saved PRIDICT2 TRIP analysis (%s-%s): %s (%s rows)",
         cell_line,
@@ -121,7 +143,7 @@ def _standardize_pridict2_library_diverse(
     input_name = f"{cell_line}-{pe_system}.csv"
     output_name = f"{cell_line}-{pe_system}.parquet"
     if data is None:
-        data = pd.read_csv(DATA_ROOT / 'exported' / 'pridict2' / dataset / input_name)
+        data = pd.read_csv(_pridict2_exported_csv(dataset, input_name))
     logger.info(
         "Standardizing PRIDICT2 dataset=%s cell_line=%s pe_system=%s rows=%s",
         dataset,

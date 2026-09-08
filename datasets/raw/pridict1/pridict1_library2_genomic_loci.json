@@ -6,22 +6,32 @@
       "chrom": "12",
       "variant_start": 102840493,
       "variant_end": 102840493,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1222C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102840475,
+      "window_start": 102840385,
+      "window_end": 102840584,
+      "reference_window": "GTGTAAATTACTTACTGTTAATGGAATCAGCCAAAATCTTAAGCTGCTGGGTATTGTCCAAGACCTCAATCCTTTGGGTGTATGGGTCGTAGCGAACTGAGAAGGGCCGAGGTATTGTGGCAGCAAAGTTCCTAAGACCAAAACCACAGGCTTGAGTGAAGGGCACCATTTGGAGAAAGGTAGTCTTAAGAGAGTTCTCA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1241A>G (p.Tyr414Cys)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102840474,
       "variant_end": 102840474,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1241A>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102840449,
+      "window_start": 102840359,
+      "window_end": 102840558,
+      "reference_window": "ACTGAGAAACCGAGTGGCCTCGTAAGGTGTAAATTACTTACTGTTAATGGAATCAGCCAAAATCTTAAGCTGCTGGGTATTGTCCAAGACCTCAATCCTTTGGGTGTATGGGTCGTAGCGAACTGAGAAGGGCCGAGGTATTGTGGCAGCAAAGTTCCTAAGACCAAAACCACAGGCTTGAGTGAAGGGCACCATTTGGA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1139C>T (p.Thr380Met)": {
       "genome_build": "hg38",
@@ -72,22 +82,32 @@
       "chrom": "12",
       "variant_start": 102851701,
       "variant_end": 102851701,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.898G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102851679,
+      "window_start": 102851589,
+      "window_end": 102851788,
+      "reference_window": "TCTTGCAGAGGGCATGAGGACCCCTCCCTGGGCTCAACTCATTTGAGAAATTCAGGTCACAGACCTATAACTAGAAGGCTAAAAAATCCATTCCTTACCTGGGAAAACTGGGCAAAGCTGCGATCTGAAAACAAGGGCACATGTCCCAACAGCTCATGGCAGATGTCACTGAAAGACAGAAAGCACAGAGAGCTCGGAGG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1243G>A (p.Asp415Asn)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102840472,
       "variant_end": 102840472,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1243G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102840449,
+      "window_start": 102840359,
+      "window_end": 102840558,
+      "reference_window": "ACTGAGAAACCGAGTGGCCTCGTAAGGTGTAAATTACTTACTGTTAATGGAATCAGCCAAAATCTTAAGCTGCTGGGTATTGTCCAAGACCTCAATCCTTTGGGTGTATGGGTCGTAGCGAACTGAGAAGGGCCGAGGTATTGTGGCAGCAAAGTTCCTAAGACCAAAACCACAGGCTTGAGTGAAGGGCACCATTTGGA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.838G>A (p.Glu280Lys)": {
       "genome_build": "hg38",
@@ -171,11 +191,16 @@
       "chrom": "12",
       "variant_start": 102852828,
       "variant_end": 102852828,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.829T>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852802,
+      "window_start": 102852712,
+      "window_end": 102852911,
+      "reference_window": "AGTCCTGTGGACCAGCCAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGAGAGGAAA",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.857A>G (p.Gln286Arg)": {
       "genome_build": "hg38",
@@ -215,11 +240,16 @@
       "chrom": "12",
       "variant_start": 102852843,
       "variant_end": 102852843,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.814G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852818,
+      "window_start": 102852728,
+      "window_end": 102852927,
+      "reference_window": "CAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGAGAGGAAAGCAGGCCAGCCACAGG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.721C>T (p.Arg241Cys)": {
       "genome_build": "hg38",
@@ -237,11 +267,16 @@
       "chrom": "12",
       "variant_start": 102877457,
       "variant_end": 102877457,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.441+5G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102877434,
+      "window_start": 102877344,
+      "window_end": 102877543,
+      "reference_window": "ATAAGTGTTTGTTGAACAAGTGAACAAGTACATTGCTCCAAGTAGAGAAGGTAAGAGGAAGGGAGGGGAGTGGAGGAGAGGCACTGAAAAAATCTCATCCTACGGGCCATGGACTCACAGGGTGGTCAGCATCCAGTTCCGCTCCATAGCTGAGAATCTGATTGGCAAATCTGTCCAGCTCTTGAATGGTTCTTGGGAAC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1055del (p.Gly352fs)": {
       "genome_build": "hg38",
@@ -281,22 +316,32 @@
       "chrom": "12",
       "variant_start": 102840477,
       "variant_end": 102840477,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1238G>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102840457,
+      "window_start": 102840367,
+      "window_end": 102840566,
+      "reference_window": "ACCGAGTGGCCTCGTAAGGTGTAAATTACTTACTGTTAATGGAATCAGCCAAAATCTTAAGCTGCTGGGTATTGTCCAAGACCTCAATCCTTTGGGTGTATGGGTCGTAGCGAACTGAGAAGGGCCGAGGTATTGTGGCAGCAAAGTTCCTAAGACCAAAACCACAGGCTTGAGTGAAGGGCACCATTTGGAGAAAGGTA",
+      "reference_spacer_offset": 90
     },
     "NM_014251.3(SLC25A13):c.852_855del (p.Met285fs)": {
       "genome_build": "hg38",
       "chrom": "7",
       "variant_start": 96189372,
       "variant_end": 96189375,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "SLC25A13",
       "hgvs": "NM_014251.3:c.852_855del",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 96189349,
+      "window_start": 96189259,
+      "window_end": 96189458,
+      "reference_window": "AACCCCAGAATGCAAGTTTGCTCCTCTTTGCTCACCTGCCTCTGGGCCTCAGCCAAGTTAAAGGGCAGAGTTCCCTCTTCCAGAGGAGCAATCCGTTCAATGTCTGCTAAGGTCATACGTCTGTAGGGGAAAAACAAACACAAGCAACAAATATACCAATTTATTACAATTTACATTATAAAATTTAAAAACATCCCTTT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1223G>A (p.Arg408Gln)": {
       "genome_build": "hg38",
@@ -340,7 +385,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.60+5G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102917073,
+      "window_start": 102916983,
+      "window_end": 102917182,
+      "reference_window": "GCCTGTACCTGAGGCCCTAAAAAGCCAGAGACCTCACTCCCGGGGAGCCAGCATGTCCACTGCGGTCCTGGAAAACCCAGGCTTGGGCAGGAAACTCTCTGACTTTGGACAGGTGAGCCACGGCAGCCTGAGCTGCTCAGTTAGGGGAATTTGGGCCTCCAGAGAAAGAGATCCGAAGACTGCTGGTGCTTCCTGGTTTC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.311C>A (p.Ala104Asp)": {
       "genome_build": "hg38",
@@ -362,7 +412,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.533A>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855312,
+      "window_start": 102855222,
+      "window_end": 102855421,
+      "reference_window": "TCTGGTCCCCGACTCCCTCTGCTAACCTAACCTGCGTTCTGCTGTGCCCCTGCCCTGCTTGAGACACCTATTTTGTGCCTGTATTCTAGTGGGCAGCCCATCCCTCGAGTGGAATACATGGAGGAAGAAAAGAAAACATGGGGCACAGTGTTCAAGACTCTGAAGTCCTTGTATAAAACCCATGCTTGCTATGAGTACAA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.561G>A (p.Trp187Ter)": {
       "genome_build": "hg38",
@@ -373,7 +428,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.561G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855282,
+      "window_start": 102855192,
+      "window_end": 102855391,
+      "reference_window": "CCTGCGTTCTGCTGTGCCCCTGCCCTGCTTGAGACACCTATTTTGTGCCTGTATTCTAGTGGGCAGCCCATCCCTCGAGTGGAATACATGGAGGAAGAAAAGAAAACATGGGGCACAGTGTTCAAGACTCTGAAGTCCTTGTATAAAACCCATGCTTGCTATGAGTACAATCACATTTTTCCACTTCTTGAAAAGTACTG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.722G>A (p.Arg241His)": {
       "genome_build": "hg38",
@@ -406,7 +466,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.755G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852903,
+      "window_start": 102852813,
+      "window_end": 102853012,
+      "reference_window": "CTCCTAGTGCCTCTGACTCAGTGGTGATGAGCTTTGAGTTTTCTTTCTTCTTTTCATCCCAGCTTGCACTGGTTTCCGCCTCCGACCTGTGGCTGGCCTGCTTTCCTCTCGGGATTTCTTGGGTGGCCTGGCCTTCCGAGTCTTCCACTGCACACAGTACATCAGACATGGATCCAAGCCCATGTATACCCCCGAACCGT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1162G>A (p.Val388Met)": {
       "genome_build": "hg38",
@@ -424,11 +489,16 @@
       "chrom": "12",
       "variant_start": 102852814,
       "variant_end": 102852814,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.842+1G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852795,
+      "window_start": 102852705,
+      "window_end": 102852904,
+      "reference_window": "GACAACTAGTCCTGTGGACCAGCCAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1A>G (p.Met1Val)": {
       "genome_build": "hg38",
@@ -450,7 +520,12 @@
       "coord_ref": "variant",
       "gene": "ASL",
       "hgvs": "NM_000048.4:c.1060C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 66089675,
+      "window_start": 66089585,
+      "window_end": 66089784,
+      "reference_window": "CCTCACCTCCTGCCATGTGCCTCCCAGGAGGACAAGGAAGCTGTGTTTGAAGTGTCAGACACTATGAGTGCCGTGCTCCAGGTGGCCACTGGCGTCATCTCTACGCTGCAGGCAAGACATCACCCCCCTGCTTCTCCTCCCCTAGGTCCCAGGCACTGGGGTGGGCATGCGGGGAGGGTGGCCTTGGGAGGAGGTGAGGT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1197A>T (p.Val399=)": {
       "genome_build": "hg38",
@@ -490,22 +565,32 @@
       "chrom": "12",
       "variant_start": 102852852,
       "variant_end": 102852852,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.805A>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852832,
+      "window_start": 102852742,
+      "window_end": 102852941,
+      "reference_window": "AACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGAGAGGAAAGCAGGCCAGCCACAGGTCGGAGGCGGAAAC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.638T>C (p.Leu213Pro)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102855204,
       "variant_end": 102855204,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.638T>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855184,
+      "window_start": 102855094,
+      "window_end": 102855293,
+      "reference_window": "CCCCAACTTTCTGCAGGGCCATTGACCCTGATGTGGACTTACTCTGCAGGAACTGAGAAACGTCTTCCAGCTGGGGAATGTTATCTTCATGGAAGCCACAGTACTTTTCAAGAAGTGGAAAAATGTGATTGTACTCATAGCAAGCATGGGTTTTATACAAGGACTTCAGAGTCTTGAACACTGTGCCCCATGTTTTCTTT",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.446+1G>A": {
       "genome_build": "hg38",
@@ -571,7 +656,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.674C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38408733,
+      "window_start": 38408643,
+      "window_end": 38408842,
+      "reference_window": "AAGGGAAGGAGACGCGATATTGAAAAGAAAATAATATATATTTAAGAAAACATGTATAATAAAATTACCTAAATAAGATTTAAATTCTTCCTCCTTTAGGGTTATGAGCCGGATGCTAGTGTAACCAAGTTGGCAGAGCAGTATGCCAAAGAGGTATGCTCTTTACATGTAAAGCTATTATTGCCTTTTACTGTCCCATG",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.544C>T (p.Arg182Ter)": {
       "genome_build": "hg38",
@@ -611,55 +701,80 @@
       "chrom": "12",
       "variant_start": 102851709,
       "variant_end": 102851709,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.890G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102851679,
+      "window_start": 102851589,
+      "window_end": 102851788,
+      "reference_window": "TCTTGCAGAGGGCATGAGGACCCCTCCCTGGGCTCAACTCATTTGAGAAATTCAGGTCACAGACCTATAACTAGAAGGCTAAAAAATCCATTCCTTACCTGGGAAAACTGGGCAAAGCTGCGATCTGAAAACAAGGGCACATGTCCCAACAGCTCATGGCAGATGTCACTGAAAGACAGAAAGCACAGAGAGCTCGGAGG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.601C>T (p.His201Tyr)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102855241,
       "variant_end": 102855241,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.601C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855222,
+      "window_start": 102855132,
+      "window_end": 102855331,
+      "reference_window": "TTACTCTGCAGGAACTGAGAAACGTCTTCCAGCTGGGGAATGTTATCTTCATGGAAGCCACAGTACTTTTCAAGAAGTGGAAAAATGTGATTGTACTCATAGCAAGCATGGGTTTTATACAAGGACTTCAGAGTCTTGAACACTGTGCCCCATGTTTTCTTTTCTTCCTCCATGTATTCCACTCGAGGGATGGGCTGCCC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1340C>A (p.Ala447Asp)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102839194,
       "variant_end": 102839194,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1340C>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102839171,
+      "window_start": 102839081,
+      "window_end": 102839280,
+      "reference_window": "TTAAGGTTTGCTTTTCGGACTTTTTCTGATGAAAGAAATAGTTGGATCTCCATCAACAGATTCACAGCTGACAGACCACATTCTGTCCATGGCTTTACTTTATTTTCTGGAGGGCACTGCAAAGGATTCCAATTTCACCTACAAAGAAAAACACCATCAAAATGGGCCACTTGTATAATAAGCAAAAACTCTTCAAGTGT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.809G>A (p.Arg270Lys)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102852848,
       "variant_end": 102852848,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.809G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852818,
+      "window_start": 102852728,
+      "window_end": 102852927,
+      "reference_window": "CAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGAGAGGAAAGCAGGCCAGCCACAGG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.503del (p.Tyr168fs)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102866602,
       "variant_end": 102866602,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.503del",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102866580,
+      "window_start": 102866490,
+      "window_end": 102866689,
+      "reference_window": "GACTCTTCATGCTGGTATTTTCCATCCTCAACTGGATGAGGGCAAGGGAGAAGCAGGCTAGGGGTGTGTTTTTCTCTCTTCCCCTCAACAAGCAAGGCAGACTTACTGGCGGTAGTTGTAGGCAATGTCAGCAAACTGCTTCCGTCTTGCACGGTACACAGGATCTTTAAAACCCTAGGAGAAAAGAGACACCTGATTTT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.968_970del (p.Thr323del)": {
       "genome_build": "hg38",
@@ -677,11 +792,16 @@
       "chrom": "7",
       "variant_start": 96184276,
       "variant_end": 96184276,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "SLC25A13",
       "hgvs": "NM_014251.3:c.1177+1G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 96184248,
+      "window_start": 96184158,
+      "window_end": 96184357,
+      "reference_window": "GAAAATCTGCTGTATTTCCATTTTAACGCAGTCTTGCTAATTCATGTCAGGCACTAAGATGAGAAACCAAACCTTTGAGTGTTATTTCACCTAACAGGTATTGAGCATGTGGCACTAACCTCTATACAGTCCAAAGAAGCCTTCATAGCGTAGCACTTTCTTAAAACAGTCAAAGCTGTTTTTATACATGAGTTCTCCCA",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.532G>A (p.Val178Met)": {
       "genome_build": "hg38",
@@ -714,7 +834,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.422G>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38401285,
+      "window_start": 38401195,
+      "window_end": 38401394,
+      "reference_window": "TTATTATTTCTGATCTTATATTAAATAAGGCATTATTAAGCATAATTATCTTAGATTATCTTTTTCTTGGTTTGCCACAGTGTATTGTCTAGCATGGCAGATGCAGTATTGGCTCGAGTGTATAAACAATCAGATTTGGACACCCTGGCTAAAGAAGCATCCATCCCAATTATCAATGGGCTGTCAGATTTGTACCATCC",
+      "reference_spacer_offset": 90
     },
     "NM_000045.4(ARG1):c.466-1G>C": {
       "genome_build": "hg38",
@@ -758,7 +883,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.569T>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855282,
+      "window_start": 102855192,
+      "window_end": 102855391,
+      "reference_window": "CCTGCGTTCTGCTGTGCCCCTGCCCTGCTTGAGACACCTATTTTGTGCCTGTATTCTAGTGGGCAGCCCATCCCTCGAGTGGAATACATGGAGGAAGAAAAGAAAACATGGGGCACAGTGTTCAAGACTCTGAAGTCCTTGTATAAAACCCATGCTTGCTATGAGTACAATCACATTTTTCCACTTCTTGAAAAGTACTG",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.663+1G>T": {
       "genome_build": "hg38",
@@ -776,11 +906,16 @@
       "chrom": "12",
       "variant_start": 102852824,
       "variant_end": 102852824,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.833C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852802,
+      "window_start": 102852712,
+      "window_end": 102852911,
+      "reference_window": "AGTCCTGTGGACCAGCCAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGAGAGGAAA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.823C>T (p.Pro275Ser)": {
       "genome_build": "hg38",
@@ -813,7 +948,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.612T>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855232,
+      "window_start": 102855142,
+      "window_end": 102855341,
+      "reference_window": "GTATTCTAGTGGGCAGCCCATCCCTCGAGTGGAATACATGGAGGAAGAAAAGAAAACATGGGGCACAGTGTTCAAGACTCTGAAGTCCTTGTATAAAACCCATGCTTGCTATGAGTACAATCACATTTTTCCACTTCTTGAAAAGTACTGTGGCTTCCATGAAGATAACATTCCCCAGCTGGAAGACGTTTCTCAGTTCC",
+      "reference_spacer_offset": 90
     },
     "NM_014252.4(SLC25A15):c.79G>A (p.Gly27Arg)": {
       "genome_build": "hg38",
@@ -857,7 +997,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.421C>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38401285,
+      "window_start": 38401195,
+      "window_end": 38401394,
+      "reference_window": "TTATTATTTCTGATCTTATATTAAATAAGGCATTATTAAGCATAATTATCTTAGATTATCTTTTTCTTGGTTTGCCACAGTGTATTGTCTAGCATGGCAGATGCAGTATTGGCTCGAGTGTATAAACAATCAGATTTGGACACCCTGGCTAAAGAAGCATCCATCCCAATTATCAATGGGCTGTCAGATTTGTACCATCC",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.829C>T (p.Arg277Trp)": {
       "genome_build": "hg38",
@@ -886,11 +1031,16 @@
       "chrom": "12",
       "variant_start": 102843662,
       "variant_end": 102843662,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1183G>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102843641,
+      "window_start": 102843551,
+      "window_end": 102843750,
+      "reference_window": "CATTGGAGTCCACTCTCCTGGCCAACCACCCACAGATGAGTGGCACCAGTCAGGAGGCCCCCAGAGCTAGTGGCTCACCTTTGTCACCACCTCACCTTACTTTCTCCTTGGCATCATTAAAACTCTCTGCCACGTAATAGAGGGGCTGGAACTCCGTGACAGTGTAATTTTGGATGGCTGTCTTCTCCAGCTCCAGGGGG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.648C>G (p.Tyr216Ter)": {
       "genome_build": "hg38",
@@ -908,11 +1058,16 @@
       "chrom": "12",
       "variant_start": 102877502,
       "variant_end": 102877505,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.398_401del",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102877483,
+      "window_start": 102877393,
+      "window_end": 102877592,
+      "reference_window": "GGTAAGAGGAAGGGAGGGGAGTGGAGGAGAGGCACTGAAAAAATCTCATCCTACGGGCCATGGACTCACAGGGTGGTCAGCATCCAGTTCCGCTCCATAGCTGAGAATCTGATTGGCAAATCTGTCCAGCTCTTGAATGGTTCTTGGGAACCAGGGCACTGAAACACAGAGAAGGCAACGTCCTGAGTACAGATTGGCAG",
+      "reference_spacer_offset": 90
     },
     "NM_054012.4(ASS1):c.421-2A>G": {
       "genome_build": "hg38",
@@ -945,7 +1100,12 @@
       "coord_ref": "variant",
       "gene": "SLC25A13",
       "hgvs": "NM_014251.3:c.674C>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 96191201,
+      "window_start": 96191111,
+      "window_end": 96191310,
+      "reference_window": "CTTCTGAATCATCTATAAATCTTTTGTATATTTTTCTTCTCTCTTGTTTTCAATTTATTTGAGGCTGCTGGAGGTACCACATCCCATCAAGTTAGTTTCTCCTATTTTAATGGATTTAATTCGCTCCTTAACAACATGGAACTCATTAGAAAGATCTATAGCACTCTGGCTGGCACCAGGAAAGATGTTGAAGTGACTAA",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.524+2T>G": {
       "genome_build": "hg38",
@@ -963,11 +1123,16 @@
       "chrom": "12",
       "variant_start": 102851751,
       "variant_end": 102851751,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.848T>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102851725,
+      "window_start": 102851635,
+      "window_end": 102851834,
+      "reference_window": "GAAATTCAGGTCACAGACCTATAACTAGAAGGCTAAAAAATCCATTCCTTACCTGGGAAAACTGGGCAAAGCTGCGATCTGAAAACAAGGGCACATGTCCCAACAGCTCATGGCAGATGTCACTGAAAGACAGAAAGCACAGAGAGCTCGGAGGGGAGGAGGTTTAAGCCAAGCCAGACTCAGTCTTTCTACATGAGGAA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.734T>A (p.Val245Glu)": {
       "genome_build": "hg38",
@@ -985,11 +1150,16 @@
       "chrom": "12",
       "variant_start": 102851734,
       "variant_end": 102851734,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.865G>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102851704,
+      "window_start": 102851614,
+      "window_end": 102851813,
+      "reference_window": "CCCTGGGCTCAACTCATTTGAGAAATTCAGGTCACAGACCTATAACTAGAAGGCTAAAAAATCCATTCCTTACCTGGGAAAACTGGGCAAAGCTGCGATCTGAAAACAAGGGCACATGTCCCAACAGCTCATGGCAGATGTCACTGAAAGACAGAAAGCACAGAGAGCTCGGAGGGGAGGAGGTTTAAGCCAAGCCAGAC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.975C>G (p.Tyr325Ter)": {
       "genome_build": "hg38",
@@ -1018,11 +1188,16 @@
       "chrom": "12",
       "variant_start": 102894822,
       "variant_end": 102894821,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.266dup",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102894802,
+      "window_start": 102894712,
+      "window_end": 102894911,
+      "reference_window": "TGCAAAATTCCTCTAATTCTTACCTGTGTCTTTCTTCTTATCTCGTGAAAGCTCATGGACAGTGGCACCAATGTCATGCCTCAAGATCTTGATGATGTTTGTCAGAGCAGGCAGGCTACGTTTATCCAAATGGGTGAAAAATTCATACTCATCTTTCTTTAAACGAGAAGGTCTAGATTCAATGTGGGTCAGGTTTACAT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.800A>G (p.Gln267Arg)": {
       "genome_build": "hg38",
@@ -1055,7 +1230,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1012G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102844394,
+      "window_start": 102844304,
+      "window_end": 102844503,
+      "reference_window": "CTTCATCCAGTCAAGGTGACACATAAAATTAACCATCATAGAGTGTGCTCTCAGATTGACTTTCCATTCCAGATTTACTGGTTTACTGTGGAGTTTGGGCTCTGCAAACAAGGAGACTCCATAAAGGCATATGGTGCTGGGCTCCTGTCATCCTTTGGTGAATTACAGGTATGACCTTCACAGGAACCAAGGATAGATTT",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.803T>C (p.Met268Thr)": {
       "genome_build": "hg38",
@@ -1066,7 +1246,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.803T>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38408943,
+      "window_start": 38408853,
+      "window_end": 38409052,
+      "reference_window": "ACCAGCGTGTTTATGTATGCTAGAATGGTACCAAGCTGTTGCTGACAAATGATCCATTGGAAGCAGCGCATGGAGGCAATGTATTAATTACAGACACTTGGATAAGCATGGGACAAGAAGAGGAGAAGAAAAAGCGGCTCCAGGCTTTCCAAGGTTACCAGGTTACAATGAAGGTACAAATTGATGCCTCTCTGAAGGTT",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.737del (p.Ala246fs)": {
       "genome_build": "hg38",
@@ -1128,22 +1313,32 @@
       "chrom": "12",
       "variant_start": 102855189,
       "variant_end": 102855189,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.653G>T",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855163,
+      "window_start": 102855073,
+      "window_end": 102855272,
+      "reference_window": "CTCTCCTCTGCCTCAATCCTCCCCCAACTTTCTGCAGGGCCATTGACCCTGATGTGGACTTACTCTGCAGGAACTGAGAAACGTCTTCCAGCTGGGGAATGTTATCTTCATGGAAGCCACAGTACTTTTCAAGAAGTGGAAAAATGTGATTGTACTCATAGCAAGCATGGGTTTTATACAAGGACTTCAGAGTCTTGAAC",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.673C>A (p.Pro225Thr)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102855169,
       "variant_end": 102855169,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.673C>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855147,
+      "window_start": 102855057,
+      "window_end": 102855256,
+      "reference_window": "CTTGTCTTCCCCTTCCCTCTCCTCTGCCTCAATCCTCCCCCAACTTTCTGCAGGGCCATTGACCCTGATGTGGACTTACTCTGCAGGAACTGAGAAACGTCTTCCAGCTGGGGAATGTTATCTTCATGGAAGCCACAGTACTTTTCAAGAAGTGGAAAAATGTGATTGTACTCATAGCAAGCATGGGTTTTATACAAGGA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.193A>G (p.Ile65Val)": {
       "genome_build": "hg38",
@@ -1161,22 +1356,32 @@
       "chrom": "12",
       "variant_start": 102840463,
       "variant_end": 102840463,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1252A>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102840443,
+      "window_start": 102840353,
+      "window_end": 102840552,
+      "reference_window": "TCGATTACTGAGAAACCGAGTGGCCTCGTAAGGTGTAAATTACTTACTGTTAATGGAATCAGCCAAAATCTTAAGCTGCTGGGTATTGTCCAAGACCTCAATCCTTTGGGTGTATGGGTCGTAGCGAACTGAGAAGGGCCGAGGTATTGTGGCAGCAAAGTTCCTAAGACCAAAACCACAGGCTTGAGTGAAGGGCACCA",
+      "reference_spacer_offset": 90
     },
     "NM_014252.4(SLC25A15):c.212T>A (p.Leu71Gln)": {
       "genome_build": "hg38",
       "chrom": "13",
       "variant_start": 40799213,
       "variant_end": 40799213,
-      "assembly_strand": 1,
+      "assembly_strand": -1,
       "coord_ref": "variant",
       "gene": "SLC25A15",
       "hgvs": "NM_014252.4:c.212T>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 40799222,
+      "window_start": 40799132,
+      "window_end": 40799331,
+      "reference_window": "TGTGTCCTTGACTCACCTCAGCTTTGCCTGCTTGTCCAATCCAGCCACTTTCCGCACCACCTGCTGGCAGAAGCCGTAGCACATGAAGAGGACTGAGTTCTCAGCGATGTTGGCGATTAGTGCTGGACTGGTACCCTTGTAGAAGCCACGGAAGCCCACCTGGGAGTAAGTCTTCAGGCAGCAGTCGGTGAGGCCCCGGT",
+      "reference_spacer_offset": 90
     },
     "NM_014252.4(SLC25A15):c.110T>G (p.Met37Arg)": {
       "genome_build": "hg38",
@@ -1187,7 +1392,12 @@
       "coord_ref": "variant",
       "gene": "SLC25A15",
       "hgvs": "NM_014252.4:c.110T>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 40799091,
+      "window_start": 40799001,
+      "window_end": 40799200,
+      "reference_window": "CCATGGATAATGGAACTGTAGCCTCGTACTAGAGCAGTCATCTGTCCTGATTGCAGGAGGTACAGCATGTGTACTGACCGGGCAGCCCTTTGACACAATGAAAGTGAAGATGCAGACGTTCCCTGACCTGTACCGGGGCCTCACCGACTGCTGCCTGAAGACTTACTCCCAGGTGGGCTTCCGTGGCTTCTACAAGGGTA",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.662A>G (p.Glu221Gly)": {
       "genome_build": "hg38",
@@ -1198,7 +1408,12 @@
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.662A>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102855183,
+      "window_start": 102855093,
+      "window_end": 102855292,
+      "reference_window": "AAGAAAACATGGGGCACAGTGTTCAAGACTCTGAAGTCCTTGTATAAAACCCATGCTTGCTATGAGTACAATCACATTTTTCCACTTCTTGAAAAGTACTGTGGCTTCCATGAAGATAACATTCCCCAGCTGGAAGACGTTTCTCAGTTCCTGCAGAGTAAGTCCACATCAGGGTCAATGGCCCTGCAGAAAGTTGGGGG",
+      "reference_spacer_offset": 90
     },
     "NM_000045.4(ARG1):c.32T>C (p.Ile11Thr)": {
       "genome_build": "hg38",
@@ -1260,11 +1475,16 @@
       "chrom": "X",
       "variant_start": 38401332,
       "variant_end": 38401332,
-      "assembly_strand": 1,
+      "assembly_strand": -1,
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.444G>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38401340,
+      "window_start": 38401250,
+      "window_end": 38401449,
+      "reference_window": "AAGACAAATAAATAAACCAACCTGGAGCGTGAGGTAATCAGCCAGGATCTGGATAGGATGGTACAAATCTGACAGCCCATTGATAATTGGGATGGATGCTTCTTTAGCCAGGGTGTCCAAATCTGATTGTTTATACACTCGAGCCAATACTGCATCTGCCATGCTAGACAATACACTGTGGCAAACCAAGAAAAAGATAA",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.460G>T (p.Glu154Ter)": {
       "genome_build": "hg38",
@@ -1286,7 +1506,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.617T>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38403674,
+      "window_start": 38403584,
+      "window_end": 38403783,
+      "reference_window": "CTGGATTTCATCTCCTTCATCCCGTGCCTTTTAGGAACACTATAGCTCTCTGAAAGGTCTTACCCTCAGCTGGATCGGGGATGGGAACAATATCCTGCACTCCATCATGATGAGCGCAGCGAAATTCGGAATGCACCTTCAGGCAGCTACTCCAAAGGTAGGGAAACTTTTTGCCTTGAAACTAACCCCTCTCTTAAATC",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.646C>G (p.Gln216Glu)": {
       "genome_build": "hg38",
@@ -1308,7 +1533,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.717+2T>C",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38408774,
+      "window_start": 38408684,
+      "window_end": 38408883,
+      "reference_window": "TTAAGAAAACATGTATAATAAAATTACCTAAATAAGATTTAAATTCTTCCTCCTTTAGGGTTATGAGCCGGATGCTAGTGTAACCAAGTTGGCAGAGCAGTATGCCAAAGAGGTATGCTCTTTACATGTAAAGCTATTATTGCCTTTTACTGTCCCATGAAGTTATTTAACCAGCGTGTTTATGTATGCTAGAATGGTAC",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.717+3A>G": {
       "genome_build": "hg38",
@@ -1319,7 +1549,12 @@
       "coord_ref": "variant",
       "gene": "OTC",
       "hgvs": "NM_000531.6:c.717+3A>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 38408774,
+      "window_start": 38408684,
+      "window_end": 38408883,
+      "reference_window": "TTAAGAAAACATGTATAATAAAATTACCTAAATAAGATTTAAATTCTTCCTCCTTTAGGGTTATGAGCCGGATGCTAGTGTAACCAAGTTGGCAGAGCAGTATGCCAAAGAGGTATGCTCTTTACATGTAAAGCTATTATTGCCTTTTACTGTCCCATGAAGTTATTTAACCAGCGTGTTTATGTATGCTAGAATGGTAC",
+      "reference_spacer_offset": 90
     },
     "NM_000531.6(OTC):c.912G>T (p.Leu304Phe)": {
       "genome_build": "hg38",
@@ -1337,33 +1572,48 @@
       "chrom": "12",
       "variant_start": 102843751,
       "variant_end": 102843753,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1092_1094del",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102843727,
+      "window_start": 102843637,
+      "window_end": 102843836,
+      "reference_window": "CCACCTCACCTTACTTTCTCCTTGGCATCATTAAAACTCTCTGCCACGTAATAGAGGGGCTGGAACTCCGTGACAGTGTAATTTTGGATGGCTGTCTTCTCCAGCTCCAGGGGGAGAAGCTTTGGCTTCTCTGATAAGCAGTACTGTAGGCCCCAAGTGAAAAGTTATTATCACTGTTAAATCAGGATCAGTATTCCCTG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.1076C>G (p.Ser359Ter)": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102843769,
       "variant_end": 102843769,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.1076C>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102843740,
+      "window_start": 102843650,
+      "window_end": 102843849,
+      "reference_window": "CTTTCTCCTTGGCATCATTAAAACTCTCTGCCACGTAATAGAGGGGCTGGAACTCCGTGACAGTGTAATTTTGGATGGCTGTCTTCTCCAGCTCCAGGGGGAGAAGCTTTGGCTTCTCTGATAAGCAGTACTGTAGGCCCCAAGTGAAAAGTTATTATCACTGTTAAATCAGGATCAGTATTCCCTGCTGCATCCCATAG",
+      "reference_spacer_offset": 90
     },
     "NM_000277.3(PAH):c.842+2T>A": {
       "genome_build": "hg38",
       "chrom": "12",
       "variant_start": 102852813,
       "variant_end": 102852813,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.842+2T>A",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102852795,
+      "window_start": 102852705,
+      "window_end": 102852904,
+      "reference_window": "GACAACTAGTCCTGTGGACCAGCCAGCAATGAACCCAAACCTCATTCTTGCAGCAGGAAAAGATGGCGCTCATTGTGCCTGGCAACTGGTAGCTGGAGGACAGTACTCACGGTTCGGGGGTATACATGGGCTTGGATCCATGTCTGATGTACTGTGTGCAGTGGAAGACTCGGAAGGCCAGGCCACCCAAGAAATCCCGA",
+      "reference_spacer_offset": 90
     },
     "NM_000045.4(ARG1):c.383A>G (p.Asp128Gly)": {
       "genome_build": "hg38",
@@ -1374,7 +1624,12 @@
       "coord_ref": "variant",
       "gene": "ARG1",
       "hgvs": "NM_000045.4:c.383A>G",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 131581275,
+      "window_start": 131581185,
+      "window_end": 131581384,
+      "reference_window": "ACCTGATGTTCACACAAAATTTTTTCCCCAAAAGTTTGGCAATTGGAAGCATCTCTGGCCATGCCAGGGTCCACCCTGATCTTGGAGTCATCTGGGTGGATGCTCACACTGATATCAACACTCCACTGACAACCACAAGTGGAAACTTGCATGGACAACCTGTATCTTTCCTCCTGAAGGAACTAAAAGGAAAGGTAAAA",
+      "reference_spacer_offset": 90
     },
     "NM_000048.4(ASL):c.1122dup (p.Tyr375fs)": {
       "genome_build": "hg38",
@@ -1392,11 +1647,16 @@
       "chrom": "12",
       "variant_start": 102894877,
       "variant_end": 102894879,
-      "assembly_strand": -1,
+      "assembly_strand": 1,
       "coord_ref": "variant",
       "gene": "PAH",
       "hgvs": "NM_000277.3:c.208_210del",
-      "match": "ensembl_vep"
+      "match": "ensembl_vep",
+      "spacer_start": 102894858,
+      "window_start": 102894768,
+      "window_end": 102894967,
+      "reference_window": "GGACAGTGGCACCAATGTCATGCCTCAAGATCTTGATGATGTTTGTCAGAGCAGGCAGGCTACGTTTATCCAAATGGGTGAAAAATTCATACTCATCTTTCTTTAAACGAGAAGGTCTAGATTCAATGTGGGTCAGGTTTACATCATTCTCCTAGAAGAGAGAATGGGGAGGGTGAGGAGACAGTCACTGGAACTAACGC",
+      "reference_spacer_offset": 90
     },
     "RPL18A_Edit1": {
       "genome_build": "hg38",
@@ -1410,11 +1670,15 @@
     "RPS17_Edit4": {
       "genome_build": "hg38",
       "chrom": "15",
-      "spacer_start": 82538356,
-      "assembly_strand": -1,
+      "spacer_start": 82538314,
+      "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS17",
-      "match": "exact_rc"
+      "match": "exact_rc",
+      "window_start": 82538224,
+      "window_end": 82538423,
+      "reference_window": "AGCTGGGTGACCTTGGATAATAAGACCTACTGATGGTTTTTGACCAGGAAAATACCACTTTAGGAATCCAGCAAACACTTACCAAAAGCTTCAGCATTTCCTTAGTGTCAGGATCTACTTCAATAATCTCCTGATCCAAGGCTGAGACCTACAAGGAAACGAGGTAGGGTCAAAATACCAATCAATGAGATTATCACTCA",
+      "reference_spacer_offset": 90
     },
     "RPS5_Edit4": {
       "genome_build": "hg38",
@@ -1441,7 +1705,11 @@
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL19",
-      "match": "exact"
+      "match": "exact",
+      "window_start": 39204434,
+      "window_end": 39204633,
+      "reference_window": "GGCTCAAAGGGAGAGGTCTGGGGATGTGCTTCTGTCTCCCTAGCATCTCATCTCTTCCCAAACTGACCCGTCTTTTCTCTTCCCTGACCAGTGACCAGGCTGAGGCCCGCAGGTCTAAGACCAAGGAAGCACGCAAGCGCCGTGAAGAGCGCCTCCAGGCCAAGAAGGAGGAGATCATCAAGACTTTATCCAAGGAGGAA",
+      "reference_spacer_offset": 90
     },
     "RPL19_Edit1": {
       "genome_build": "hg38",
@@ -1473,38 +1741,54 @@
     "RPL27_Edit2": {
       "genome_build": "hg38",
       "chrom": "17",
-      "spacer_start": 43002727,
+      "spacer_start": 43002740,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL27",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 43002650,
+      "window_end": 43002849,
+      "reference_window": "TGCCTCTCCACCTTTGTCCCCAGGTACTCTGTGGATATCCCCTTGGACAAAACTGTCGTCAATAAGGATGTCTTCAGAGATCCTGCTCTTAAACGCAAGGCCCGACGGGAGGCCAAGGTCAAGTTTGAAGAGAGGTAAGTAGGCTTTGGTAGTGAATGGTGGAGTATGGTTTCACTATTTCCATTCCTTTCCTCATTGGT",
+      "reference_spacer_offset": 90
     },
     "RPL34_Edit1": {
       "genome_build": "hg38",
       "chrom": "4",
-      "spacer_start": 108622554,
+      "spacer_start": 108622564,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL34",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 108622474,
+      "window_end": 108622673,
+      "reference_window": "TGTTAAAGCATCACAAAAATCTTAATATTTTTCTTATGCAGGTTCGTGCTGTAAGACCTAAAGTTCTTATGAGATTGTCCAAAACAAAGAAACATGTCAGCAGGGCCTATGGTGGTTCCATGTGTGCTAAATGTGTTCGTGACAGGTAAGTTAAATGCTTAAATGGGCTTTCCTTAGCAAATTATTGTGTGTGTTATACT",
+      "reference_spacer_offset": 90
     },
     "RPL34_Edit2": {
       "genome_build": "hg38",
       "chrom": "4",
-      "spacer_start": 108625122,
+      "spacer_start": 108625132,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL34",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 108625042,
+      "window_end": 108625241,
+      "reference_window": "TTCTTTACCATGTTTGCCTTCTCTGTGCTAAATAAAAAATGAAGTTCATTTTAAAGAAATGATTAATTTGGTATTTTCCTTTCTAGGATCAAGCGTGCTTTCCTTATCGAGGAGCAGAAAATCGTTGTGAAAGTGTTGAAGGCACAAGCACAGAGTCAGAAAGCTAAATAAAAAAATGAAACTTTTTTGAGTAATAAAAA",
+      "reference_spacer_offset": 90
     },
     "RPL35_Edit1": {
       "genome_build": "hg38",
       "chrom": "9",
-      "spacer_start": 124860218,
+      "spacer_start": 124860226,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL35",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 124860136,
+      "window_end": 124860335,
+      "reference_window": "CACTTGGCTTCCTGCAGCCAACCCTCCCTATGTCCAGGCAGACTCACCTTGTAGAATTTCCTGAGGTTTTCTTTCTGAGTCTGGTTAATAACTGTGAGAACACGGGCAATGGATTTCCGGACGACTCGGCTACAAAACAGAGATGTCAGTGAAGATAGGGAAGACACATAGCACTACCCAAGACTCAGGACTCACACATA",
+      "reference_spacer_offset": 90
     },
     "RPL35_Edit2": {
       "genome_build": "hg38",
@@ -1513,61 +1797,89 @@
       "assembly_strand": -1,
       "coord_ref": "protospacer",
       "gene": "RPL35",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 124857959,
+      "window_end": 124858158,
+      "reference_window": "TGGCTCTGGATGGCCCTCCCCAGCCCCCTTAGCTGCTGCAGTAGCTCCTCAGCCCTGGGTCCTTGGATTCACCCTGCCGTCTGTCTCCCAGGGCAAGAAGTACAAGCCCCTGGACCTGCGGCCTAAGAAGACACGTGCCATGCGCCGCCGGCTCAACAAGCACGAGGAGAACCTGAAGACCAAGAAGCAGCAGCGGAAGG",
+      "reference_spacer_offset": 90
     },
     "RPL37A_Edit2": {
       "genome_build": "hg38",
       "chrom": "2",
-      "spacer_start": 216501379,
-      "assembly_strand": -1,
+      "spacer_start": 216501339,
+      "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL37A",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 216501249,
+      "window_end": 216501448,
+      "reference_window": "GACTTTAACACAAAAACGAGGCAGATTTACTTATTTGCCATTTTCTATGTTAACATGCTTAATTATGTTGGAAACTGAATCTTTCTTTCCAGTACCACTTCCGCTGTCACGGTAAAGTCCGCCATCAGAAGACTGAAGGAGTTGAAAGACCAGTAGACGCTCCTCTACTCTTTGAGACATCACTGGCCTATAATAAATGG",
+      "reference_spacer_offset": 90
     },
     "RPL39_Edit1": {
       "genome_build": "hg38",
       "chrom": "X",
-      "spacer_start": 119789948,
+      "spacer_start": 119789958,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL39",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 119789868,
+      "window_end": 119790067,
+      "reference_window": "TACATTTAGCAAAATACAAGCAGTATGATGGAGGTCTTACCTGATTTTATTTCCAGTTTTCATCCGAATCCACTGGGGAATGGGACGATTTTGCTTTTGTTTCTTGGCCAGGAATCGCTTAATCCTGAAAGTCTTGTGAGAAGACTGGGAAGAAAATGCAATCAATTTAGACAATATTAGAGCCTGCCCGAATGATTCAA",
+      "reference_spacer_offset": 90
     },
     "RPL39_Edit2": {
       "genome_build": "hg38",
       "chrom": "X",
-      "spacer_start": 119789949,
-      "assembly_strand": -1,
+      "spacer_start": 119789924,
+      "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL39",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 119789834,
+      "window_end": 119790033,
+      "reference_window": "TCAAAAAGTAACCCTGGCCAGACACAGTGGCTCTTACATTTAGCAAAATACAAGCAGTATGATGGAGGTCTTACCTGATTTTATTTCCAGTTTTCATCCGAATCCACTGGGGAATGGGACGATTTTGCTTTTGTTTCTTGGCCAGGAATCGCTTAATCCTGAAAGTCTTGTGAGAAGACTGGGAAGAAAATGCAATCAAT",
+      "reference_spacer_offset": 90
     },
     "RPL39_Edit4": {
       "genome_build": "hg38",
       "chrom": "X",
-      "spacer_start": 119786669,
+      "spacer_start": 119786679,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL39",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 119786589,
+      "window_end": 119786788,
+      "reference_window": "ATCTCCAGATAGTGGTGACATTTTCAGCTTGATATGGTAACATGATCGTGACCTTCAGACAGCATAAATATGTGTGCCATCTCATGTGCAATTCCTTATAGACCCAGCTTGGTTCTTCTCCAATGTCTCCTTTTGGAGTTGTACCTACACAGAAAAAAATGTCAAGTTACAAAGGCAGTCTGACAGCAATGTAGCTGTTC",
+      "reference_spacer_offset": 90
     },
     "RPL6_Edit2": {
       "genome_build": "hg38",
       "chrom": "12",
-      "spacer_start": 112405285,
+      "spacer_start": 112405295,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL6",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 112405205,
+      "window_end": 112405404,
+      "reference_window": "AATTAGGTTCTTAAGACATTTAGAACACCAATTTGTGAGGATAAATTCCATTCGTCAGAGCAAACACAGATCGCAGGTAGCCCTGGAGCTGAGGAATAGCTTTGATTTTTGGTAAAATTTGTGAGTCCACAGCTTTCTGATCAATCTTGCGCTGCTCCGTAATCTCATATTTCTAAATAAAGAGAAAATCAAACATTTTA",
+      "reference_spacer_offset": 90
     },
     "RPL8_Edit1": {
       "genome_build": "hg38",
       "chrom": "8",
-      "spacer_start": 144790390,
+      "spacer_start": 144790400,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPL8",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 144790310,
+      "window_end": 144790509,
+      "reference_window": "CCACTGTAACTTCAATACCCAACCCTGCATTTCTGGGTTACTTACATTCATGGCCACACCCCGTACTCGTGGCCAGCAGTTCCTCTTTGCCTTATATTTGTGGTACGCCCGGCCAGCCTTCAAGATGGGTTTGTCAATTCGGCCACCTCCAGCCACCACACCTGTAGGGGATCAGATACCTCAGGGAACCCCCAGTCGGT",
+      "reference_spacer_offset": 90
     },
     "RPS11_Edit1": {
       "genome_build": "hg38",
@@ -1585,7 +1897,11 @@
       "assembly_strand": -1,
       "coord_ref": "protospacer",
       "gene": "RPS11",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 49497921,
+      "window_end": 49498120,
+      "reference_window": "TTAAATTGGTCCGATCTGGAATCTGAAGGCTGAGAGAGCGTGGCCTGAGCAACCTGATGGGCCACTGCGCTCACCTGAAGCAGGGGGACAGGTGTACAGACATGTTCTTGTGGCGCTTCTCGAAGCGGTTGTACTTGCGGATGTAGTGCAGATAGTCTCGGCGGATGACAATGGTCCTCTGCATCTTCATCTTGGTCACC",
+      "reference_spacer_offset": 90
     },
     "RPS11_Edit3": {
       "genome_build": "hg38",
@@ -1599,11 +1915,15 @@
     "RPS11_Edit4": {
       "genome_build": "hg38",
       "chrom": "19",
-      "spacer_start": 49499613,
-      "assembly_strand": -1,
+      "spacer_start": 49499586,
+      "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS11",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 49499496,
+      "window_end": 49499695,
+      "reference_window": "CTACCTGCCTCCACAGGGACGTCCAGATCGGTGACATCGTCACAGTGGGCGAGTGCCGGCCTCTGAGCAAGACAGTGCGCTTCAACGTGCTCAAGGTCACCAAGGCTGCCGGCACCAAGAAGCAGTTCCAGAAGTTCTGAGGCTGGACATCGGCCCGCTCCCCACAATGAAATAAAGTTATTTTCTCATTCCCAGGCCAG",
+      "reference_spacer_offset": 90
     },
     "RPS13_Edit1": {
       "genome_build": "hg38",
@@ -1617,20 +1937,28 @@
     "RPS13_Edit2": {
       "genome_build": "hg38",
       "chrom": "11",
-      "spacer_start": 17075086,
+      "spacer_start": 17075093,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS13",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 17075003,
+      "window_end": 17075202,
+      "reference_window": "ACTAGCCCCCAAGGCTGAACATATTTACTACTAGGACTTTTACTACTGGCTGACTCCTATTCTTGATAACAACGACAAAAGAGTTGATACTTACTATTTCCAATTGGGAGGGAGGACTCGCTTGGTCTTATAATATCGAGCCAAACGGTGAATCCGGCTCTCTATTAGAATCAGACGGAATTTAGCATCCTTATCCTAAA",
+      "reference_spacer_offset": 90
     },
     "RPS15A_Edit1": {
       "genome_build": "hg38",
       "chrom": "16",
-      "spacer_start": 18784723,
+      "spacer_start": 18784729,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS15A",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 18784639,
+      "window_end": 18784838,
+      "reference_window": "TTTGTTTTAAACAGAAAAAAAGAAAAAAACCCTTAAGTCAAACTGCACCACAGAAATTCTTAGCATTAACTTCTTTTAATTAAGGAAAGGCCAACTTACCCAAACTGGCGGGATGGAAGCAGATTATTCTGCCATTTTTCCAGGTCTTTGAGTTGCACGTCAAATCTGGGGCTGATCACCCCACACTATAAAATAACAAC",
+      "reference_spacer_offset": 90
     },
     "RPS15_Edit1": {
       "genome_build": "hg38",
@@ -1639,7 +1967,11 @@
       "assembly_strand": -1,
       "coord_ref": "protospacer",
       "gene": "RPS15",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 1440079,
+      "window_end": 1440278,
+      "reference_window": "AGCCGGCAGGGACGGCCGCACACACCTTGATCTCCACCTGGTTGAAGGTCTTGCCGTTGTAGACGCCCACCATGCTGCCCACCATCTCGGGTAGGATGATCATGTCCCGCAGGTGCGTCTTCACCACTTCCGGCTTCTCCATGGGCGGCGCCTCCTTCTTGGCCTTGCGCAGGCGCTTCAGCAGGGAGTGCTGCTTCCGC",
+      "reference_spacer_offset": 90
     },
     "RPS16_Edit1": {
       "genome_build": "hg38",
@@ -1653,47 +1985,67 @@
     "RPS16_Edit2": {
       "genome_build": "hg38",
       "chrom": "19",
-      "spacer_start": 39433498,
+      "spacer_start": 39433508,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS16",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 39433418,
+      "window_end": 39433617,
+      "reference_window": "TCTGGCAAGAAGAGCAGGGACGAGGATTTAGATAATCACACAGAGTCCTTGACTTGATCCCCACACACCCATCTACCTCATGGGAAGGACCCATGCTCACTCACATTTCTGGTAATAGGCCACCAGGGCTTTGGAGATGGACTGACGGATAGCTGTGAGAAAGACACACAATTAAAGGGTACAGGAGCGCTGTGAAGGCC",
+      "reference_spacer_offset": 90
     },
     "RPS17_Edit1": {
       "genome_build": "hg38",
       "chrom": "15",
-      "spacer_start": 82539982,
+      "spacer_start": 82539992,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS17",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 82539902,
+      "window_end": 82540101,
+      "reference_window": "CGTCTCTTCCCGAGTCGGAGGGCGGCAGAGCACACAAACAGATCGCGGAGCCCCGGAGGCCGAGGAAGGCCCGACTCACCCTGCTATCTTGTTGCGGAGCTTTTTGCTGGGGATAATGGCGATCTCCTCGCACACGCGCTTGTTCGTGTGGAAGTCGTTGCCCAGGCGCGTGTAGTACTTTTCTATGATGACCCGGGCCG",
+      "reference_spacer_offset": 90
     },
     "RPS17_Edit3": {
       "genome_build": "hg38",
       "chrom": "15",
-      "spacer_start": 82538854,
+      "spacer_start": 82538864,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS17",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 82538774,
+      "window_end": 82538973,
+      "reference_window": "TATGGATTAAAGGTCTCAGATTCAGCTGAGGTCCCTTTGGAAGCCAAGAACCCATAGCTTTATCATTTGAGGATTAGCCAGAAGCCCAAATATCCAGAAAGTTTACCTCAGGAACATAATTGTCTCTCCTTTCTCTCTCCTCCTCCTGCAGCTTGATGGAGATACCTCTTACTGGGCCTCTCTGAATTCGCTTCATCAGA",
+      "reference_spacer_offset": 90
     },
     "RPS2_Edit1": {
       "genome_build": "hg38",
       "chrom": "16",
-      "spacer_start": 1962230,
+      "spacer_start": 1962219,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS2",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 1962129,
+      "window_end": 1962328,
+      "reference_window": "CGCTGCACGGAGACTCTGGTGTGGGTCTTGACGAGGTGGTCAGTGAACTCCTGATAGGGAGACTTGGTGAATACAGTCTCCTTCCAGAGGTCGGGGGTCAGGTAGCTGTAGGTCTTAGAAATGGCATCAAAGGTGGCCTTGGCTGCAAAACAAAAGAACCCCAGGAGGGTCAGTGGTGTGCTTGAGGCAAGTCCCCCAAC",
+      "reference_spacer_offset": 90
     },
     "RPS2_Edit2": {
       "genome_build": "hg38",
       "chrom": "16",
-      "spacer_start": 1962116,
+      "spacer_start": 1962117,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS2",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 1962027,
+      "window_end": 1962226,
+      "reference_window": "ACTAACCATGCAGGACACGGGAAAAAAACAGTAACACGCTTAATTCACTTTATTTTTCTTGTATAAAAACCCTATGTTGTAGCCACAGCTGGAGCCTGAGTCCGCTGCACGGAGACTCTGGTGTGGGTCTTGACGAGGTGGTCAGTGAACTCCTGATAGGGAGACTTGGTGAATACAGTCTCCTTCCAGAGGTCGGGGGT",
+      "reference_spacer_offset": 90
     },
     "RPS5_Edit1": {
       "genome_build": "hg38",
@@ -1707,11 +2059,15 @@
     "RPS5_Edit2": {
       "genome_build": "hg38",
       "chrom": "19",
-      "spacer_start": 58394538,
+      "spacer_start": 58394548,
       "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS5",
-      "match": "exact_from_wide"
+      "match": "exact_from_wide",
+      "window_start": 58394458,
+      "window_end": 58394657,
+      "reference_window": "CAGTCTGTCCTTCTAGCCTGACCCCTGCTGTCTTCCTAGGCCATCTGGCTGCTGTGCACAGGCGCTCGTGAGGCTGCCTTCCGGAACATTAAGACCATTGCTGAGTGCCTGGCAGATGAGCTCATCAATGCTGCCAAGGTGGGTGAGGGCACTCCGGTTGGGGGGTCTTAAGTTGGGCATTTGTGGGGGTCCTTCAGAAT",
+      "reference_spacer_offset": 90
     },
     "RPS5_Edit3": {
       "genome_build": "hg38",
@@ -1725,11 +2081,15 @@
     "RPS8_Edit1": {
       "genome_build": "hg38",
       "chrom": "1",
-      "spacer_start": 44777690,
-      "assembly_strand": -1,
+      "spacer_start": 44777652,
+      "assembly_strand": 1,
       "coord_ref": "protospacer",
       "gene": "RPS8",
-      "match": "exact_rc_from_wide"
+      "match": "exact_rc_from_wide",
+      "window_start": 44777562,
+      "window_end": 44777761,
+      "reference_window": "CAGGGCCATTTGTCCTCCAGTTTACTTGATGCCAAATTTCTCCTGTGAGCAGGTTGTACTCGTAAAACAAGGATCATCGATGTTGTCTACAATGCATCTAATAACGAGCTGGTTCGTACCAAGACCCTGGTGAAGAATTGCATCGTGCTCATCGACAGCACACCGTACCGACAGTGGTACGAGTCCCACTATGCGCTGCC",
+      "reference_spacer_offset": 90
     },
     "UBA52_Edit1": {
       "genome_build": "hg38",
@@ -1758,5 +2118,7 @@
       "gene": "PAH_mouse",
       "match": "exact_rc"
     }
-  }
+  },
+  "context_bp": 200,
+  "reference_spacer_offset": 90
 }

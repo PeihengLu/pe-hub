@@ -14,6 +14,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SERVICE_DIR="${REPO_ROOT}/services/pe-db"
 
+# shellcheck source=scripts/python-env.sh
+source "${REPO_ROOT}/scripts/python-env.sh"
+
 INSTALL_DEPS=false
 RELOAD=true
 FORCE_REEXPORT=false
@@ -29,7 +32,7 @@ Start the PE Database API (uvicorn pe_db.main:app).
 Options:
   --install         Install Python dependencies before starting
   --no-reload       Disable uvicorn auto-reload
-  --force-reexport  Re-export raw study files on startup (also re-standardizes)
+  --force-reexport  Re-export and re-standardize before starting (can take several minutes)
   --host HOST       Bind address (default: \$PE_DB_HOST or 0.0.0.0)
   --port PORT       Listen port (default: \$PE_DB_PORT or 8000)
   -h, --help        Show this help message
@@ -37,7 +40,7 @@ Options:
 Environment:
   Loads \${REPO_ROOT}/.env when present.
   Common variables: DATA_ROOT, DATABASE_URL, PE_DB_HOST, PE_DB_PORT
-  Startup flags set PE_DB_FORCE_EXPORT / PE_DB_FORCE_STANDARDIZE when used.
+  --force-reexport runs pedb init --force-export --force-standardize before uvicorn.
 
 Examples:
   ./scripts/start-pe-db-backend.sh
@@ -134,11 +137,15 @@ if [[ "${INSTALL_DEPS}" == true ]]; then
     echo "Dependencies installed."
 fi
 
-if ! (cd "${SERVICE_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main"); then
+if ! (cd "${SERVICE_DIR}" && "${PYTHON}" -c "import uvicorn, pe_db.main, pe_db.cli"); then
     echo "Error: missing Python dependencies (uvicorn and/or pe_db.main)." >&2
     echo "Active Python: ${PYTHON}" >&2
     echo "Run: $(basename "$0") --install" >&2
     exit 1
+fi
+
+if pe_hub_env_flag_on "${PE_DB_FORCE_EXPORT:-}" || pe_hub_env_flag_on "${PE_DB_FORCE_STANDARDIZE:-}"; then
+    pe_hub_run_pe_db_force_init "${PYTHON}" "${SERVICE_DIR}"
 fi
 
 cd "${SERVICE_DIR}"

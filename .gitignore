@@ -9,7 +9,8 @@
 .cursor/
 .vscode/
 checkpoints/** 
-*.egg-info/
+# setuptools leftovers (must not shadow pe_db / pe_ensemble)
+services/*/build/
 
 # Local Oxford ARC paths / email (copy from env.sh.example)
 scripts/cluster/oxford-arc/env.sh
@@ -27,3 +28,8 @@ scripts/cluster/oxford-arc/env.sh
 
 # Slurm output
 /slurm_output
+/services/pe-ensemble/pe_ensemble.egg-info
+/services/pe-db/pe_db.egg-info
+
+/scripts/experiments/scratch-benchmark/state
+/scripts/experiments/scratch-benchmark/results

@@ -6,14 +6,20 @@ Writes curated JSON consumed at standardize time (no live network during standar
   datasets/raw/deeppe/deeppe_genomic_loci.json
   datasets/raw/pridict1/pridict1_library2_genomic_loci.json
 
+Each locus also caches a 200 bp target-strand ``reference_window`` (spacer at
+offset 90) so endogenous standardize can emit a full PE-core row.
+
 Preferred method: exact (+ RC) search against local chromosome FASTAs under
 ``datasets/reference/hg38_chroms`` (and ``mm39_chroms`` for mouse). Human ClinVar
-HGVS names are resolved via Ensembl VEP.
+HGVS names are resolved via Ensembl VEP. Sequence windows prefer local FASTA
+and fall back to Ensembl REST when a chromosome file is missing.
 
 Usage (from repo root)::
 
   PYTHONPATH=packages/pe-common:services/pe-db \\
     python services/pe-db/scripts/retrieve_endo_genomic_loci.py --all
+  PYTHONPATH=packages/pe-common:services/pe-db \\
+    python services/pe-db/scripts/retrieve_endo_genomic_loci.py --windows
 """
 from __future__ import annotations
 
@@ -21,6 +27,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -31,7 +38,23 @@ import requests
 
 from pe_common.constants import DATA_ROOT, PROJECT_ROOT
 
-from scripts.local_genome_map import iter_fasta_records, reverse_complement
+_PE_DB_ROOT = Path(__file__).resolve().parents[1]
+if str(_PE_DB_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PE_DB_ROOT))
+
+from pe_db.pipeline.endo import (  # noqa: E402
+    ENDO_CONTEXT_BP,
+    ENDO_SPACER_LEN,
+    ENDO_SPACER_OFFSET,
+    genomic_window_interval,
+)
+from scripts.local_genome_map import (  # noqa: E402
+    extract_oriented_window,
+    find_in_sequence,
+    iter_fasta_records,
+    load_chrom_sequence,
+    reverse_complement,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +332,206 @@ def retrieve_pridict1_library2_loci(*, sleep_between: float = 0.25) -> dict[str,
     }
 
 
+def _chrom_dir_for_build(build: str) -> Optional[Path]:
+    if build == "mm39":
+        return MM39_CHROM_DIR if MM39_CHROM_DIR.exists() else None
+    return HG38_CHROM_DIR if HG38_CHROM_DIR.exists() else None
+
+
+_CHROM_SEQ_CACHE: dict[tuple[str, str], Optional[str]] = {}
+
+
+def _chrom_seq_for_build(build: str, chrom: str) -> Optional[str]:
+    cache_key = (str(build), str(chrom))
+    if cache_key not in _CHROM_SEQ_CACHE:
+        chrom_dir = _chrom_dir_for_build(build)
+        _CHROM_SEQ_CACHE[cache_key] = (
+            load_chrom_sequence(chrom_dir, str(chrom)) if chrom_dir is not None else None
+        )
+        if _CHROM_SEQ_CACHE[cache_key] is None:
+            logger.info("No local FASTA for %s chr%s", build, chrom)
+    return _CHROM_SEQ_CACHE[cache_key]
+
+
+def _ensembl_species(build: str) -> str:
+    return "mouse" if str(build) == "mm39" else "human"
+
+
+def _ensembl_chrom(chrom: str) -> str:
+    chrom = str(chrom).removeprefix("chr")
+    return "MT" if chrom == "M" else chrom
+
+
+def fetch_ensembl_window(
+    chrom: str,
+    start_0: int,
+    end_0: int,
+    strand: int,
+    build: str,
+) -> Optional[str]:
+    """Fetch ``[start_0, end_0)`` as a target-strand sequence from Ensembl REST."""
+    if end_0 <= start_0:
+        return None
+    start_1 = start_0 + 1
+    if start_1 < 1:
+        return None
+    url = (
+        f"https://rest.ensembl.org/sequence/region/{_ensembl_species(build)}/"
+        f"{_ensembl_chrom(chrom)}:{start_1}..{end_0}:{int(strand)}"
+    )
+    response = requests.get(
+        url,
+        headers={"Content-Type": "text/plain", "Accept": "text/plain"},
+        timeout=60,
+    )
+    if not response.ok:
+        logger.warning("Ensembl sequence %s -> HTTP %s", url, response.status_code)
+        return None
+    seq = re.sub(r"\s+", "", response.text).upper()
+    return seq or None
+
+
+def _parse_location_bounds(value: str) -> Optional[tuple[int, int]]:
+    match = re.search(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]", str(value))
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _library2_protospacers() -> dict[str, str]:
+    """Spacers as they appear in the author wide target (used at expand time)."""
+    path = DATA_ROOT / "exported" / "pridict1" / "library2-invivo" / "liver_gfpplus-pe2.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(
+        path,
+        usecols=["Name", "protospacer", "wide_initial_target", "protospacerlocation_only_initial"],
+    )
+    out: dict[str, str] = {}
+    for row in df.itertuples(index=False):
+        name = str(row.Name)
+        wide = str(row.wide_initial_target).upper().replace("U", "T")
+        bounds = _parse_location_bounds(row.protospacerlocation_only_initial)
+        spacer = ""
+        if bounds is not None:
+            left, right = bounds
+            spacer = wide[left:right]
+        if not re.fullmatch(r"[ACGT]+", spacer or ""):
+            spacer = str(row.protospacer).upper().replace("U", "T")
+        if re.fullmatch(r"[ACGT]+", spacer or ""):
+            out[name] = spacer
+    return out
+
+
+def _pick_spacer_hit(
+    hits: list[dict[str, Any]],
+    *,
+    near_0: Optional[int],
+    max_distance: int = 250,
+) -> Optional[dict[str, Any]]:
+    if not hits:
+        return None
+    if near_0 is None:
+        return hits[0] if len(hits) == 1 else None
+    hit = min(hits, key=lambda row: abs(int(row["start_0"]) - int(near_0)))
+    if abs(int(hit["start_0"]) - int(near_0)) > max_distance:
+        return None
+    return hit
+
+
+def _resolve_spacer_start(
+    locus: dict[str, Any],
+    *,
+    key: str,
+    protospacer: Optional[str],
+    chrom_seq: Optional[str],
+) -> tuple[Optional[int], Optional[int]]:
+    """Return 1-based spacer_start (lowest genomic coord of the match) and strand."""
+    recorded = int(locus["spacer_start"]) - 1 if "spacer_start" in locus else None
+    variant_0 = int(locus["variant_start"]) - 1 if "variant_start" in locus else None
+    near_0 = recorded if recorded is not None else variant_0
+
+    if protospacer and chrom_seq is not None:
+        hits = find_in_sequence(chrom_seq, protospacer)
+        hit = _pick_spacer_hit(hits, near_0=near_0, max_distance=400 if near_0 is not None else 0)
+        if hit is None and recorded is not None and len(hits) == 1:
+            hit = hits[0]
+        if hit is not None:
+            return int(hit["start_0"]) + 1, int(hit["assembly_strand"])
+
+    if recorded is not None and locus.get("assembly_strand") in (1, -1, "1", "-1"):
+        return recorded + 1, int(locus["assembly_strand"])
+    return None, None
+
+
+def attach_reference_windows(
+    payload: dict[str, Any],
+    *,
+    protospacers: Optional[dict[str, str]] = None,
+    default_build: str = "hg38",
+    sleep_between: float = 0.12,
+) -> dict[str, Any]:
+    """Cache 200 bp spacer-centered ``reference_window`` strings on each locus."""
+    loci = payload.get("loci") or {}
+    protospacers = protospacers or {}
+
+    attached = 0
+    for key, locus in loci.items():
+        existing = str(locus.get("reference_window") or "")
+        if len(existing) == ENDO_CONTEXT_BP:
+            attached += 1
+            continue
+        build = str(locus.get("genome_build") or payload.get("genome_build") or default_build)
+        chrom = locus.get("chrom")
+        proto = protospacers.get(str(key))
+        if proto is None and isinstance(key, str) and len(key) == 47 and re.fullmatch(r"[ACGT]+", key):
+            proto = key[DEEPPE_SPACER_OFFSET : DEEPPE_SPACER_OFFSET + ENDO_SPACER_LEN]
+        chrom_seq = _chrom_seq_for_build(build, str(chrom)) if chrom is not None else None
+        spacer_start_1, strand = _resolve_spacer_start(
+            locus, key=str(key), protospacer=proto, chrom_seq=chrom_seq
+        )
+        if spacer_start_1 is None or chrom is None or strand is None:
+            logger.warning("No spacer interval for locus %s", str(key)[:80])
+            continue
+        spacer_start_0 = int(spacer_start_1) - 1
+        genomic_start, genomic_end = genomic_window_interval(spacer_start_0)
+        window = (
+            extract_oriented_window(chrom_seq, genomic_start, genomic_end, int(strand))
+            if chrom_seq is not None
+            else None
+        )
+        if window is None:
+            window = fetch_ensembl_window(
+                str(chrom), genomic_start, genomic_end, int(strand), build
+            )
+            time.sleep(sleep_between)
+        if not window or len(window) != ENDO_CONTEXT_BP:
+            logger.warning(
+                "Window fetch failed for %s (len=%s)",
+                str(key)[:80],
+                0 if not window else len(window),
+            )
+            continue
+        if proto:
+            got = window[ENDO_SPACER_OFFSET : ENDO_SPACER_OFFSET + len(proto)]
+            mismatch = sum(a != b for a, b in zip(got, proto)) + abs(len(got) - len(proto))
+            if mismatch > 2:
+                logger.warning("Cached window spacer mismatch for %s", str(key)[:80])
+                continue
+        locus["spacer_start"] = spacer_start_0 + 1
+        locus["assembly_strand"] = int(strand)
+        locus["window_start"] = genomic_start + 1
+        locus["window_end"] = genomic_end
+        locus["reference_window"] = window
+        locus["reference_spacer_offset"] = ENDO_SPACER_OFFSET
+        attached += 1
+
+    payload["context_bp"] = ENDO_CONTEXT_BP
+    payload["reference_spacer_offset"] = ENDO_SPACER_OFFSET
+    logger.info("Reference windows attached for %s / %s loci", attached, len(loci))
+    return payload
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -320,18 +543,36 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deeppe", action="store_true")
     parser.add_argument("--pridict1-library2", action="store_true")
+    parser.add_argument(
+        "--windows",
+        action="store_true",
+        help="Attach 200 bp reference_window strings to existing JSON (no remap).",
+    )
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args(argv)
-    if not (args.deeppe or args.pridict1_library2 or args.all):
-        parser.error("Pass --deeppe, --pridict1-library2, and/or --all")
+    if not (args.deeppe or args.pridict1_library2 or args.all or args.windows):
+        parser.error("Pass --deeppe, --pridict1-library2, --windows, and/or --all")
+
+    deeppe_path = DATA_ROOT / "raw" / "deeppe" / "deeppe_genomic_loci.json"
+    library2_path = DATA_ROOT / "raw" / "pridict1" / "pridict1_library2_genomic_loci.json"
 
     if args.all or args.deeppe:
-        _write_json(DATA_ROOT / "raw" / "deeppe" / "deeppe_genomic_loci.json", retrieve_deeppe_loci())
+        payload = retrieve_deeppe_loci()
+        payload = attach_reference_windows(payload)
+        _write_json(deeppe_path, payload)
+    elif args.windows and deeppe_path.exists():
+        payload = json.loads(deeppe_path.read_text(encoding="utf-8"))
+        payload = attach_reference_windows(payload)
+        _write_json(deeppe_path, payload)
+
     if args.all or args.pridict1_library2:
-        _write_json(
-            DATA_ROOT / "raw" / "pridict1" / "pridict1_library2_genomic_loci.json",
-            retrieve_pridict1_library2_loci(),
-        )
+        payload = retrieve_pridict1_library2_loci()
+        payload = attach_reference_windows(payload, protospacers=_library2_protospacers())
+        _write_json(library2_path, payload)
+    elif args.windows and library2_path.exists():
+        payload = json.loads(library2_path.read_text(encoding="utf-8"))
+        payload = attach_reference_windows(payload, protospacers=_library2_protospacers())
+        _write_json(library2_path, payload)
     return 0
 
 

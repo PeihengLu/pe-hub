@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, List, Optional
@@ -34,6 +35,21 @@ from pe_db.library import (
     run_seed,
     run_standardize,
 )
+
+
+def _configure_logging() -> None:
+    """Match the FastAPI service so ``pedb init`` shows pipeline INFO on stderr.
+
+    ``./scripts/start-all.sh --force-reexport`` runs this CLI before uvicorn, so
+    without this the default WARNING level hides ``Standardizing …`` lines.
+    """
+    if logging.getLogger().handlers:
+        return
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stderr,
+    )
 
 
 def _payload_to_dataframe(payload: dict[str, Any]) -> pd.DataFrame:
@@ -77,7 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_p = sub.add_parser("export", help="Export raw study files (and optionally standardize)")
     export_p.add_argument("--study", default=None)
-    export_p.add_argument("--force-reexport", action="store_true")
+    export_p.add_argument(
+        "--force-reexport",
+        action="store_true",
+        help="Re-export even if CSVs exist; also re-standardizes unless --no-standardize",
+    )
     export_p.add_argument("--no-standardize", action="store_true")
     export_p.add_argument("--force-standardize", action="store_true")
     export_p.set_defaults(func=cmd_export)
@@ -307,6 +327,7 @@ def cmd_plugins_reload(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    _configure_logging()
     parser = build_parser()
     try:
         import argcomplete

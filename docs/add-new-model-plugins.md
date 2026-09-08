@@ -265,7 +265,7 @@ three built-ins.
 
 ### 7.2 PE Database
 
-- `**app/format_registry.py`** (new):
+- `**pe_db/format_registry.py`** (new):
 
 ```python
 from typing import Callable
@@ -455,9 +455,9 @@ plugin through the API.
 
 **pe-db (`services/pe-db`)**
 
-- `app/format_registry.py` (new).
-- `app/converter.py` — use registry dispatch (replace `:123` if/elif).
-- `app/formatted_cache.py` — derive formats from registry.
+- `pe_db/format_registry.py` (new).
+- `pe_db/converter.py` — use registry dispatch (replace `:123` if/elif).
+- `pe_db/formatted_cache.py` — derive formats from registry.
 - `pe_ensemble/main.py` — drop `Literal` on `/api/filter`; runtime validation;
 add `POST /api/plugins/reload`.
 - `pe_ensemble/plugin_loader.py` (new) — startup scan + `register_format`.

@@ -20,8 +20,8 @@ FORMATTED_CACHE_REVISIONS: dict[str, int] = {
     # All formats bumped together: unmeasured efficiency labels are no longer
     # coerced to 0.0, so caches built before that change hold fabricated zeros.
     "deepprime": 4,  # left-pad WT74 when spacer starts before offset 4
-    "pridict": 5,  # OptiPrime RTT bounded by homology_arm
-    "pridict2": 5,
+    "pridict": 6,  # crop extra 5' context so spacer starts at author offset 10
+    "pridict2": 6,
     "oped": 5,  # left-pad 47-mer when spacer starts before offset 4; no recenter
     "optiprime": 4,  # 5G genomic 20-mer locate; RTT from homology_arm
 }

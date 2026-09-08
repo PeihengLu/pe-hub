@@ -431,7 +431,9 @@ Contributed edit-level tables should use the shared standardized columns (parque
 
 ### Endogenous extension (chromosomal edits)
 
-If `target_context` is `endogenous` (edits measured at native chromosomal locations), also include these columns. Values may be null when a field is unknown; the columns themselves should still be present.
+If `target_context` is `endogenous` (edits measured at native chromosomal locations), the standardized row is still a **full PE-core record**: wild-type / mutant sequences, edit flags, and all geometry columns. Sequences sit on a **200 bp target-strand genomic window** with the 20-nt protospacer at offset 90 (90 bp of 5' context + spacer + 90 bp of 3' context), so later conversion can crop DeepPrime's 74-mer, OPED's 47-mer, or PRIDICT's author frame without inventing 3' DNA.
+
+Also include these coordinate columns. Values may be null when a field is unknown; the columns themselves should still be present.
 
 | Column                        | Type | Description                                                                       |
 | ----------------------------- | ---- | --------------------------------------------------------------------------------- |
@@ -443,7 +445,9 @@ If `target_context` is `endogenous` (edits measured at native chromosomal locati
 | `endo_coord_source`         | str  | Provenance string for the coordinates                                             |
 | `endo_locus_id`             | str  | Optional convenience label (gene, barcode, site name, …)                         |
 
-Gene / chromatin / expression annotations are **not** stored here; they can be recovered later from coordinates plus cell-line context.
+Gene / chromatin / expression annotations are **not** stored here; they can be recovered later from coordinates plus cell-line context. Cached 200 bp `reference_window` strings live in the study loci JSON under `datasets/raw/` and are applied at standardize time (see `retrieve_endo_genomic_loci.py`). Rows without a cached window keep their author PE-core sequences.
+
+Partial sheets (`pridict1/endogenous`, `pridict2/trip-analysis`) still lack recoverable WT/Mut sequences, so they stay filter-only until those designs can be reconstructed.
 
 ## Citation
 

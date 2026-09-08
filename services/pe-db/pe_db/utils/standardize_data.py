@@ -15,6 +15,7 @@ from ..pipeline.schema import (
     endo_standard_columns,
     standard_pe_data_columns,
 )
+from ..pipeline.endo import ENDO_SPACER_OFFSET
 from ..studies.minsepie import (
     _MINSEPIE_WIDE_FLANK_BP,
     _build_minsepie_core_target_sequences,
@@ -32,6 +33,7 @@ __all__ = [
     "iter_minsepie_consolidated_datasheet_specs",
     "standardize_exported_data",
     "standardize_pe_data",
+    "ENDO_SPACER_OFFSET",
     "_MINSEPIE_WIDE_FLANK_BP",
     "_build_minsepie_core_target_sequences",
     "_build_standardized_output_df",

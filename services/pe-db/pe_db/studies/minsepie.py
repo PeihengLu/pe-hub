@@ -27,6 +27,11 @@ from ..catalog.scaffolds import (
 )
 from ..catalog.studies import get_dataset_record
 from ..config import get_settings
+from ..pipeline.endo import (
+    ENDO_SPACER_OFFSET,
+    MINSEPIE_GENOMIC_LOCI_PATH,
+    slice_reference_window_to_endo_context,
+)
 from ..pipeline.names import _normalize_name
 from ..pipeline.registry import StudyPipeline, register_study
 from ..pipeline.schema import (
@@ -102,13 +107,13 @@ _MINSEPIE_PIGGYBAC_EXPERIMENTS: frozenset[str] = frozenset({
     "HEK3_HAP1dMLH1_PBPE_7",
 })
 
-_MINSEPIE_GENOMIC_LOCI_PATH = DATA_ROOT / "raw" / "minsepie" / "minsepie_genomic_loci.json"
-_MINSEPIE_WIDE_FLANK_BP = 100
+_MINSEPIE_GENOMIC_LOCI_PATH = MINSEPIE_GENOMIC_LOCI_PATH
+_MINSEPIE_WIDE_FLANK_BP = ENDO_SPACER_OFFSET
 
 
 @lru_cache(maxsize=1)
 def _load_minsepie_genomic_loci() -> dict[str, Any]:
-    """Load hg38 spacer anchors and cached 220 bp reference windows (100 bp flanks)."""
+    """Load hg38 spacer anchors and cached reference windows (sliced to 200/90 at use)."""
     if not _MINSEPIE_GENOMIC_LOCI_PATH.exists():
         raise FileNotFoundError(
             f"Missing MinSePIE genomic loci metadata: {_MINSEPIE_GENOMIC_LOCI_PATH}"
@@ -130,7 +135,7 @@ def _minsepie_reference_window_for_target(target_key: str) -> Optional[tuple[str
         return None
     window = str(locus["reference_window"]).upper()
     spacer_offset = int(locus["spacer_offset"])
-    return window, spacer_offset
+    return slice_reference_window_to_endo_context(window, spacer_offset)
 
 
 def _build_minsepie_core_target_sequences(
@@ -160,7 +165,7 @@ def _build_minsepie_wide_from_reference(
     ins_position: int,
 ) -> tuple[str, str, int, int]:
     """
-    Build WT/Mut on the target strand using a cached hg38 window (100 bp flanks).
+    Build WT/Mut on the target strand using a cached hg38 window (90 bp flanks).
 
     The window is oriented so ``reference_window[spacer_offset:spacer_offset+20]``
     equals the ST6 spacer. Insertions use the same nick / HA placement rules as
@@ -434,13 +439,6 @@ def _minsepie_endo_coordinates(experiments: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows, index=experiments.index)
 
 
-_DEEPPE_GENOMIC_LOCI_PATH = DATA_ROOT / "raw" / "deeppe" / "deeppe_genomic_loci.json"
-_PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH = (
-    DATA_ROOT / "raw" / "pridict1" / "pridict1_library2_genomic_loci.json"
-)
-
-
-
 def _standardize_minsepie(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
     """
@@ -452,13 +450,13 @@ def _standardize_minsepie(
     target-strand WT/Mut sequences and derives positional fields.
 
     When hg38 coordinates are known (see ``minsepie_genomic_loci.json``), each
-    sequence is a 220 bp window with 100 bp genomic flanks on both sides of the
+    sequence is a 200 bp window with 90 bp genomic flanks on both sides of the
     20 bp protospacer. Targets without a mapped locus fall back to pegRNA-only
-    reconstruction padded with 100 Ns per flank.
+    reconstruction padded with 90 Ns per flank.
 
     Coordinate system (all positions are 0-indexed, left-inclusive right-exclusive):
       - The SpCas9 nick sits between protospacer positions 17 and 18; we anchor
-        the protospacer at ``spacer_offset`` (100 for hg38-backed rows).
+        the protospacer at ``spacer_offset`` (90 for hg38-backed rows).
       - The ST6 ``ha`` column is stored in pegRNA (RTT) orientation. Where the
         insertion is not at +1, it contains a literal "-Ins-" marker that
         splits ``ha`` into (HA_left, HA_right) on the pegRNA. Relative to the

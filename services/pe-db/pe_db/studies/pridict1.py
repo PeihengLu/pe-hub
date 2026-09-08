@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-from difflib import SequenceMatcher
-from functools import lru_cache
-from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -27,6 +23,12 @@ from ..catalog.scaffolds import (
 )
 from ..catalog.studies import get_dataset_record
 from ..config import get_settings
+from ..pipeline.endo import (
+    endo_coordinate_frame_from_loci,
+    expand_endogenous_frame,
+    load_pridict1_library2_genomic_loci,
+    reference_windows_for_keys,
+)
 from ..pipeline.names import _normalize_name
 from ..pipeline.registry import StudyPipeline, register_study
 from ..pipeline.schema import (
@@ -248,50 +250,7 @@ def _export_pridict1_endogenous_datasheets() -> None:
 
 def _load_pridict1_library2_genomic_loci() -> dict[str, Any]:
     """Load hg38/mm39 anchors for PRIDICT1 library2-invivo Names."""
-    if not _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.exists():
-        raise FileNotFoundError(
-            "Missing PRIDICT1 library2 genomic loci metadata: "
-            f"{_PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH}"
-        )
-    with _PRIDICT1_LIBRARY2_GENOMIC_LOCI_PATH.open(encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def _deeppe_endo_coordinates(wt_sequences: pd.Series) -> pd.DataFrame:
-    """Map DeepPE endogenous wide-target sequences to hg38 protospacer coordinates."""
-    meta = _load_deeppe_genomic_loci()
-    loci = meta.get("loci", {})
-    rows: list[dict[str, Any]] = []
-    for seq in wt_sequences.astype(str).str.upper().str.replace("U", "T", regex=False):
-        locus = loci.get(seq)
-        if not locus or "spacer_start" not in locus:
-            rows.append(
-                {
-                    "endo_genome_build": pd.NA,
-                    "endo_chr": pd.NA,
-                    "endo_start": pd.NA,
-                    "endo_end": pd.NA,
-                    "endo_strand": pd.NA,
-                    "endo_coord_ref": pd.NA,
-                    "endo_coord_source": pd.NA,
-                    "endo_locus_id": pd.NA,
-                }
-            )
-            continue
-        spacer_start_0 = int(locus["spacer_start"]) - 1
-        rows.append(
-            {
-                "endo_genome_build": "hg38",
-                "endo_chr": str(locus["chrom"]),
-                "endo_start": spacer_start_0,
-                "endo_end": spacer_start_0 + 20,
-                "endo_strand": int(locus["assembly_strand"]),
-                "endo_coord_ref": "protospacer",
-                "endo_coord_source": "deeppe_genomic_loci.json",
-                "endo_locus_id": f"{locus['chrom']}:{locus['spacer_start']}",
-            }
-        )
-    return pd.DataFrame(rows, index=wt_sequences.index)
+    return load_pridict1_library2_genomic_loci()
 
 
 def _pridict1_library2_endo_coordinates(
@@ -299,67 +258,12 @@ def _pridict1_library2_endo_coordinates(
     genes: pd.Series,
 ) -> pd.DataFrame:
     """Map PRIDICT1 library2-invivo Name values to curated genomic coordinates."""
-    meta = _load_pridict1_library2_genomic_loci()
-    loci = meta.get("loci", {})
-    rows: list[dict[str, Any]] = []
-    for name, gene in zip(names.astype(str), genes.astype(str)):
-        locus = loci.get(name)
-        if not locus:
-            rows.append(
-                {
-                    "endo_genome_build": pd.NA,
-                    "endo_chr": pd.NA,
-                    "endo_start": pd.NA,
-                    "endo_end": pd.NA,
-                    "endo_strand": pd.NA,
-                    "endo_coord_ref": pd.NA,
-                    "endo_coord_source": pd.NA,
-                    "endo_locus_id": gene if gene and gene != "nan" else name,
-                }
-            )
-            continue
-        build = str(locus.get("genome_build") or "hg38")
-        chrom = str(locus["chrom"])
-        strand = locus.get("assembly_strand")
-        try:
-            strand_val: Any = int(strand) if strand is not None else pd.NA
-        except (TypeError, ValueError):
-            strand_val = pd.NA
-        coord_ref = str(locus.get("coord_ref") or "variant")
-        if coord_ref == "protospacer" and "spacer_start" in locus:
-            start_0 = int(locus["spacer_start"]) - 1
-            end_0 = start_0 + 20
-        elif "variant_start" in locus and "variant_end" in locus:
-            # JSON stores 1-based inclusive variant coords from Ensembl VEP.
-            start_0 = int(locus["variant_start"]) - 1
-            end_0 = int(locus["variant_end"])
-        else:
-            rows.append(
-                {
-                    "endo_genome_build": pd.NA,
-                    "endo_chr": pd.NA,
-                    "endo_start": pd.NA,
-                    "endo_end": pd.NA,
-                    "endo_strand": pd.NA,
-                    "endo_coord_ref": pd.NA,
-                    "endo_coord_source": pd.NA,
-                    "endo_locus_id": gene if gene and gene != "nan" else name,
-                }
-            )
-            continue
-        rows.append(
-            {
-                "endo_genome_build": build,
-                "endo_chr": chrom,
-                "endo_start": start_0,
-                "endo_end": end_0,
-                "endo_strand": strand_val,
-                "endo_coord_ref": coord_ref,
-                "endo_coord_source": "pridict1_library2_genomic_loci.json",
-                "endo_locus_id": gene if gene and gene != "nan" else name,
-            }
-        )
-    return pd.DataFrame(rows, index=names.index)
+    return endo_coordinate_frame_from_loci(
+        names.astype(str),
+        _load_pridict1_library2_genomic_loci().get("loci", {}),
+        source="pridict1_library2_genomic_loci.json",
+        fallback_locus_id=genes.astype(str),
+    )
 
 def _standardize_pridict1(
         data: Optional[pd.DataFrame], cell_line: str, pe_system: str, dataset: str) -> None:
@@ -513,6 +417,10 @@ def _standardize_pridict1(
             output_df,
             _pridict1_library2_endo_coordinates(df["Name"], df["Gene"]),
         )
+        loci = _load_pridict1_library2_genomic_loci().get("loci", {})
+        windows = reference_windows_for_keys(loci, df["Name"].astype(str))
+        windows.index = output_df.index
+        output_df = expand_endogenous_frame(output_df, windows)
 
     output_path = DATA_ROOT / 'standardized' / 'pridict1' / dataset / f"{output_name}"
     output_path.parent.mkdir(parents=True, exist_ok=True)
