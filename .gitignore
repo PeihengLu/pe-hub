@@ -24,3 +24,6 @@ scripts/cluster/oxford-arc/env.sh
 
 # Eval / experiment outputs (DVC-tracked; see results.dvc)
 /results
+
+# Slurm output
+/slurm_output
