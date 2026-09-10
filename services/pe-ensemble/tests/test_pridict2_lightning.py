@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import torch
+from torch.nn import LogSoftmax
 
 from pe_ensemble.models.pridict2_wrapper import (
     build_pernn_distribution_model,
     build_pridict_loss,
     predictions_from_decoder_output,
+    regression_training_targets,
+    uses_distribution_decoder,
     _PRIDICT2LightningModule,
 )
+from pridict2.pridict.pridictv2.model import MLPDecoder, MLPDecoderDistribution
 
 
 def test_build_pridict_loss_kld():
@@ -16,10 +20,38 @@ def test_build_pridict_loss_kld():
     assert isinstance(loss, torch.nn.KLDivLoss)
 
 
-def test_predictions_from_decoder_output_mse_uses_logits_directly():
-    logits = torch.tensor([[10.0, 20.0]])
+def test_mse_uses_softplus_decoder_kld_uses_logsoftmax():
+    mse = build_pernn_distribution_model(
+        {"embed_dim": 16},
+        seqlevel_featdim=3,
+        num_outcomes=1,
+        device=torch.device("cpu"),
+        loss_func="MSEloss",
+    )
+    kld = build_pernn_distribution_model(
+        {"embed_dim": 16},
+        seqlevel_featdim=3,
+        num_outcomes=3,
+        device=torch.device("cpu"),
+        loss_func="KLDloss",
+    )
+    assert isinstance(mse.decoder, MLPDecoder)
+    assert isinstance(kld.decoder, MLPDecoderDistribution)
+    assert not uses_distribution_decoder("MSEloss")
+    assert uses_distribution_decoder("KLDloss")
+
+
+def test_one_outcome_logsoftmax_is_identically_zero():
+    """A 1-class LogSoftmax has no gradient — the reason MSE cannot use that head."""
+    logits = torch.tensor([[3.0], [9.0], [-1.0]])
+    assert torch.allclose(LogSoftmax(dim=-1)(logits), torch.zeros_like(logits))
+
+
+def test_predictions_from_decoder_output_mse_inverts_log1p_percent_scale():
+    y = torch.tensor([[0.0], [0.25], [1.0]])
+    logits = regression_training_targets(y)
     pred = predictions_from_decoder_output(logits, "MSEloss")
-    assert torch.allclose(pred, logits)
+    assert torch.allclose(pred, y)
 
 
 def test_predictions_from_decoder_output_kld_applies_exp():
