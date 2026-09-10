@@ -96,7 +96,7 @@ def test_oped_vendor_weights_load_into_model():
 
 
 def test_oped_infer_architecture_pins_nhead_8():
-    """Vendor load_model used nhead=64; weight shapes ignore nhead — pin 8."""
+    """Encoder-only checkpoints keep the PE-hub training default nhead=8."""
     from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
 
     state = {
@@ -106,7 +106,26 @@ def test_oped_infer_architecture_pins_nhead_8():
         "fully_connected_layers.0.weight": torch.zeros(1, 64),
     }
     arch = OPEDModelWrapper._infer_architecture_from_state_dict(state)
+    assert arch["kind"] == "encoder"
     assert arch["kwargs"]["nhead"] == 8
+    assert arch["kwargs"]["embedding_size"] == 64
+
+
+def test_oped_infer_architecture_vendor_decoder_uses_nhead_64():
+    """Vendor merged order-3 decoder matches load_model nhead=64 (Liu Fig. 2a)."""
+    from pe_ensemble.models.oped_wrapper import OPEDModelWrapper
+
+    state = {
+        "encoder_decoder.0.layers.0.linear1.weight": torch.zeros(2048, 64),
+        "embedding.0.weight": torch.zeros(5, 64),
+        "embedding.1.weight": torch.zeros(17, 64),
+        "embedding.2.weight": torch.zeros(65, 64),
+        "fully_connected_layers.0.weight": torch.zeros(1024, 64),
+        "fully_connected_layers.3.weight": torch.zeros(1, 1024),
+    }
+    arch = OPEDModelWrapper._infer_architecture_from_state_dict(state)
+    assert arch["kind"] == "encoder_decoder"
+    assert arch["kwargs"]["nhead"] == 64
     assert arch["kwargs"]["embedding_size"] == 64
 
 

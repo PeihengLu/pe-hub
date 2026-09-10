@@ -207,7 +207,7 @@ def test_optiprime_lib_mmr_leak_is_author_fill():
     assert row["leak_reason"] == "no_original_test_split"
 
 
-def test_optiprime_lib_mmr_pe4_leak_is_not_author_fill():
+def test_optiprime_lib_mmr_pe4_leak_is_author_fill():
     row = annotate_row_with_paper(
         flatten_row(
             {
@@ -226,8 +226,60 @@ def test_optiprime_lib_mmr_pe4_leak_is_not_author_fill():
             }
         )
     )
-    assert row["value_source"] == "leak_unfilled"
-    assert row["pearson_plot"] is None
+    assert row["value_source"] == "author_fill"
+    assert row["plot_hatch"] == "///"
+    assert row["pearson_plot"] == 0.723
+    assert row["paper_id"] == "optiprime-lib-mmr-hek-pe4"
+
+
+def test_optiprime_lib_mmr_hela_pe2_uses_fig4b():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "optiprime-lib-mmr__hela__pe2",
+                "study": "optiprime",
+                "datasets": ["lib-mmr"],
+                "cell_line": "hela",
+                "pe_system": "pe2",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 3766,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "author_fill"
+    assert row["pearson_plot"] == 0.760
+    assert row["spearman_plot"] == 0.798
+    assert row["paper_id"] == "optiprime-lib-mmr-hela"
+
+
+def test_optiprime_lib_mmr_hela_pe4_uses_fig4c():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "optiprime",
+                "weights": "base",
+                "benchmark_name": "optiprime-lib-mmr__hela__pe4",
+                "study": "optiprime",
+                "datasets": ["lib-mmr"],
+                "cell_line": "hela",
+                "pe_system": "pe4",
+                "status": "error",
+                "error_type": "data_leak",
+                "leak_reason": "no_original_test_split",
+                "n_samples": 3766,
+                "metrics": None,
+            }
+        )
+    )
+    assert row["value_source"] == "author_fill"
+    assert row["pearson_plot"] == 0.803
+    assert row["spearman_plot"] == 0.810
+    assert row["paper_id"] == "optiprime-lib-mmr-hela-pe4"
 
 
 def test_optiprime_library_diverse_leak_is_not_filled_with_hsu_number():
@@ -344,6 +396,27 @@ def test_oped_deeppe_hek_keeps_measured():
     assert abs(row["pearson_plot"] - 0.722) < 1e-9
     assert row["paper_pearson"] == 0.769
     assert row["paper_id"] == "oped-deeppe-ht-test"
+
+
+def test_oped_deeppe_ht_test_only_is_close_match():
+    row = annotate_row_with_paper(
+        flatten_row(
+            {
+                "model": "oped",
+                "weights": "base",
+                "benchmark_name": "deeppe-ht-test",
+                "study": "deeppe",
+                "datasets": ["deeppe-ht"],
+                "cell_line": "hek293t",
+                "status": "ok",
+                "n_samples": 4457,
+                "metrics": {"pearson": 0.769, "spearman": 0.798},
+            }
+        )
+    )
+    assert row["paper_id"] == "oped-deeppe-ht-test-only"
+    assert row["paper_protocol_match"] == "close"
+    assert row["paper_pearson"] == 0.769
 
 
 def test_oped_deeppe_hct_leak_is_author_fill():

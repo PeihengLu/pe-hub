@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Publication figures from ``paper_comparison.csv``.
+"""Publication figures from ``paper_comparison.csv`` (vendor eval or scratch-benchmark).
 
 Usage:
   python scripts/experiments/plot_base_model_eval.py \\
     results/base_model_eval/<RUN_ID>/paper_comparison.csv
+  python scripts/experiments/plot_base_model_eval.py \\
+    scripts/experiments/scratch-benchmark/results/<RUN_ID>
 """
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
+from collections import defaultdict
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -152,8 +157,82 @@ FAMILY_GAP_AFTER = {
     "OptiPrime Lib-CV HeLa PE4": 0.45,
 }
 
+SCRATCH_MODEL_ORDER = [
+    ("deepprime", "", "DeepPrime"),
+    ("oped", "", "OPED"),
+    ("pridict2", "", "PRIDICT2"),
+]
+SCRATCH_BENCH_META = [
+    ("pridict1-library1", "Library 1", "PRIDICT1"),
+    ("pridict2-library-diverse", "Diverse", "PRIDICT2 Library-Diverse"),
+    ("deepprime-clinvar", "ClinVar", "DeepPrime"),
+    ("deeppe-pooled", "Pooled", "DeepPE"),
+    ("minsepie-insert-pooled", "Insert", "MinSePIE"),
+    ("optiprime-lib-mmr", "Lib-MMR", "OptiPrime Lib-MMR"),
+    ("optiprime-lib-cv", "Lib-CV", "OptiPrime Lib-CV"),
+]
+SCRATCH_FAMILY_GAP_AFTER = {
+    "PRIDICT1 Library 1": 0.35,
+    "DeepPrime ClinVar": 0.35,
+    "MinSePIE Insert": 0.35,
+}
+SCRATCH_MODEL_COLORS = {
+    "DeepPrime": SUMMARY_ORANGE,
+    "OPED": SUMMARY_BLUE,
+    "PRIDICT2": SUMMARY_GREEN,
+}
 
-def cell_fill_kind(row: Optional[dict[str, Any]]) -> str:
+
+@dataclass(frozen=True)
+class PlotLayout:
+    name: str
+    model_order: list[tuple[str, str, str]]
+    bench_meta: list[tuple[str, str, str]]
+    heatmap_panels: list[list[tuple[str, str, str]]]
+    model_colors: dict[str, str]
+    family_gap_after: dict[str, float]
+    value_column: str
+    bar_title: str
+    cbar_label: str
+    bar_width: float = 0.14
+
+    @property
+    def bench_order(self) -> list[tuple[str, str]]:
+        return [
+            (key, f"{study} {label}" if study not in label else label)
+            for key, label, study in self.bench_meta
+        ]
+
+
+BASE_LAYOUT = PlotLayout(
+    name="base",
+    model_order=MODEL_ORDER,
+    bench_meta=BENCH_META,
+    heatmap_panels=HEATMAP_PANELS,
+    model_colors=MODEL_COLORS,
+    family_gap_after=FAMILY_GAP_AFTER,
+    value_column="pearson_plot",
+    bar_title="Base-model Pearson r across PE-hub benchmarks",
+    cbar_label="Pearson r",
+)
+SCRATCH_LAYOUT = PlotLayout(
+    name="scratch",
+    model_order=SCRATCH_MODEL_ORDER,
+    bench_meta=SCRATCH_BENCH_META,
+    heatmap_panels=[SCRATCH_BENCH_META],
+    model_colors=SCRATCH_MODEL_COLORS,
+    family_gap_after=SCRATCH_FAMILY_GAP_AFTER,
+    value_column="spearman_plot",
+    bar_title="From-scratch holdout_3 test Spearman R",
+    cbar_label="Spearman R",
+    bar_width=0.22,
+)
+
+
+def cell_fill_kind(
+    row: Optional[dict[str, Any]],
+    value_column: str = "pearson_plot",
+) -> str:
     """How to draw one model × benchmark cell."""
     if row is None:
         return FILL_MISSING
@@ -161,13 +240,14 @@ def cell_fill_kind(row: Optional[dict[str, Any]]) -> str:
         return FILL_AUTHOR
     if row.get("value_source") == "leak_unfilled":
         return FILL_MISSING
-    if _f(row.get("pearson_plot")) is None:
+    if _f(row.get(value_column)) is None:
         return FILL_MISSING
     return FILL_MEASURED
 
 
 CLOSE_MATCH_ORDER = [
     ("deepprime", "", "deepprime-clinvar", "DeepPrime\nClinVar"),
+    ("oped", "", "deeppe-ht-test", "OPED\nDeepPE HT-test"),
     ("pridict2", "HEK", "pridict2-library-diverse__hek293t", "PRIDICT2 HEK\nDiverse HEK"),
     ("pridict2", "K562", "pridict2-library-diverse__k562", "PRIDICT2 K562\nDiverse K562"),
 ]
@@ -188,6 +268,101 @@ def _f(value: Any) -> Optional[float]:
 def load_comparison(path: Path) -> list[dict[str, Any]]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def _mean(values: list[float]) -> Optional[float]:
+    return sum(values) / len(values) if values else None
+
+
+def _scratch_bench(row: dict[str, Any]) -> str:
+    name = str(row.get("dataset_name") or row.get("benchmark_name") or "")
+    parts = name.split("__")
+    return parts[-1] if parts else name
+
+
+def load_scratch_cell_rows(run_dir: Path) -> list[dict[str, Any]]:
+    """Load per-seed JSONL under a scratch-benchmark run directory."""
+    by_key: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
+    for path in sorted(run_dir.glob("*/results.jsonl")):
+        if path.parent == run_dir:
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            key = (row.get("model"), row.get("dataset_name"), row.get("repeat_id"))
+            by_key[key] = row
+    return list(by_key.values())
+
+
+def scratch_to_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mean metrics per model × pooled benchmark in paper_comparison.csv shape."""
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[(str(row.get("model") or ""), _scratch_bench(row))].append(row)
+    out: list[dict[str, Any]] = []
+    for (model, bench), items in sorted(groups.items()):
+        spears = [v for row in items if (v := _f(row.get("test_spearman"))) is not None]
+        pears = [v for row in items if (v := _f(row.get("test_pearson"))) is not None]
+        n_samples = [v for row in items if (v := _f(row.get("n_samples"))) is not None]
+        spearman_mean = _mean(spears)
+        pearson_mean = _mean(pears)
+        plottable = spearman_mean is not None or pearson_mean is not None
+        out.append(
+            {
+                "model": model,
+                "pridict2_head": "",
+                "benchmark_name": bench,
+                "cell_line": "",
+                "status": "ok" if any(row.get("status") == "ok" for row in items) else "missing",
+                "value_source": "measured" if plottable else "leak_unfilled",
+                "plot_marker": "measured" if plottable else "",
+                "plot_hatch": "",
+                "pearson_plot": pearson_mean if pearson_mean is not None else "",
+                "spearman_plot": spearman_mean if spearman_mean is not None else "",
+                "pearson_measured": pearson_mean if pearson_mean is not None else "",
+                "spearman_measured": spearman_mean if spearman_mean is not None else "",
+                "paper_pearson": "",
+                "paper_spearman": "",
+                "pearson_delta": "",
+                "spearman_delta": "",
+                "paper_citation": "",
+                "paper_protocol_match": "",
+                "n_samples": _mean(n_samples) if n_samples else "",
+                "n_ok": len(items),
+                "n_spearman": len(spears),
+                "leak_reason": "" if plottable else "undefined_correlation",
+            }
+        )
+    return out
+
+
+def write_comparison(path: Path, rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        raise SystemExit(f"Error: no comparison rows to write to {path}")
+    fields = list(rows[0].keys())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def infer_layout(rows: list[dict[str, Any]]) -> PlotLayout:
+    benches = {str(row.get("benchmark_name") or "") for row in rows}
+    if any(
+        marker in bench
+        for bench in benches
+        for marker in ("__hek293t", "__hela", "__k562", "__mda")
+    ):
+        return BASE_LAYOUT
+    scratch_keys = {meta[0] for meta in SCRATCH_BENCH_META}
+    if benches & scratch_keys:
+        return SCRATCH_LAYOUT
+    heads = {str(row.get("pridict2_head") or "") for row in rows}
+    if "HEK" in heads or "K562" in heads:
+        return BASE_LAYOUT
+    return BASE_LAYOUT
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, str, str]:
@@ -228,42 +403,47 @@ def apply_style() -> None:
     )
 
 
-def plot_benchmark_bars(rows: list[dict[str, Any]], out_path: Path) -> Path:
+def plot_benchmark_bars(
+    rows: list[dict[str, Any]],
+    out_path: Path,
+    layout: PlotLayout = BASE_LAYOUT,
+) -> Path:
     """Double-column grouped bars: model color + fill pattern for data source."""
     by_key = index_rows(rows)
-    n_models = len(MODEL_ORDER)
-    bar_width = 0.14
+    n_models = len(layout.model_order)
+    bar_width = layout.bar_width
     bar_pad = 0.018
     cluster = n_models * bar_width + (n_models - 1) * bar_pad
+    bench_order = layout.bench_order
 
     centers: list[float] = []
     labels: list[str] = []
     cursor = 0.0
-    for bench_key, bench_label in BENCH_ORDER:
+    for bench_key, bench_label in bench_order:
         centers.append(cursor)
         labels.append(bench_label)
-        cursor += 1.0 + FAMILY_GAP_AFTER.get(bench_label, 0.0)
+        cursor += 1.0 + layout.family_gap_after.get(bench_label, 0.0)
 
     fig, ax = plt.subplots(figsize=(9.6, 5.05))
     missing_stub_half = 0.045
 
-    for model_index, (model, head, model_label) in enumerate(MODEL_ORDER):
-        color = MODEL_COLORS[model_label]
+    for model_index, (model, head, model_label) in enumerate(layout.model_order):
+        color = layout.model_colors[model_label]
         offset = (model_index - (n_models - 1) / 2) * (bar_width + bar_pad)
         xs: list[float] = []
         heights: list[float] = []
         bottoms: list[float] = []
         kinds: list[str] = []
-        for center, (bench_key, _label) in zip(centers, BENCH_ORDER):
+        for center, (bench_key, _label) in zip(centers, bench_order):
             row = by_key.get((model, head, bench_key))
-            kind = cell_fill_kind(row)
+            kind = cell_fill_kind(row, layout.value_column)
             xs.append(center + offset)
             kinds.append(kind)
             if kind == FILL_MISSING:
                 heights.append(2 * missing_stub_half)
                 bottoms.append(-missing_stub_half)
             else:
-                value = _f(row.get("pearson_plot")) if row else None
+                value = _f(row.get(layout.value_column)) if row else None
                 heights.append(float(value) if value is not None else 0.0)
                 bottoms.append(0.0)
 
@@ -318,7 +498,7 @@ def plot_benchmark_bars(rows: list[dict[str, Any]], out_path: Path) -> Path:
             )
 
     ax.axhline(0.0, color="#666666", linewidth=0.7, zorder=1)
-    ax.set_ylabel("Pearson r")
+    ax.set_ylabel(layout.cbar_label)
     ax.set_ylim(-0.65, 1.02)
     ax.set_xlim(centers[0] - cluster / 2 - 0.15, centers[-1] + cluster / 2 + 0.15)
     ax.set_xticks(centers)
@@ -326,7 +506,7 @@ def plot_benchmark_bars(rows: list[dict[str, Any]], out_path: Path) -> Path:
     ax.yaxis.grid(True, color="#E8E8E8", linewidth=0.7)
     ax.set_axisbelow(True)
     ax.set_title(
-        "Base-model Pearson r across PE-hub benchmarks",
+        layout.bar_title,
         loc="left",
         fontsize=11,
         pad=8,
@@ -334,30 +514,35 @@ def plot_benchmark_bars(rows: list[dict[str, Any]], out_path: Path) -> Path:
     ax.tick_params(length=3)
 
     model_handles = [
-        Patch(facecolor=MODEL_COLORS[label], edgecolor=MODEL_COLORS[label], label=label)
-        for _model, _head, label in MODEL_ORDER
+        Patch(facecolor=layout.model_colors[label], edgecolor=layout.model_colors[label], label=label)
+        for _model, _head, label in layout.model_order
     ]
     fill_handles = [
         Patch(facecolor="#555555", edgecolor="#555555", label="PE-hub measured"),
-        Patch(
-            facecolor="white",
-            edgecolor="#555555",
-            hatch="///",
-            label="Author-reported fill",
-        ),
+    ]
+    if layout.name == "base":
+        fill_handles.append(
+            Patch(
+                facecolor="white",
+                edgecolor="#555555",
+                hatch="///",
+                label="Author-reported fill",
+            )
+        )
+    fill_handles.append(
         Patch(
             facecolor="white",
             edgecolor="#8A8A8A",
             hatch="xxx",
             linestyle="dotted",
-            label="Not scored (leak)",
-        ),
-    ]
+            label="Not scored",
+        )
+    )
     legend_models = ax.legend(
         handles=model_handles,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.28),
-        ncol=5,
+        ncol=min(5, n_models),
         frameon=False,
         fontsize=8,
         handlelength=1.1,
@@ -405,17 +590,18 @@ def _study_spans(panel: list[tuple[str, str, str]]) -> list[tuple[int, int, str]
 def _heatmap_values(
     by_key: dict[tuple[str, str, str], dict[str, Any]],
     panel: list[tuple[str, str, str]],
+    layout: PlotLayout = BASE_LAYOUT,
 ) -> tuple[np.ndarray, np.ndarray]:
-    n_models = len(MODEL_ORDER)
+    n_models = len(layout.model_order)
     n_benches = len(panel)
     values = np.full((n_models, n_benches), np.nan)
     hatch = np.zeros((n_models, n_benches), dtype=bool)
-    for i, (model, head, _label) in enumerate(MODEL_ORDER):
+    for i, (model, head, _label) in enumerate(layout.model_order):
         for j, (bench, _blabel, _study) in enumerate(panel):
             row = by_key.get((model, head, bench))
             if row is None:
                 continue
-            plot_r = _f(row.get("pearson_plot"))
+            plot_r = _f(row.get(layout.value_column))
             if plot_r is None:
                 continue
             values[i, j] = plot_r
@@ -448,13 +634,14 @@ def _draw_heatmap_panel(
     norm: Any,
     max_cols: int,
     show_ylabel: bool,
+    model_order: list[tuple[str, str, str]] = MODEL_ORDER,
 ) -> Any:
     n_models, n_benches = values.shape
     im = ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
     ax.set_xticks(range(n_benches))
     ax.set_xticklabels([label for _key, label, _study in panel], rotation=32, ha="right")
     ax.set_yticks(range(n_models))
-    ax.set_yticklabels([label for _m, _h, label in MODEL_ORDER] if show_ylabel else [])
+    ax.set_yticklabels([label for _m, _h, label in model_order] if show_ylabel else [])
     ax.tick_params(length=0, labelsize=10, colors="#555555")
     ax.set_xticks(np.arange(-0.5, n_benches, 1), minor=True)
     ax.set_yticks(np.arange(-0.5, n_models, 1), minor=True)
@@ -543,32 +730,50 @@ def _draw_heatmap_panel(
     return im
 
 
-def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
+def plot_heatmap(
+    rows: list[dict[str, Any]],
+    out_path: Path,
+    layout: PlotLayout = BASE_LAYOUT,
+) -> Path:
     by_key = index_rows(rows)
-    matrices = [_heatmap_values(by_key, panel) for panel in HEATMAP_PANELS]
-    finite = np.concatenate([values[np.isfinite(values)] for values, _hatch in matrices if np.isfinite(values).any()])
+    panels = layout.heatmap_panels
+    matrices = [_heatmap_values(by_key, panel, layout) for panel in panels]
+    finite = np.concatenate(
+        [values[np.isfinite(values)] for values, _hatch in matrices if np.isfinite(values).any()]
+    )
     data_max = float(np.nanmax(finite)) if finite.size else 1.0
     data_min = float(np.nanmin(finite)) if finite.size else -0.2
     vmin = min(-0.2, np.floor(data_min * 10.0) / 10.0)
     vmax = max(1.0, np.ceil(data_max * 10.0) / 10.0)
     norm = Normalize(vmin=vmin, vmax=vmax)
     cmap = _pearson_cmap(vmin, vmax)
-    max_cols = max(len(panel) for panel in HEATMAP_PANELS)
+    max_cols = max(len(panel) for panel in panels)
+    n_panels = len(panels)
 
-    fig = plt.figure(figsize=(14.4, 6.6))
-    grid = fig.add_gridspec(
-        2,
-        1,
-        height_ratios=[1.0, 1.0],
-        hspace=0.24,
-        left=0.10,
-        right=0.82,
-        top=0.96,
-        bottom=0.18,
-    )
-    axes = [fig.add_subplot(grid[0]), fig.add_subplot(grid[1])]
+    if n_panels == 1:
+        fig = plt.figure(figsize=(11.4, 3.8))
+        grid = fig.add_gridspec(
+            1, 1, left=0.12, right=0.82, top=0.90, bottom=0.28
+        )
+        axes = [fig.add_subplot(grid[0])]
+        legend_anchor = (0.46, 0.08)
+    else:
+        fig = plt.figure(figsize=(14.4, 6.6))
+        grid = fig.add_gridspec(
+            2,
+            1,
+            height_ratios=[1.0, 1.0],
+            hspace=0.24,
+            left=0.10,
+            right=0.82,
+            top=0.96,
+            bottom=0.18,
+        )
+        axes = [fig.add_subplot(grid[0]), fig.add_subplot(grid[1])]
+        legend_anchor = (0.46, 0.10)
+
     images = []
-    for ax, panel, (values, hatch) in zip(axes, HEATMAP_PANELS, matrices):
+    for ax, panel, (values, hatch) in zip(axes, panels, matrices):
         images.append(
             _draw_heatmap_panel(
                 ax,
@@ -579,26 +784,31 @@ def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
                 norm=norm,
                 max_cols=max_cols,
                 show_ylabel=True,
+                model_order=layout.model_order,
             )
         )
     fig.canvas.draw()
     top_pos = axes[0].get_position()
-    bot_pos = axes[1].get_position()
+    bot_pos = axes[-1].get_position()
     colorbar_ax = fig.add_axes(
         [top_pos.x1 + 0.005, bot_pos.y0, 0.016, top_pos.y1 - bot_pos.y0]
     )
     cbar = fig.colorbar(images[0], cax=colorbar_ax)
-    cbar.set_label("Pearson r", fontsize=12, color="#444444")
+    cbar.set_label(layout.cbar_label, fontsize=12, color="#444444")
     cbar.set_ticks(np.arange(vmin, vmax + 1e-9, 0.2))
     cbar.ax.tick_params(labelsize=11, colors="#555555")
     cbar.outline.set_visible(False)
+    legend_handles = [
+        Patch(facecolor=MISSING_CELL, edgecolor="#D0D0D0", label="Not scored"),
+    ]
+    if layout.name == "base":
+        legend_handles.append(
+            Patch(facecolor="white", edgecolor="#888888", hatch="///", label="Author-reported fill")
+        )
     fig.legend(
-        handles=[
-            Patch(facecolor=MISSING_CELL, edgecolor="#D0D0D0", label="Not scored / leak unfilled"),
-            Patch(facecolor="white", edgecolor="#888888", hatch="///", label="Author-reported fill"),
-        ],
+        handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.46, 0.10),
+        bbox_to_anchor=legend_anchor,
         ncol=2,
         frameon=True,
         facecolor="white",
@@ -619,53 +829,93 @@ def plot_heatmap(rows: list[dict[str, Any]], out_path: Path) -> Path:
     return out_path
 
 
-def plot_vs_paper(rows: list[dict[str, Any]], out_path: Path) -> Path:
+def plot_vs_paper(
+    rows: list[dict[str, Any]],
+    out_path: Path,
+    leak_on_rows: Optional[list[dict[str, Any]]] = None,
+) -> Path:
+    """Grouped bars: leak-off PE-hub (converters) vs paper, optional leak-on overlay.
+
+    Palette matches the data-summary Tableau colors used on the heatmap.
+    """
     by_key = index_rows(rows)
+    leak_on_by_key = index_rows(leak_on_rows) if leak_on_rows else {}
     categories: list[str] = []
-    measured: list[float] = []
+    leak_off: list[float] = []
     paper: list[float] = []
+    leak_on: list[Optional[float]] = []
     for model, head, bench, label in CLOSE_MATCH_ORDER:
         row = by_key.get((model, head, bench))
         if row is None:
             continue
-        meas = _f(row.get("pearson_measured"))
+        off = _f(row.get("pearson_measured"))
         pub = _f(row.get("paper_pearson"))
-        if meas is None or pub is None:
+        if off is None or pub is None:
             continue
         categories.append(label)
-        measured.append(meas)
+        leak_off.append(off)
         paper.append(pub)
+        on_row = leak_on_by_key.get((model, head, bench))
+        leak_on.append(_f(on_row.get("pearson_measured")) if on_row else None)
 
+    show_leak_on = any(value is not None for value in leak_on)
+    n_series = 3 if show_leak_on else 2
     x = np.arange(len(categories))
-    width = 0.36
-    fig, ax = plt.subplots(figsize=(7.4, 4.2))
-    ax.bar(
-        x - width / 2,
-        measured,
-        width,
-        label="PE-hub",
-        color="#2F6FED",
-        edgecolor="none",
-    )
-    ax.bar(
-        x + width / 2,
-        paper,
-        width,
-        label="Paper",
-        color="#B8B8B8",
-        edgecolor="none",
-    )
+    width = 0.24 if show_leak_on else 0.32
+    offsets = np.linspace(-(n_series - 1) / 2, (n_series - 1) / 2, n_series) * width
+    fig, ax = plt.subplots(figsize=(8.2, 4.4))
+    series = [
+        (offsets[0], leak_off, "PE-hub leak-off", SUMMARY_GREEN),
+    ]
+    if show_leak_on:
+        series.append(
+            (
+                offsets[1],
+                [value if value is not None else 0.0 for value in leak_on],
+                "PE-hub leak-on",
+                SUMMARY_ORANGE,
+            )
+        )
+        series.append((offsets[2], paper, "Paper reported", "#9C755F"))
+    else:
+        series.append((offsets[1], paper, "Paper reported", "#9C755F"))
+
+    for offset, heights, label, color in series:
+        bars = ax.bar(
+            x + offset,
+            heights,
+            width * 0.92,
+            label=label,
+            color=color,
+            edgecolor="none",
+            zorder=3,
+        )
+        for bar, height in zip(bars, heights):
+            if height <= 0:
+                continue
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                height + 0.008,
+                f"{height:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color="#444444",
+            )
+
     ax.set_xticks(x)
     ax.set_xticklabels(categories)
     ax.set_ylabel("Pearson r")
     ax.set_ylim(0.6, 1.0)
-    ax.set_title("Close-match protocol cells vs paper-reported Pearson", loc="left", fontsize=12)
+    ax.set_title(
+        "Close-match cells: converters vs paper"
+        + (" (leak-on overlay)" if show_leak_on else ""),
+        loc="left",
+        fontsize=12,
+    )
     ax.yaxis.grid(True, color="#E6E6E6", linewidth=0.8)
     ax.set_axisbelow(True)
     ax.legend(frameon=False, loc="upper right")
-    for index, (left, right) in enumerate(zip(measured, paper)):
-        ax.text(index - width / 2, left + 0.008, f"{left:.3f}", ha="center", va="bottom", fontsize=8)
-        ax.text(index + width / 2, right + 0.008, f"{right:.3f}", ha="center", va="bottom", fontsize=8)
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path)
@@ -679,37 +929,99 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "comparison_csv",
         type=Path,
-        help="Path to paper_comparison.csv",
+        help=(
+            "paper_comparison.csv, or a scratch-benchmark results/<RUN_ID> "
+            "directory (pools */results.jsonl)."
+        ),
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
         default=None,
         help=(
-            "Figure directory. Default: txt/diagrams for the heatmap "
-            "(same folder as data_composition.png)."
+            "Figure directory. Default: txt/diagrams for vendor eval; "
+            "<run>/figures for a scratch-benchmark run directory."
         ),
+    )
+    parser.add_argument(
+        "--layout",
+        choices=("auto", "base", "scratch"),
+        default="auto",
+        help="Heatmap/bar layout. auto infers from benchmark_name keys.",
+    )
+    parser.add_argument(
+        "--metric",
+        choices=("auto", "pearson", "spearman"),
+        default="auto",
+        help="Which comparison column to plot (default: pearson for base, spearman for scratch).",
     )
     parser.add_argument(
         "--all-figures",
         action="store_true",
-        help="Also write grouped-bar and close-match vs-paper figures.",
+        help="Also write grouped-bar (and close-match vs-paper when paper values exist).",
+    )
+    parser.add_argument(
+        "--close-match-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Leak-off paper_comparison.csv for eval_vs_paper.pdf. "
+            "When set, current rows are the leak-on overlay."
+        ),
     )
     args = parser.parse_args(argv)
-    csv_path = args.comparison_csv.resolve()
-    if not csv_path.is_file():
-        raise SystemExit(f"Error: {csv_path} not found")
-    out_dir = args.out_dir or DEFAULT_DIAGRAM_DIR
+    input_path = args.comparison_csv.resolve()
+    if input_path.is_dir():
+        cell_rows = load_scratch_cell_rows(input_path)
+        if not cell_rows:
+            raise SystemExit(f"Error: no cell results.jsonl under {input_path}")
+        rows = scratch_to_comparison(cell_rows)
+        csv_path = input_path / "paper_comparison.csv"
+        write_comparison(csv_path, rows)
+        print(f"Wrote {csv_path} ({len(rows)} rows)")
+        default_out = input_path / "figures"
+        inferred = SCRATCH_LAYOUT
+    elif input_path.is_file():
+        rows = load_comparison(input_path)
+        default_out = DEFAULT_DIAGRAM_DIR
+        inferred = infer_layout(rows)
+    else:
+        raise SystemExit(f"Error: {input_path} not found")
+
+    if args.layout == "base":
+        layout = BASE_LAYOUT
+    elif args.layout == "scratch":
+        layout = SCRATCH_LAYOUT
+    else:
+        layout = inferred
+
+    if args.metric == "pearson":
+        layout = replace(layout, value_column="pearson_plot", cbar_label="Pearson r")
+    elif args.metric == "spearman":
+        layout = replace(layout, value_column="spearman_plot", cbar_label="Spearman R")
+
+    out_dir = args.out_dir or default_out
     apply_style()
-    rows = load_comparison(csv_path)
-    heat = plot_heatmap(rows, out_dir / "eval_pearson_heatmap.pdf")
+    heatmap_name = (
+        "eval_spearman_heatmap.pdf" if layout.value_column == "spearman_plot" else "eval_pearson_heatmap.pdf"
+    )
+    heat = plot_heatmap(rows, out_dir / heatmap_name, layout=layout)
     print(f"Wrote {heat}")
     print(f"Wrote {heat.with_suffix('.png')}")
     if args.all_figures:
-        bars = plot_benchmark_bars(rows, out_dir / "eval_benchmark_bars.pdf")
-        vs_paper = plot_vs_paper(rows, out_dir / "eval_vs_paper.pdf")
+        bars = plot_benchmark_bars(rows, out_dir / "eval_benchmark_bars.pdf", layout=layout)
         print(f"Wrote {bars}")
-        print(f"Wrote {vs_paper}")
+        if layout.name == "base":
+            if args.close_match_csv is not None:
+                leak_off_rows = load_comparison(args.close_match_csv.resolve())
+                vs_paper = plot_vs_paper(
+                    leak_off_rows,
+                    out_dir / "eval_vs_paper.pdf",
+                    leak_on_rows=rows,
+                )
+            else:
+                vs_paper = plot_vs_paper(rows, out_dir / "eval_vs_paper.pdf")
+            print(f"Wrote {vs_paper}")
     return 0
 
 

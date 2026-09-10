@@ -53,13 +53,22 @@ def _compute_deepprime_thermo_features(
         type_del=type_del,
     )
     gc_feats = _compute_pridict2_gc_features(pbs_seq, rt_seq)
-    guide_seq = ("G" + wt[protospacer_l:protospacer_r]).upper()
+    # Vendor biofeat MFE4 is GN19: G + spacer[1:] (20 nt), not G + the full
+    # 20-nt spacer (21 nt). Excel ClinVar mfe4 is that value rounded to 0.1.
+    # Fold T as U: ViennaRNA 2.7 scores DNA T differently from the RNA T≡U
+    # convention used when Yu built the sheet (3/241 MFE3 misses otherwise).
+    spacer = wt[protospacer_l:protospacer_r]
+    guide_seq = ("G" + spacer[1:]).upper() if spacer else "G"
     mfe3_seq = _reverse_complement((pbs_seq + rt_seq).upper()) + "TTTTTT"
+
+    def _mfe_rna(seq: str) -> float:
+        return round(float(RNA.fold_compound(seq.upper().replace("T", "U")).mfe()[1]), 1)
+
     return {
         **tm_feats,
         **gc_feats,
-        "MFE3": float(RNA.fold(mfe3_seq)[1]),
-        "MFE4": float(RNA.fold(guide_seq)[1]),
+        "MFE3": _mfe_rna(mfe3_seq),
+        "MFE4": _mfe_rna(guide_seq),
     }
 
 
@@ -79,8 +88,6 @@ def standardized_to_deepprime_dataframe(
     rtt_l_series = _safe_int_series(_col_as_series(df, "rtt_location_l", 0)).to_numpy()
     rtt_r_series = _safe_int_series(_col_as_series(df, "rtt_location_r", 0)).to_numpy()
     lha_r_series = _safe_int_series(_col_as_series(df, "lha_location_r", 0)).to_numpy()
-    rha_l_series = _safe_int_series(_col_as_series(df, "rha_location_l", 0)).to_numpy()
-    rha_r_series = _safe_int_series(_col_as_series(df, "rha_location_r", 0)).to_numpy()
     edit_len_series = _safe_int_series(_edit_length_series(df)).to_numpy()
     type_sub_series = _col_as_series(df, "type_sub", False).astype(bool).to_numpy()
     type_ins_series = _col_as_series(df, "type_ins", False).astype(bool).to_numpy()
@@ -105,12 +112,16 @@ def standardized_to_deepprime_dataframe(
         rtt_l = int(rtt_l_series[i])
         rtt_r = int(rtt_r_series[i])
         lha_r = int(lha_r_series[i])
-        rha_l = int(rha_l_series[i])
-        rha_r = int(rha_r_series[i])
         edit_len = int(edit_len_series[i])
 
+        # Standardized rtt_r is WT-side. On deletions the Mut interval is
+        # ``edit_len`` shorter once N pads are dropped; slicing the WT end on
+        # Mut leaves extra 3' bases in RTlen / Edited74.
+        mut_rtt_r = rtt_r
+        if bool(type_del_series[i]) and edit_len > 0:
+            mut_rtt_r = max(rtt_l, rtt_r - edit_len)
         pbs_seq = sanitize_dna_sequence(mut[pbs_l:pbs_r], drop=True)
-        rtt_seq = sanitize_dna_sequence(mut[rtt_l:rtt_r], drop=True)
+        rtt_seq = sanitize_dna_sequence(mut[rtt_l:mut_rtt_r], drop=True)
         pbs_len = max(1, len(pbs_seq))
         rt_len = max(1, len(rtt_seq))
         rt_pbs_len = pbs_len + rt_len
@@ -134,7 +145,14 @@ def standardized_to_deepprime_dataframe(
             edited74 = edited74 + ("X" * (74 - len(edited74)))
 
         edit_pos = int(max(1, min(rt_len, (lha_r - rtt_l + 1))))
-        rha_len = int(max(1, rha_r - rha_l))
+        # Vendor RHA_len is 3' homology after the whole edit (0 if the edit
+        # consumes the RT). Deleted bases are absent from Mut RT, so they are
+        # not subtracted again.
+        if bool(type_del_series[i]):
+            rha_len = int(rt_len - edit_pos + 1)
+        else:
+            rha_len = int(rt_len - edit_pos - edit_len + 1)
+        rha_len = max(0, rha_len)
         protospacer_l_unpadded = unpadded_coordinate(wt, protospacer_l) + pad_left
         protospacer_r_unpadded = unpadded_coordinate(wt, protospacer_r) + pad_left
 

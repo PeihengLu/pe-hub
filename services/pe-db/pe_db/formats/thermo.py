@@ -20,6 +20,15 @@ def _reverse_complement(seq: str) -> str:
     return str(Seq(seq).reverse_complement())
 
 
+# DeepPrime biofeat.py: U is mapped to U, not A. Bio.Seq RC turns U→A and
+# disagrees with Yu ClinVar tm1/tm4 by several degrees.
+_DEEPPRIME_RC = str.maketrans("ACGTacgtnN", "TGCAtgcanN")
+
+
+def _deepprime_reverse_complement(seq: str) -> str:
+    return str(seq).translate(_DEEPPRIME_RC)[::-1]
+
+
 def _gc_fraction_percent(seq: str) -> float:
     if not seq:
         return 0.0
@@ -75,7 +84,7 @@ def _compute_pridict2_tm_features(
     rt = rt_seq.upper()
     n_nick = int(protospacer_r) - 3
 
-    s_for_tm1 = _reverse_complement(pbs.replace("A", "U"))
+    s_for_tm1 = _deepprime_reverse_complement(pbs.replace("A", "U"))
     s_for_tm2 = wt[n_nick:n_nick + len(rt)]
 
     if type_sub:
@@ -92,7 +101,7 @@ def _compute_pridict2_tm_features(
         s_tm3_anti = _reverse_complement(s_for_tm2)
 
     s_for_tm3 = [rt, s_tm3_anti]
-    s_for_tm4 = [_reverse_complement(rt.replace("A", "U")), rt]
+    s_for_tm4 = [_deepprime_reverse_complement(rt.replace("A", "U")), rt]
 
     tm1 = _tm_nn_or_zero(s_for_tm1, nn_table=mt.R_DNA_NN1)
     tm2 = _tm_nn_or_zero(s_for_tm2, nn_table=mt.DNA_NN3)

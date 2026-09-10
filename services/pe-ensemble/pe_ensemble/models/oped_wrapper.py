@@ -458,12 +458,17 @@ class OPEDModelWrapper(BasePEModel):
             hidden_size_fully = fc_out_sizes[:-1]
             output_size = int(fc_out_sizes[-1])
 
-        # Head count is not stored in the state_dict. The vendored
-        # ``order3_decoder`` checkpoint matches the class default nhead=8
-        # (embedding_size=64). Vendor ``load_model`` hardcodes nhead=64,
-        # which still loads (QKV weight shapes ignore nhead) but splits
-        # each 64-d embedding into 64 heads of dim 1. Do not copy that.
-        nhead = 8
+        # Head count is not stored in the state_dict. The published merged
+        # encoder-decoder order-3 checkpoint was scored (and loaded by vendor
+        # ``load_model``) with nhead=64 at embedding_size=64 — Liu Fig. 2a
+        # (r=0.769 / R=0.798 / MAE=4.28). PE-hub trains the encoder-only
+        # Order-3 class with nhead=8; keep that default for non-decoder
+        # checkpoints. Using 8 heads on the vendor decoder drops HT-test
+        # Pearson from 0.769 to 0.734.
+        if is_encoder_decoder and embedding_size == 64:
+            nhead = 64
+        else:
+            nhead = 8
         if embedding_size % nhead != 0:
             for candidate in (8, 4, 2, 1):
                 if embedding_size % candidate == 0:

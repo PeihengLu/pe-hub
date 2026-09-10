@@ -3,7 +3,12 @@
 Guards the canonical ``edit_len`` column handling (a prior bug read the
 non-existent ``edit_length`` column and silently produced edit length 0) and the
 output schemas required by each vendor model.
+
+Author-export tests convert PE-Core parquet and compare native columns to the
+study's raw export. Self-consistency against the converter's own helpers is not
+enough — that missed DeepPrime deletion RT / GN19 MFE4 vs Yu ClinVar Excel.
 """
+import random
 import sys
 from pathlib import Path
 
@@ -13,6 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "packages" / "pe-common"))
 
+from pe_common.sequence_utils import reverse_complement  # noqa: E402
 from pe_db.utils.convert_data import (  # noqa: E402
     PRIDICT2_NORMALIZER_COLUMNS,
     _compute_deepprime_thermo_features,
@@ -47,6 +53,20 @@ OPED_REQUIRED = {"Target(47bp)", "PBS", "RT"}
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PRIDICT2_EXPORT = REPO_ROOT / "datasets" / "exported" / "pridict2" / "library-diverse" / "hek-pe2.csv"
 PRIDICT2_PARQUET = REPO_ROOT / "datasets" / "standardized" / "pridict2" / "library_diverse" / "hek-pe2.parquet"
+DEEPPRIME_EXPORT = (
+    REPO_ROOT / "datasets" / "exported" / "deepprime" / "deepprime-clinvar" / "hek293t-pe2.csv"
+)
+DEEPPRIME_PARQUET = (
+    REPO_ROOT / "datasets" / "standardized" / "deepprime" / "deepprime_clinvar" / "hek293t-pe2.parquet"
+)
+OPED_EXPORT = REPO_ROOT / "datasets" / "exported" / "deeppe" / "deeppe-ht" / "hek293t-pe2.csv"
+OPED_PARQUET = REPO_ROOT / "datasets" / "standardized" / "deeppe" / "deeppe_ht" / "hek293t-pe2.parquet"
+OPTIPRIME_EXPORT = (
+    REPO_ROOT / "datasets" / "exported" / "optiprime" / "lib-mmr" / "hek293t-pe2.csv"
+)
+OPTIPRIME_PARQUET = (
+    REPO_ROOT / "datasets" / "standardized" / "optiprime" / "lib_mmr" / "hek293t-pe2.parquet"
+)
 
 PRIDICT2_AUTHOR_FEATURE_MAP = {
     "RToverhangmatches": "RToverhangmatches",
@@ -74,6 +94,59 @@ PRIDICT2_AUTHOR_FEATURE_MAP = {
     "fGCcont2": "RT_GC_content",
     "fGCcont3": "Extension_GC_content",
 }
+
+# Native columns that Yu ClinVar Excel stores and that PE-hub can reproduce
+# from standardized geometry.
+DEEPPRIME_AUTHOR_INT_MAP = {
+    "PBSlen": "pbslen",
+    "RTlen": "rtlen",
+    "RT-PBSlen": "rt-pbslen",
+    "Edit_pos": "edit_pos",
+    "Edit_len": "edit_len",
+    "RHA_len": "rha_len",
+    "type_sub": "type_sub",
+    "type_ins": "type_ins",
+    "type_del": "type_del",
+}
+DEEPPRIME_AUTHOR_FLOAT_MAP = {
+    "DeepSpCas9_score": "deepspcas9_score",
+    "Tm1": "tm1",
+    "Tm2": "tm2",
+    "Tm2new": "tm2new",
+    "Tm3": "tm3",
+    "Tm4": "tm4",
+    "TmD": "tmd",
+    "nGCcnt1": "ngccnt1",
+    "nGCcnt2": "ngccnt2",
+    "nGCcnt3": "ngccnt3",
+    "fGCcont1": "fgccont1",
+    "fGCcont2": "fgccont2",
+    "fGCcont3": "fgccont3",
+    "MFE3": "mfe3",
+    "MFE4": "mfe4",
+    "Efficiency": "measured_pe_efficiency",
+}
+
+
+def _stratified_positional_sample(
+    df: pd.DataFrame, n_per_type: int = 8, seed: int = 0
+) -> list[int]:
+    """Positional indices so parquet rows stay aligned with the matching export."""
+    rng = random.Random(seed)
+    chosen: list[int] = []
+    for col in ("type_sub", "type_ins", "type_del"):
+        hits = df[col].astype(bool).to_numpy().nonzero()[0].tolist()
+        if not hits:
+            continue
+        if len(hits) <= n_per_type:
+            chosen.extend(int(i) for i in hits)
+        else:
+            chosen.extend(int(i) for i in rng.sample(hits, n_per_type))
+    return sorted(set(chosen))
+
+
+def _as_rna(seq: str) -> str:
+    return str(seq).upper().replace("T", "U")
 
 
 def _standardized_df(edit_length_col: str = "edit_len") -> pd.DataFrame:
@@ -132,11 +205,6 @@ def _export_row_to_standardized(row: pd.Series) -> pd.DataFrame:
     )
 
 
-def _standardized_from_parquet_row(row: pd.Series) -> pd.DataFrame:
-    keep = [c for c in _standardized_df().columns if c in row.index]
-    return pd.DataFrame([row[keep].to_dict()])
-
-
 def test_is_standardized_uses_edit_len():
     df = _standardized_df("edit_len")
     assert is_standardized_dataframe(df) is True
@@ -190,25 +258,32 @@ def test_pridict_features_match_author_export_from_minimal_standardized():
 
 
 @pytest.mark.skipif(
-    not PRIDICT2_PARQUET.is_file(),
-    reason="standardized PRIDICT2 parquet unavailable",
+    not (PRIDICT2_PARQUET.is_file() and PRIDICT2_EXPORT.is_file()),
+    reason="standardized PRIDICT2 parquet or author export unavailable",
 )
 def test_pridict_features_match_author_export_from_standardized_parquet():
-    parquet = pd.read_parquet(PRIDICT2_PARQUET).head(100)
-    export = pd.read_csv(PRIDICT2_EXPORT, nrows=100, low_memory=False)
-    for i in range(len(parquet)):
-        if "N" in str(parquet.iloc[i]["wt_sequence"]) or "N" in str(parquet.iloc[i]["mut_sequence"]):
-            # Truncated indel rows in older parquet need re-standardization.
-            continue
-        std = _standardized_from_parquet_row(parquet.iloc[i])
-        out = standardized_to_pridict_dataframe(std).iloc[0]
-        row = export.iloc[i]
-        assert out["RToverhangmatches"] == pytest.approx(float(row["RToverhangmatches"]))
-        assert out["MFE_extension"] == pytest.approx(float(row["MFE_extension"]), abs=0.05)
+    parquet = pd.read_parquet(PRIDICT2_PARQUET)
+    export = pd.read_csv(PRIDICT2_EXPORT, low_memory=False)
+    assert len(parquet) == len(export)
+    idx = _stratified_positional_sample(parquet, n_per_type=8, seed=0)
+    out = standardized_to_pridict_dataframe(parquet.iloc[idx].reset_index(drop=True))
+    author = export.iloc[idx].reset_index(drop=True)
+    for i in range(len(idx)):
+        native = out.iloc[i]
+        row = author.iloc[i]
+        for out_col, author_col in PRIDICT2_AUTHOR_FEATURE_MAP.items():
+            assert native[out_col] == pytest.approx(float(row[author_col]), rel=0.0, abs=0.05), (
+                f"{out_col} row {idx[i]}"
+            )
 
 
 @pytest.mark.skipif(not PRIDICT2_EXPORT.is_file(), reason="PRIDICT2 export fixture unavailable")
 def test_deepprime_thermo_features_computed_from_standardized_schema():
+    """Self-consistency only: converter vs its own thermo helper on the same slices.
+
+    This cannot catch vendor-protocol bugs (GN19, deletion RT). Author gold is
+    ``test_deepprime_native_matches_clinvar_export_from_standardized_parquet``.
+    """
     export = pd.read_csv(PRIDICT2_EXPORT, nrows=50, low_memory=False)
     for _, row in export.iterrows():
         std = _export_row_to_standardized(row).iloc[0]
@@ -230,6 +305,147 @@ def test_deepprime_thermo_features_computed_from_standardized_schema():
         )
         for col in ref:
             assert out[col] == pytest.approx(ref[col], abs=0.05), col
+
+
+def test_deepprime_deletion_rt_uses_mut_end_not_wt_end():
+    """ClinVar-shaped 1-nt deletion: WT-side rtt_r must not leak into Mut RT."""
+    wt = "AAGAAAAGGAAGCAGCAAAATATGTGGAGGCCCAACAAAAGAGACTAGAAGCCTTATTCACTAAAATTCAGGAG"
+    mut = "AAGAAAAGGAAGCAGCAAAATATGTGGAGGNCCAACAAAAGAGACTAGAAGCCTTATTCACTAAAATTCAGGAG"
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [False],
+            "type_ins": [False],
+            "type_del": [True],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [8],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [41],
+            "lha_location_r": [30],
+            "rha_location_l": [31],
+            "rha_location_r": [41],
+            "spcas9_score": [58.74992371],
+            "editing_efficiency": [0.0],
+        }
+    )
+    out = standardized_to_deepprime_dataframe(df).iloc[0]
+    assert int(out["PBSlen"]) == 13
+    assert int(out["RTlen"]) == 18
+    assert int(out["RHA_len"]) == 9
+    assert int(out["Edit_pos"]) == 10
+    unmasked = str(out["Edited74_On"]).upper().replace("X", "")
+    assert unmasked == "GAAGCAGCAAAATATGTGGAGGCCAACAAAA"
+
+
+def test_oped_insertion_target_drops_wt_pads_instead_of_filling_mut():
+    """Kim Wide target is unedited DNA; Mut-fill would splice the insert in."""
+    wt = "GGAAGAAAGATCTCTTCGGTTNNNNNGATCGGATCCTCACTGCTTTGGAGCT"
+    mut = "GGAAGAAAGATCTCTTCGGTTGATCCGATCCGATCCTCACTGCTTTGGAGCT"
+    wide = "GGAAGAAAGATCTCTTCGGTTGATCGGATCCTCACTGCTTTGGAGCT"
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [5],
+            "type_sub": [False],
+            "type_ins": [True],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [29],
+            "pbs_location_l": [10],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [40],
+            "lha_location_r": [26],
+            "rha_location_l": [26],
+            "rha_location_r": [40],
+            "editing_efficiency": [0.5],
+        }
+    )
+    out = standardized_to_oped_dataframe(df).iloc[0]
+    assert out["Target(47bp)"] == wide
+    assert "GATCCGATCC" not in out["Target(47bp)"]
+
+
+@pytest.mark.skipif(
+    not (DEEPPRIME_PARQUET.is_file() and DEEPPRIME_EXPORT.is_file()),
+    reason="DeepPrime ClinVar parquet or author export unavailable",
+)
+def test_deepprime_native_matches_clinvar_export_from_standardized_parquet():
+    parquet = pd.read_parquet(DEEPPRIME_PARQUET)
+    export = pd.read_csv(DEEPPRIME_EXPORT, low_memory=False)
+    assert len(parquet) == len(export)
+    idx = _stratified_positional_sample(parquet, n_per_type=8, seed=0)
+    out = standardized_to_deepprime_dataframe(parquet.iloc[idx].reset_index(drop=True))
+    author = export.iloc[idx].reset_index(drop=True)
+    for i in range(len(idx)):
+        native = out.iloc[i]
+        row = author.iloc[i]
+        pos = idx[i]
+        assert str(native["WT74_On"]).upper() == str(row["wt_sequence"]).upper(), pos
+        assert str(native["Edited74_On"]).upper() == str(row["mut_sequence"]).upper(), pos
+        for out_col, author_col in DEEPPRIME_AUTHOR_INT_MAP.items():
+            assert int(native[out_col]) == int(row[author_col]), f"{out_col} row {pos}"
+        for out_col, author_col in DEEPPRIME_AUTHOR_FLOAT_MAP.items():
+            assert native[out_col] == pytest.approx(
+                float(row[author_col]), rel=0.0, abs=0.15
+            ), f"{out_col} row {pos}"
+
+
+@pytest.mark.skipif(
+    not (OPED_PARQUET.is_file() and OPED_EXPORT.is_file()),
+    reason="DeepPE HT parquet or author export unavailable",
+)
+def test_oped_native_matches_deeppe_export_from_standardized_parquet():
+    parquet = pd.read_parquet(OPED_PARQUET)
+    export = pd.read_csv(OPED_EXPORT)
+    assert len(parquet) == len(export)
+    wide_col = next(c for c in export.columns if c.startswith("Wide target"))
+    ext_col = next(c for c in export.columns if "3'" in c or "3’" in c)
+    idx = _stratified_positional_sample(parquet, n_per_type=8, seed=0)
+    out = standardized_to_oped_dataframe(parquet.iloc[idx].reset_index(drop=True))
+    author = export.iloc[idx].reset_index(drop=True)
+    for i in range(len(idx)):
+        native = out.iloc[i]
+        row = author.iloc[i]
+        pos = idx[i]
+        pbs_len = int(row["PBS length"])
+        ext = str(row[ext_col])
+        assert str(native["Target(47bp)"]) == str(row[wide_col]), pos
+        assert str(native["PBS"]) == ext[:pbs_len], pos
+        assert str(native["RT"]) == ext[pbs_len:], pos
+        assert native["Efficiency"] == pytest.approx(
+            float(row["editing_efficiency"]), rel=0.0, abs=1e-6
+        ), pos
+
+
+@pytest.mark.skipif(
+    not (OPTIPRIME_PARQUET.is_file() and OPTIPRIME_EXPORT.is_file()),
+    reason="OptiPrime Lib-MMR parquet or author export unavailable",
+)
+def test_optiprime_native_matches_libmmr_export_from_standardized_parquet():
+    parquet = pd.read_parquet(OPTIPRIME_PARQUET)
+    export = pd.read_csv(OPTIPRIME_EXPORT)
+    assert len(parquet) == len(export)
+    idx = _stratified_positional_sample(parquet, n_per_type=8, seed=0)
+    out = standardized_to_optiprime_dataframe(parquet.iloc[idx].reset_index(drop=True))
+    author = export.iloc[idx].reset_index(drop=True)
+    for i in range(len(idx)):
+        native = out.iloc[i]
+        row = author.iloc[i]
+        pos = idx[i]
+        assert str(native["spacer"]).upper() == _as_rna(row["spacer"]), pos
+        author_pbs_rna = _as_rna(reverse_complement(str(row["pbs"])))
+        assert str(native["pbs"]).upper() == author_pbs_rna, pos
+        homology_rna = _as_rna(reverse_complement(str(row["homology_arm"])))
+        assert str(native["rtt"]).upper().startswith(homology_rna), pos
+        assert native["edited_frac"] == pytest.approx(
+            float(row["measured_pe_efficiency"]), rel=0.0, abs=1e-6
+        ), pos
 
 
 def test_pridict_rt_initial_location_accounts_for_indels():
