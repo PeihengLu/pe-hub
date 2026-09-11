@@ -317,6 +317,7 @@ cat > "${OUT_DIR}/matrix.json" <<EOF
   "run_id": "${RUN_ID}",
   "device": "${DEVICE}",
   "allow_data_leak": $([ "${ALLOW_DATA_LEAK}" = "1" ] && echo true || echo false),
+  "design_ruleset": $([ -n "${DESIGN_RULESET}" ] && printf '"%s"' "${DESIGN_RULESET}" || echo null),
   "n_weights": ${#WEIGHTS[@]},
   "n_benchmarks": ${#BENCHMARKS[@]},
   "n_evaluations": ${TOTAL},
@@ -396,7 +397,7 @@ PY
     fi
 
     META_JSON="$(
-      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" <<'PY'
+      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" "${DESIGN_RULESET}" <<'PY'
 import json
 import sys
 
@@ -415,6 +416,7 @@ print(json.dumps({
     "use_original_fold": plan["use_original_fold"],
     "original_fold_test_value": plan["original_fold_test_value"],
     "allow_data_leak": sys.argv[11] == "1",
+    "design_ruleset": sys.argv[12] or None,
 }))
 PY
     )"
@@ -567,7 +569,7 @@ PY
         fi
 
         META_JSON="$(
-          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" <<'PY'
+          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" "${DESIGN_RULESET}" <<'PY'
 import json
 import sys
 
@@ -588,6 +590,7 @@ print(json.dumps({
     "ensemble": True,
     "ensemble_members": [sys.argv[10], sys.argv[11]],
     "allow_data_leak": sys.argv[13] == "1",
+    "design_ruleset": sys.argv[14] or None,
 }))
 PY
         )"

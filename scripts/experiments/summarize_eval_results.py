@@ -2,7 +2,7 @@
 """Flatten peen evaluate JSONL results into summary.csv (+ CV mean/std).
 
 Usage:
-  python scripts/experiments/summarize_eval_results.py results/base_model_eval/<RUN_ID>/results.jsonl
+  python scripts/experiments/summarize_eval_results.py scripts/experiments/base-model-eval/results/<RUN_ID>/results.jsonl
 """
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ SUMMARY_COLUMNS = [
     "datasets",
     "cell_line",
     "pe_system",
+    "design_ruleset",
     "use_original_fold",
     "original_fold_test_value",
     "status",
@@ -429,6 +430,7 @@ def flatten_row(record: dict[str, Any]) -> dict[str, Any]:
         "datasets": _datasets_str(record.get("datasets")),
         "cell_line": record.get("cell_line"),
         "pe_system": record.get("pe_system"),
+        "design_ruleset": record.get("design_ruleset"),
         "use_original_fold": record.get("use_original_fold"),
         "original_fold_test_value": record.get("original_fold_test_value"),
         "status": status,

@@ -120,8 +120,11 @@ DEVICE=cuda:0 MODELS=pridict2 PRIDICT2_HEADS=HEK RUN_ID=<RUN_ID> \
 # Re-score library-diverse ensembles with fold-matched splits:
 DEVICE=cuda:0 MODELS=pridict2 BENCHMARKS=pridict2-library-diverse RUN_ID=<RUN_ID> \
   SKIP_EXISTING=1 ./scripts/experiments/evaluate_base_model_benchmarks.sh
-# Well-designed pegRNAs only (Hsu OptiPrime rules). Use a **new** RUN_ID:
+# Well-designed pegRNAs only (Hsu OptiPrime rules, then Anzalone 2019).
+# Use a **new** RUN_ID for each filter so unfiltered cells are not skipped:
 DEVICE=cuda:0 DESIGN_RULESET=optiprime \
+  ./scripts/experiments/evaluate_base_model_benchmarks.sh
+DEVICE=cuda:0 DESIGN_RULESET=anzalone \
   ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # OptiPrime-only, non-leak benches. If a prior run marked OptiPrime
 # ``cli_failure`` but logs show success (vendor ``syn{50}`` in stdout), repair:
