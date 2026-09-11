@@ -64,6 +64,19 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "fill_on_leak": False,
     },
     {
+        "id": "pridict2-diverse-k562mlh1dn-k562",
+        "model": "pridict2",
+        "benchmark": "pridict2-library-diverse__k562mlh1dn",
+        "cell_line": "k562mlh1dn",
+        "pridict2_head": "K562",
+        "pearson": None,
+        "spearman": 0.83,
+        "citation": "Mathis et al. Nat. Biotechnol. 2024 (text; HEK vs K562 head on MLH1dn)",
+        "protocol": "PRIDICT2.0 K562 head on K562-MLH1dn Library-Diverse (paper reports Spearman only)",
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
         "id": "pridict1-library1-cv",
         "model": "pridict1",
         "benchmark": "pridict1-library1",
@@ -110,6 +123,42 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "fill_on_leak": False,
     },
     {
+        "id": "oped-deeppe-ht-test-only",
+        "model": "oped",
+        "benchmark": "deeppe-ht-test",
+        "cell_line": "hek293t",
+        "pearson": 0.769,
+        "spearman": 0.798,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2a",
+        "protocol": "DeepPE HT-test only (n=4457), author original_fold=-1",
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "oped-deeppe-type-test",
+        "model": "oped",
+        "benchmark": "deeppe-type",
+        "cell_line": "hek293t",
+        "pearson": 0.612,
+        "spearman": 0.624,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2b",
+        "protocol": "DeepPE Type-test only (n=403); not a heatmap cell",
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "oped-deeppe-position-test",
+        "model": "oped",
+        "benchmark": "deeppe-position",
+        "cell_line": "hek293t",
+        "pearson": 0.628,
+        "spearman": 0.562,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2c",
+        "protocol": "DeepPE Position-test only (n=200); not a heatmap cell",
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
         "id": "oped-deeppe-hct",
         "model": "oped",
         "benchmark": "deeppe-pooled__hct116",
@@ -148,7 +197,27 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "pearson": 0.723,
         "spearman": 0.775,
         "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": "Mean over four held-out PE2 conditions (Lib-MMR/Lib-CV × HEK293T/HeLa); PE4 is not filled",
+        "protocol": (
+            "Mean r=0.723 / ρ=0.775 over the four held-out conditions "
+            "(HEK293T/HeLa × PE2/PE4; Lib-MMR and Lib-CV pooled). "
+            "Hsu does not report HEK-only or per-library numbers"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
+    },
+    {
+        "id": "optiprime-lib-mmr-hek-pe4",
+        "model": "optiprime",
+        "benchmark": "optiprime-lib-mmr__hek293t",
+        "cell_line": "hek293t",
+        "pe_system": "pe4",
+        "pearson": 0.723,
+        "spearman": 0.775,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
+        "protocol": (
+            "Same four-condition mean as PE2. HEK PE4 is in Supplementary Fig. 4; "
+            "the main text quotes only the four-condition mean"
+        ),
         "protocol_match": "approximate",
         "fill_on_leak": True,
     },
@@ -158,10 +227,29 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "benchmark": "optiprime-lib-mmr__hela",
         "cell_line": "hela",
         "pe_system": "pe2",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": "Mean over four held-out PE2 conditions (Lib-MMR/Lib-CV × HEK293T/HeLa); PE4 is not filled",
+        "pearson": 0.760,
+        "spearman": 0.798,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b",
+        "protocol": (
+            "Fig. 4b HeLa PE2 test-set scatter r=0.7597, ρ=0.7981 "
+            "(Lib-MMR and Lib-CV pooled)"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
+    },
+    {
+        "id": "optiprime-lib-mmr-hela-pe4",
+        "model": "optiprime",
+        "benchmark": "optiprime-lib-mmr__hela",
+        "cell_line": "hela",
+        "pe_system": "pe4",
+        "pearson": 0.803,
+        "spearman": 0.810,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4c",
+        "protocol": (
+            "Fig. 4c HeLa PE4 test-set scatter r=0.8034, ρ=0.8098 "
+            "(Lib-MMR and Lib-CV pooled)"
+        ),
         "protocol_match": "approximate",
         "fill_on_leak": True,
     },
@@ -174,7 +262,25 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "pearson": 0.723,
         "spearman": 0.775,
         "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": "Mean over four held-out PE2 conditions (Lib-MMR/Lib-CV × HEK293T/HeLa); PE4 is not filled",
+        "protocol": (
+            "Mean r=0.723 / ρ=0.775 over the four held-out conditions "
+            "(HEK293T/HeLa × PE2/PE4; Lib-MMR and Lib-CV pooled)"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
+    },
+    {
+        "id": "optiprime-lib-cv-hek-pe4",
+        "model": "optiprime",
+        "benchmark": "optiprime-lib-cv__hek293t",
+        "cell_line": "hek293t",
+        "pe_system": "pe4",
+        "pearson": 0.723,
+        "spearman": 0.775,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
+        "protocol": (
+            "Same four-condition mean as PE2. HEK PE4 is in Supplementary Fig. 4"
+        ),
         "protocol_match": "approximate",
         "fill_on_leak": True,
     },
@@ -184,10 +290,29 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "benchmark": "optiprime-lib-cv__hela",
         "cell_line": "hela",
         "pe_system": "pe2",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": "Mean over four held-out PE2 conditions (Lib-MMR/Lib-CV × HEK293T/HeLa); PE4 is not filled",
+        "pearson": 0.760,
+        "spearman": 0.798,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b",
+        "protocol": (
+            "Fig. 4b HeLa PE2 test-set scatter r=0.7597, ρ=0.7981 "
+            "(Lib-MMR and Lib-CV pooled)"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": True,
+    },
+    {
+        "id": "optiprime-lib-cv-hela-pe4",
+        "model": "optiprime",
+        "benchmark": "optiprime-lib-cv__hela",
+        "cell_line": "hela",
+        "pe_system": "pe4",
+        "pearson": 0.803,
+        "spearman": 0.810,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4c",
+        "protocol": (
+            "Fig. 4c HeLa PE4 test-set scatter r=0.8034, ρ=0.8098 "
+            "(Lib-MMR and Lib-CV pooled)"
+        ),
         "protocol_match": "approximate",
         "fill_on_leak": True,
     },
@@ -224,6 +349,49 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "spearman": 0.72,
         "citation": "Mathis et al. Nat. Biotechnol. 2024 Fig. 2g",
         "protocol": "DeepPrime on Library-Diverse filtered to ≤3 bp edits",
+        "protocol_match": "loose",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "deepprime-anazalone-endo",
+        "model": "deepprime",
+        "benchmark": "anazalone-endo",
+        "cell_line": "hek293t",
+        "pearson": 0.74,
+        "spearman": 0.74,
+        "citation": "Yu et al. Cell 2023 Fig. 3H",
+        "protocol": "DeepPrime on Anzalone et al. PE2 endogenous sites; not a heatmap cell",
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "optiprime-this-work-cv",
+        "model": "optiprime",
+        "benchmark": "optiprime-cv",
+        "pearson": 0.693,
+        "spearman": 0.745,
+        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4a",
+        "protocol": (
+            "Fivefold protospacer-stratified CV on this-work screens "
+            "(mean r=0.693, ρ=0.745). Heatmap fills use the held-out test mean "
+            "or HeLa Fig. 4b/c scatters, not this CV number"
+        ),
+        "protocol_match": "approximate",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "oped-pridict-library1-retrained",
+        "model": "oped",
+        "benchmark": "oped-pridict-library1-retrained",
+        "cell_line": "hek293t",
+        "pearson": 0.912,
+        "spearman": 0.905,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 3a",
+        "protocol": (
+            "OPED retrained on the PRIDICT library 1 train split. "
+            "Shipped merged DeepPE weights are not this model, so the "
+            "heatmap does not fill OPED × library1 with 0.912"
+        ),
         "protocol_match": "loose",
         "fill_on_leak": False,
     },

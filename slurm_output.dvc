@@ -1,0 +1,6 @@
+outs:
+- md5: d7f30f35695e2a6941cfb75455abe447.dir
+  size: 178857
+  nfiles: 55
+  hash: md5
+  path: slurm_output

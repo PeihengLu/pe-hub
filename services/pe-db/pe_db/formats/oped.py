@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from pe_common.sequence_utils import sanitize_dna_sequence
+from pe_common.sequence_utils import sanitize_dna_sequence, unpadded_coordinate
 
 from .common import (
     ProgressCallback,
@@ -24,8 +24,10 @@ def standardized_to_oped_dataframe(
 ) -> pd.DataFrame:
     """Convert standardized schema into OPED sequence dataframe.
 
-    ``Target(47bp)`` is the unedited reporter window (WT, with Mut filling
-    alignment pads). PBS is sliced from WT; the RT template is sliced from Mut.
+    ``Target(47bp)`` is the unedited reporter window (WT with insertion-alignment
+    pads dropped). Filling those pads from Mut would splice the insert into the
+    WT 47-mer and frameshift Kim Wide-target. PBS is sliced from WT; the RT
+    template is sliced from Mut.
     """
     efficiency = _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
     wt_series = _col_as_series(df, "wt_sequence", "").astype(str).str.upper().to_numpy()
@@ -42,25 +44,10 @@ def standardized_to_oped_dataframe(
     for row_pos, (wt, mut, pbs_l_i, pbs_r_i, rtt_l_i, rtt_r_i, prot_l_i) in enumerate(
         zip(wt_series, mut_series, pbs_l, pbs_r, rtt_l, rtt_r, prot_l)
     ):
-        # Target window is the unedited reporter (WT), with Mut filling
-        # alignment pads (N/X) so the 47bp string stays contiguous DNA.
-        ref_chars = []
-        for i in range(min(len(wt), len(mut))):
-            wt_base = wt[i]
-            mut_base = mut[i]
-            if wt_base in {"A", "C", "G", "T"}:
-                ref_chars.append(wt_base)
-            elif mut_base in {"A", "C", "G", "T"}:
-                ref_chars.append(mut_base)
-            else:
-                ref_chars.append("A")
-        if len(wt) > len(mut):
-            ref_chars.extend(base if base in {"A", "C", "G", "T"} else "A" for base in wt[len(mut):])
-        elif len(mut) > len(wt):
-            ref_chars.extend(base if base in {"A", "C", "G", "T"} else "A" for base in mut[len(wt):])
-        ref_seq = "".join(ref_chars)
-
-        spacer_l = int(prot_l_i)
+        # Unedited reporter: drop WT insertion pads rather than filling them
+        # from Mut (that put the edit into Target and disagreed with Wide target).
+        ref_seq = sanitize_dna_sequence(wt, drop=True)
+        spacer_l = unpadded_coordinate(wt, int(prot_l_i))
         pad_left = max(0, int(protospacer_upstream_bases) - spacer_l)
         if pad_left:
             # OPED sanitize drops N; A is placeholder genomic context so the

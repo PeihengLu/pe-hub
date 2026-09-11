@@ -82,6 +82,25 @@ def _average_deeppe_replicates(df: pd.DataFrame, replicate_columns: list[str]) -
     return numeric.mean(axis=1, skipna=True)
 
 
+def _drop_unlabeled_efficiency_rows(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Drop DeepPE rows with no numeric efficiency (blank is not a measured zero)."""
+    out = df.copy()
+    numeric = pd.to_numeric(out[column], errors="coerce")
+    keep = numeric.notna()
+    n_dropped = int((~keep).sum())
+    if n_dropped:
+        logger.warning(
+            "Dropped %s of %s DeepPE row(s): no measured efficiency in %r.",
+            n_dropped,
+            len(out),
+            column,
+        )
+        out = out.loc[keep]
+        numeric = numeric.loc[keep]
+    out[column] = numeric.astype(float)
+    return out.reset_index(drop=True)
+
+
 def _save_deeppe_export(
     df: pd.DataFrame,
     *,
@@ -121,6 +140,7 @@ def _export_deeppe_moesm4_datasheets() -> None:
             "Measured PE efficiency": "editing_efficiency",
         }
     )
+    ht_data = _drop_unlabeled_efficiency_rows(ht_data, "editing_efficiency")
     _save_deeppe_export(
         ht_data,
         dataset="deeppe-ht",
@@ -138,6 +158,8 @@ def _export_deeppe_moesm4_datasheets() -> None:
     split_series = position_type_data["dataset_split"].astype(str)
     type_data = position_type_data[split_series.str.contains("Type", case=False, na=False)]
     position_data = position_type_data[split_series.str.contains("Position", case=False, na=False)]
+    type_data = _drop_unlabeled_efficiency_rows(type_data, "editing_efficiency")
+    position_data = _drop_unlabeled_efficiency_rows(position_data, "editing_efficiency")
 
     _save_deeppe_export(
         type_data,
@@ -202,6 +224,7 @@ def _export_deeppe_endogenous_datasheets() -> None:
             )
         export_df = df.copy()
         export_df["editing_efficiency"] = _average_deeppe_replicates(export_df, replicate_columns)
+        export_df = _drop_unlabeled_efficiency_rows(export_df, "editing_efficiency")
         export_df = _drop_deeppe_replicate_columns(export_df, replicate_columns)
         # MOESM5 contains both HCT and MDA columns; keep only the target line's replicates.
         if replicate_prefix in {"HCT", "MDA"}:
@@ -458,6 +481,10 @@ def _prepare_deeppe_export_df(df: pd.DataFrame) -> pd.DataFrame:
         prepared["fold"] = source[split_col].map(_deeppe_split_to_fold)
     else:
         prepared["fold"] = np.nan
+
+    # Blank HEK endo replicates are unmeasured, not zero. Drop here so the
+    # DeepPrime-style standardizer never writes those rows into parquet.
+    prepared = _drop_unlabeled_efficiency_rows(prepared, "measured_pe_efficiency")
 
     mutation_rows = [
         _deeppe_infer_rt_edit(

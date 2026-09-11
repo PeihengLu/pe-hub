@@ -54,8 +54,12 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    # optional ARC_GPU_CONSTRAINT. Confirm module name: module spider Anaconda
    ```
 
-   Jobs load `ARC_MODULES` then `conda activate $CONDA_ENV` via `job_env.sh`.
-   Do **not** rely on `conda init` in `.bashrc` for batch jobs.
+   Jobs load `ARC_MODULES` then always `conda activate $CONDA_ENV` via
+   `job_env.sh` (even if you submitted from an already-activated shell).
+   `--export=ALL` plus `module load Anaconda3` would otherwise leave the
+   module `python` first on `PATH`, and datasheet-benchmark would fail with
+   `No module named 'pe_common'`. Do **not** rely on `conda init` in `.bashrc`
+   for batch jobs.
 
 ## DVC (selective artifacts)
 

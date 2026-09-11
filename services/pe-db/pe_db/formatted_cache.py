@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 FORMATTED_CACHE_REVISIONS: dict[str, int] = {
     # All formats bumped together: unmeasured efficiency labels are no longer
     # coerced to 0.0, so caches built before that change hold fabricated zeros.
-    "deepprime": 4,  # left-pad WT74 when spacer starts before offset 4
-    "pridict": 6,  # crop extra 5' context so spacer starts at author offset 10
-    "pridict2": 6,
-    "oped": 5,  # left-pad 47-mer when spacer starts before offset 4; no recenter
+    "deepprime": 5,  # deletion RT/RHA; GN19 MFE4; vendor U→U Tm; fold T as U
+    "pridict": 8,  # overhang left: insert-start vs already-after-insert rha_l
+    "pridict2": 8,
+    "oped": 6,  # drop WT insertion pads instead of filling from Mut
     "optiprime": 4,  # 5G genomic 20-mer locate; RTT from homology_arm
 }
 

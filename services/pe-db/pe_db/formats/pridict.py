@@ -108,6 +108,26 @@ def _rtt_wt_right_bounds(df: pd.DataFrame) -> pd.Series:
     return rtt_wt_r
 
 
+def _insertion_rt_overhang_left(
+    rha_l: pd.Series,
+    *,
+    lha_r: pd.Series,
+    edit_len: pd.Series,
+    type_ins: pd.Series,
+) -> pd.Series:
+    """Mut index where 3' RT overhang (homology after the insert) starts.
+
+    Vendor ``RToverhanglength`` is homology *after* the inserted bases.
+    PRIDICT-native sheets store ``rha_l`` at the insert start (``lha_r``), so
+    the overhang begins at ``lha_r + edit_len``. MinSePIE-style sheets already
+    store ``rha_l`` after the insert; adding ``edit_len`` again zeros the
+    overhang (18-nt library) or shortens it (set12).
+    """
+    insert_end = lha_r + edit_len
+    still_in_insert = type_ins.astype(bool) & rha_l.lt(insert_end)
+    return insert_end.where(still_in_insert, rha_l)
+
+
 _WT_INDEXED_COORD_COLUMNS = (
     "protospacer_location_l",
     "protospacer_location_r",
@@ -116,10 +136,10 @@ _WT_INDEXED_COORD_COLUMNS = (
     "rtt_location_l",
     "lha_location_l",
     "lha_location_r",
-    "rha_location_l",
 )
 _MUT_INDEXED_COORD_COLUMNS = (
     "rtt_location_r",
+    "rha_location_l",
     "rha_location_r",
 )
 
@@ -370,6 +390,9 @@ def _compute_pridict2_wallace_mt_features(
     rha_l: int,
     rha_r: int,
     edit_pos: int,
+    edit_len: int = 1,
+    type_ins: bool = False,
+    type_del: bool = False,
 ) -> dict[str, float]:
     protospacer = ("G" + wt[protospacer_l:protospacer_r]).upper()
     pbs_rc = _reverse_complement(wt[pbs_l:pbs_r].upper())
@@ -377,11 +400,20 @@ def _compute_pridict2_wallace_mt_features(
     rt_overhang_rc = _reverse_complement(mut[rha_l:rha_r].upper())
     extension = rt_rc + pbs_rc
 
-    original_base = wt[edit_pos:edit_pos + 1].upper() if edit_pos < len(wt) else "-"
-    edited_base = mut[edit_pos:edit_pos + 1].upper() if edit_pos < len(mut) else "-"
+    allele_len = max(0, int(edit_len))
+    original_base = (
+        ""
+        if type_ins
+        else sanitize_dna_sequence(wt[edit_pos:edit_pos + allele_len], drop=True)
+    )
+    edited_base = (
+        ""
+        if type_del
+        else sanitize_dna_sequence(mut[edit_pos:edit_pos + allele_len], drop=True)
+    )
 
     def _wallace(base: str) -> tuple[float, float]:
-        if base in {"", "-", "N"}:
+        if not base:
             return 0.0, 1.0
         return float(mt.Tm_Wallace(Seq(base))), 0.0
 
@@ -427,7 +459,13 @@ def _enrich_pridict2_features(
     out["Correction_Length"] = edit_len.astype(int)
     out["PBSlength"] = (pbs_r - pbs_l).clip(lower=0).astype(float)
     out["RTlength"] = (rtt_r - rtt_l).clip(lower=0).astype(float)
-    out["RToverhanglength"] = (rha_r - rha_l).clip(lower=0).astype(float)
+    overhang_l = _insertion_rt_overhang_left(
+        rha_l,
+        lha_r=edit_pos,
+        edit_len=edit_len,
+        type_ins=type_ins,
+    )
+    out["RToverhanglength"] = (rha_r - overhang_l).clip(lower=0).astype(float)
 
     wt_series = _col_as_series(source, "wt_sequence", "").astype(str).map(normalize_target_dna)
     mut_series = _col_as_series(source, "mut_sequence", "").astype(str).map(normalize_target_dna)
@@ -467,13 +505,16 @@ def _enrich_pridict2_features(
                     wt,
                     mut,
                     **seq_kwargs,
-                    rha_l=int(rha_l.loc[row_idx]),
+                    rha_l=int(overhang_l.loc[row_idx]),
                     rha_r=int(rha_r.loc[row_idx]),
                     edit_pos=int(edit_pos.loc[row_idx]),
+                    edit_len=int(edit_len.loc[row_idx]),
+                    type_ins=bool(type_ins.loc[row_idx]),
+                    type_del=bool(type_del.loc[row_idx]),
                 ),
                 "RToverhangmatches": _compute_pridict2_rtoverhangmatches(
                     mut,
-                    rha_l=int(rha_l.loc[row_idx]),
+                    rha_l=int(overhang_l.loc[row_idx]),
                     rha_r=int(rha_r.loc[row_idx]),
                 ),
             }

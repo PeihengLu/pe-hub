@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping, Optional
 
@@ -529,6 +531,77 @@ def split_config_from_params(
 
 SPLIT_COLUMN = "split"
 SPLIT_SOURCE_COLUMN = "split_source"
+_SPLIT_STUDY_TOKEN = re.compile(r"__split_[0-9a-fA-F]{8}")
+_SP_MARKER = "__sp_"
+
+
+def _insert_before_search_space_suffix(base_name: str, suffix: str) -> str:
+    cleaned = str(base_name).strip()
+    if _SP_MARKER in cleaned:
+        head, marker, tail = cleaned.rpartition(_SP_MARKER)
+        return f"{head}{suffix}{marker}{tail}"
+    return f"{cleaned}{suffix}"
+
+
+def split_assignment_fingerprint(
+    df: pd.DataFrame,
+    *,
+    seed: Optional[int] = None,
+    group_col: Optional[str] = None,
+    split_col: str = SPLIT_COLUMN,
+) -> str:
+    """Stable 8-hex id of seed plus per-row ``(group, split)`` assignment.
+
+    Optuna study names use this so a new holdout seed, a dropped unmeasured
+    row, or a group moving between train/val/test opens a new SQLite DB
+    instead of resuming an unrelated study.
+    """
+    lines = [f"seed={'' if seed is None else int(seed)}"]
+    if df is None or df.empty or split_col not in getattr(df, "columns", []):
+        lines.append("empty")
+        payload = "\n".join(lines)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+    resolved_group = group_col
+    if resolved_group is None:
+        for candidate in ("target_uid", "group_id"):
+            if candidate in df.columns:
+                resolved_group = candidate
+                break
+    if resolved_group is None:
+        groups = [str(index) for index in range(len(df))]
+    else:
+        groups = df[resolved_group].astype("string").fillna("").tolist()
+    splits = df[split_col].astype("string").fillna("").tolist()
+    counts: dict[str, int] = {}
+    for label in splits:
+        counts[label] = counts.get(label, 0) + 1
+    lines.append(f"n={len(df)}")
+    lines.append(
+        "counts="
+        + ",".join(f"{label}:{counts[label]}" for label in sorted(counts))
+    )
+    lines.extend(sorted(f"{group}\t{label}" for group, label in zip(groups, splits)))
+    payload = "\n".join(lines)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+
+def apply_seed_study_suffix(base_name: str, seed: int) -> str:
+    """Insert ``__seed_{n}`` before ``__sp_`` unless that token is already present."""
+    cleaned = str(base_name).strip()
+    token = f"seed_{int(seed)}"
+    if token in cleaned.split("__"):
+        return cleaned
+    return _insert_before_search_space_suffix(cleaned, f"__{token}")
+
+
+def apply_split_study_suffix(base_name: str, fingerprint: str) -> str:
+    """Insert or replace ``__split_{8hex}`` before an optional ``__sp_`` suffix."""
+    hex_id = str(fingerprint).strip().lower()
+    if len(hex_id) != 8 or any(ch not in "0123456789abcdef" for ch in hex_id):
+        raise ValueError(f"split fingerprint must be 8 hex chars, got {fingerprint!r}")
+    cleaned = _SPLIT_STUDY_TOKEN.sub("", str(base_name).strip())
+    return _insert_before_search_space_suffix(cleaned, f"__split_{hex_id}")
 
 
 def _split_labels(df: pd.DataFrame, split_col: str = SPLIT_COLUMN) -> set[str]:

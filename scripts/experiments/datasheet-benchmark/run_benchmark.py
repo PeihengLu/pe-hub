@@ -204,6 +204,8 @@ def fetch_model_format_frame(
 def fixed_hyperparameters_for_model(
     model: str,
     extra: Optional[dict[str, Any]] = None,
+    *,
+    seed: Optional[int] = None,
 ) -> dict[str, Any]:
     hp: dict[str, Any] = {"load_pretrained": False}
     if model.strip().lower() == "pridict2":
@@ -211,6 +213,8 @@ def fixed_hyperparameters_for_model(
         hp["y_ref"] = ["averageedited"]
     if extra:
         hp.update(extra)
+    if seed is not None:
+        hp["seed"] = int(seed)
     return hp
 
 
@@ -327,7 +331,9 @@ def run_tune_and_eval(
         dataset_name=f"{dataset_name}__{repeat_id}",
         filter_kwargs=filter_kwargs,
         records=records,
-        hyperparameters=fixed_hyperparameters_for_model(model, extra_hyperparameters),
+        hyperparameters=fixed_hyperparameters_for_model(
+            model, extra_hyperparameters, seed=seed
+        ),
         device=device,
         notes=notes,
     )

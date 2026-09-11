@@ -2,9 +2,18 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+import pandas as pd
+from pe_common.splits import (
+    SPLIT_COLUMN,
+    apply_seed_study_suffix,
+    apply_split_study_suffix,
+    split_assignment_fingerprint,
+)
 
 from ..compute.job_cancel import JobCancelledError, is_cancel_requested
 from .config import local_presets_root, tuning_studies_root
@@ -30,6 +39,8 @@ from .tuning_schemas import TuningRequest
 
 logger = logging.getLogger(__name__)
 
+_SEED_IN_NAME = re.compile(r"(?:^|__)seed_(\d+)(?:__|$)")
+
 
 def _default_study_name(request: TuningRequest) -> str:
     training = request.training
@@ -47,6 +58,47 @@ def _default_study_storage(study_name: str, root: Path) -> str:
     root.mkdir(parents=True, exist_ok=True)
     db_path = root / f"{study_name}.db"
     return f"sqlite:///{db_path}"
+
+
+def _seed_from_tuning_request(request: TuningRequest) -> Optional[int]:
+    hp = request.training.hyperparameters or {}
+    for key in ("seed", "random_state"):
+        value = hp.get(key)
+        if value is None or str(value).strip() == "":
+            continue
+        return int(value)
+    blob = f"{request.study_name or ''}__{request.training.dataset_name or ''}"
+    match = _SEED_IN_NAME.search(blob)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _split_fingerprint_from_training(
+    training: Any, *, seed: Optional[int]
+) -> Optional[str]:
+    records = getattr(training, "records", None)
+    if not records:
+        return None
+    frame = pd.DataFrame(list(records))
+    if SPLIT_COLUMN not in frame.columns:
+        return None
+    return split_assignment_fingerprint(frame, seed=seed)
+
+
+def _bind_study_identity(
+    base_name: str,
+    *,
+    model_name: str,
+    seed: Optional[int],
+    split_fingerprint: Optional[str],
+) -> str:
+    name = base_name
+    if seed is not None:
+        name = apply_seed_study_suffix(name, seed)
+    if split_fingerprint:
+        name = apply_split_study_suffix(name, split_fingerprint)
+    return resolve_study_name(name, model_name)
 
 
 def _log(message: str, *, job_id: Optional[str]) -> None:
@@ -78,8 +130,15 @@ def execute_tuning(
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
         space = get_search_space(training.model_name)
+        seed = _seed_from_tuning_request(request)
+        split_fp = _split_fingerprint_from_training(training, seed=seed)
         base_study_name = request.study_name or _default_study_name(request)
-        study_name = resolve_study_name(base_study_name, training.model_name)
+        study_name = _bind_study_identity(
+            base_study_name,
+            model_name=training.model_name,
+            seed=seed,
+            split_fingerprint=split_fp,
+        )
         storage = request.study_storage or _default_study_storage(
             study_name,
             tuning_studies_root(),
@@ -88,7 +147,9 @@ def execute_tuning(
 
         _log(
             f"Starting Optuna study {study_name!r} ({request.n_trials} trials, "
-            f"search_space={expected_fingerprint})",
+            f"search_space={expected_fingerprint}"
+            f"{f', seed={seed}' if seed is not None else ''}"
+            f"{f', split={split_fp}' if split_fp else ''})",
             job_id=job_id,
         )
 
@@ -107,6 +168,17 @@ def execute_tuning(
             )
         if not stored_fingerprint:
             study.set_user_attr("search_space_fingerprint", expected_fingerprint)
+        if seed is not None and study.user_attrs.get("seed") is None:
+            study.set_user_attr("seed", int(seed))
+        if split_fp:
+            stored_split = study.user_attrs.get("split_fingerprint")
+            if stored_split and stored_split != split_fp:
+                raise TrainingError(
+                    f"Study {study_name!r} was created with split "
+                    f"{stored_split!r} but the current assignment is {split_fp!r}."
+                )
+            if not stored_split:
+                study.set_user_attr("split_fingerprint", split_fp)
 
         def objective(trial: "optuna.Trial") -> float:
             if job_id and is_cancel_requested("tune", job_id):

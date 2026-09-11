@@ -62,6 +62,7 @@ from pridict2.pridict.pridictv2.model import (
     AnnotEmbeder_InitSeq,
     AnnotEmbeder_MutSeq,
     FeatureEmbAttention,
+    MLPDecoder,
     MLPDecoderDistribution,
     MLPEmbedder,
     MaskGenerator,
@@ -88,6 +89,22 @@ PRIDICT_BATCH = Tuple[
 ]
 
 
+# Vendor ``run_workflow``: LogSoftmax + KL/CE vs Softplus + MSE-family.
+_DISTRIBUTION_LOSSES = frozenset({"KLDloss", "CEloss"})
+# Efficiency labels are fractions in [0, 1]; vendor trains Softplus on log1p(y * 100).
+_REGRESSION_LABEL_SCALE = 100.0
+
+
+def uses_distribution_decoder(loss_func: str) -> bool:
+    """True for the 3-way simplex head; False for the Softplus regression head."""
+    return str(loss_func).strip() in _DISTRIBUTION_LOSSES
+
+
+def regression_training_targets(y: torch.Tensor) -> torch.Tensor:
+    """Map fraction labels onto the vendor MLPDecoder training scale."""
+    return torch.log1p(y.clamp(min=0) * _REGRESSION_LABEL_SCALE)
+
+
 def build_pridict_loss(loss_func: str) -> nn.Module:
     name = str(loss_func).strip()
     if name in {"MSEloss", "RMSEloss"}:
@@ -109,9 +126,10 @@ def predictions_from_decoder_output(
 ) -> torch.Tensor:
     """Convert decoder outputs to outcome predictions for metric computation."""
     name = str(loss_func).strip()
-    if name in {"KLDloss", "CEloss"}:
+    if name in _DISTRIBUTION_LOSSES:
         return torch.exp(logits)
-    return logits
+    # MLPDecoder Softplus is trained against log1p(y * 100); invert to fractions.
+    return torch.expm1(logits) / _REGRESSION_LABEL_SCALE
 
 
 # Vendor notebooks fix annot_embed=8 and assemb_opt='stack'. Neither is a
@@ -128,7 +146,12 @@ def _compute_z_dim(embed_dim: int, annot_embed: int = _ANNOT_EMBED) -> int:
 
 
 class PERNNDistributionModel(nn.Module):
-    """Composite PE_RNN_distribution model matching the vendor training graph."""
+    """Composite PE_RNN graph with a loss-selected decoder head.
+
+    ``KLDloss`` / ``CEloss`` use ``MLPDecoderDistribution`` (LogSoftmax).
+    MSE-family losses use ``MLPDecoder`` (Softplus), which is valid for one
+    outcome — a 1-class LogSoftmax is identically zero.
+    """
 
     COMPONENT_NAMES: Tuple[str, ...] = (
         "init_annot_embed",
@@ -152,6 +175,7 @@ class PERNNDistributionModel(nn.Module):
         p_dropout: float,
         seqlevel_featdim: int,
         num_outcomes: int,
+        loss_func: str = "MSEloss",
         rnn_class: type = nn.GRU,
         nonlin_func: Optional[nn.Module] = None,
         fdtype: torch.dtype = torch.float32,
@@ -159,6 +183,7 @@ class PERNNDistributionModel(nn.Module):
     ) -> None:
         super().__init__()
         self.fdtype = fdtype
+        self.loss_func = str(loss_func).strip()
         self.mask_gen = MaskGenerator()
         nonlin = nonlin_func or nn.ReLU()
 
@@ -212,15 +237,18 @@ class PERNNDistributionModel(nn.Module):
             pdropout=p_dropout,
             num_encoder_units=1,
         )
-        self.decoder = MLPDecoderDistribution(
-            5 * z_dim,
-            embed_dim=z_dim,
-            outp_dim=num_outcomes,
-            mlp_embed_factor=2,
-            nonlin_func=nonlin,
-            pdropout=p_dropout,
-            num_encoder_units=1,
-        )
+        decoder_kwargs = {
+            "embed_dim": z_dim,
+            "outp_dim": num_outcomes,
+            "mlp_embed_factor": 2,
+            "nonlin_func": nonlin,
+            "pdropout": p_dropout,
+            "num_encoder_units": 1,
+        }
+        if uses_distribution_decoder(self.loss_func):
+            self.decoder = MLPDecoderDistribution(5 * z_dim, **decoder_kwargs)
+        else:
+            self.decoder = MLPDecoder(5 * z_dim, infer_sigma=False, **decoder_kwargs)
 
         for name in self.COMPONENT_NAMES:
             init_params_(getattr(self, name))
@@ -345,6 +373,8 @@ class _PRIDICT2LightningModule(pl.LightningModule):
             device=self.device,
             requires_grad=train,
         )
+        if not uses_distribution_decoder(self.loss_func_name):
+            target = regression_training_targets(target)
         loss = self.loss_fn(logits, target)
         if self.loss_func_name == "KLDloss":
             loss = loss.sum(dim=-1).mean()
@@ -393,12 +423,18 @@ def build_pernn_distribution_model(
     seqlevel_featdim: int,
     num_outcomes: int,
     device: torch.device,
+    loss_func: Optional[str] = None,
 ) -> PERNNDistributionModel:
     embed_dim = int(hyperparameters.get("embed_dim", 64))
     num_hidden_layers = int(hyperparameters.get("num_hidden_layers", 1))
     bidirection = bool(hyperparameters.get("bidirection", True))
     p_dropout = float(first_hyperparam(hyperparameters, "p_dropout", "dropout", default=0.1))
     annot_embed = _ANNOT_EMBED
+    resolved_loss = str(
+        loss_func
+        if loss_func is not None
+        else hyperparameters.get("loss_func", "MSEloss")
+    )
     model = PERNNDistributionModel(
         embed_dim=embed_dim,
         num_hidden_layers=num_hidden_layers,
@@ -407,6 +443,7 @@ def build_pernn_distribution_model(
         annot_embed=annot_embed,
         seqlevel_featdim=seqlevel_featdim,
         num_outcomes=num_outcomes,
+        loss_func=resolved_loss,
         rnn_class=nn.GRU,
         nonlin_func=nn.ReLU(),
     )
@@ -927,8 +964,9 @@ class PRIDICT2ModelWrapper(BasePEModel):
         """
         Load a trained PRIDICT2 run directory.
 
-        Ensemble-trained single-head ``PE_RNN_distribution`` artifacts (generic
-        ``decoder.pkl`` names) are loaded into :class:`PERNNDistributionModel`.
+        Ensemble-trained single-head artifacts (generic ``decoder.pkl`` names)
+        are loaded into :class:`PERNNDistributionModel`. The decoder class
+        follows ``loss_func`` in ``exp_options.pkl`` (Softplus vs LogSoftmax).
         Vendor multidata / cell-type-headed runs still go through PRIEML.
         """
         self._validate_run_dir(model_path)
@@ -978,11 +1016,14 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "bidirection": bool(model_config.bidirection),
             "p_dropout": float(model_config.p_dropout),
         }
+        loss_func = str(options.get("loss_func", "MSEloss"))
+        self._last_loss_func = loss_func
         model = build_pernn_distribution_model(
             hyperparameters,
             seqlevel_featdim=int(options.get("seqlevel_featdim", 0)),
             num_outcomes=int(options.get("num_outcomes", 1)),
             device=self.device,
+            loss_func=loss_func,
         )
         statedict_dir = os.path.join(model_path, "model_statedict")
         model.load_vendor_statedict(statedict_dir, device=self.device)
@@ -1011,7 +1052,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
         )
         loader = loaders["eval"]
         resolved_loss_func = str(
-            loss_func or getattr(self, "_last_loss_func", None) or "MSEloss"
+            loss_func
+            or getattr(self, "_last_loss_func", None)
+            or getattr(self.model, "loss_func", None)
+            or "MSEloss"
         )
         pred_chunks: List[np.ndarray] = []
         true_chunks: List[np.ndarray] = []
@@ -1295,6 +1339,8 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "experiment_desc": str(
                 hyperparameters.get("experiment_desc", "pe_ensemble_pridict_train")
             ),
+            # Vendor ``run_cont_pe_RNN_distribution`` uses this name for both
+            # Softplus (MSE) and LogSoftmax (KLD/CE) heads.
             "model_name": "PE_RNN_distribution",
             "annot_embed": _ANNOT_EMBED,
             "assemb_opt": _ASSEMB_OPT,
@@ -1306,6 +1352,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             "separate_seqlevel_embedder": False,
             "seqlevel_featdim": int(seqlevel_featdim),
             "num_outcomes": int(len(y_ref)),
+            "loss_func": str(hyperparameters.get("loss_func", "MSEloss")),
         }
         if bool(hyperparameters.get("freezing", False)):
             experiment_options["freezing"] = True
@@ -1418,6 +1465,7 @@ class PRIDICT2ModelWrapper(BasePEModel):
             seqlevel_featdim=seqlevel_featdim,
             num_outcomes=len(y_ref),
             device=self.device,
+            loss_func=str(build_hparams.get("loss_func", "MSEloss")),
         )
         statedict_dir = self._resolve_train_statedict_dir(hyperparameters)
         pretrained_path = vendor_state_dict_path(statedict_dir)
@@ -1560,7 +1608,11 @@ class PRIDICT2ModelWrapper(BasePEModel):
             outcomes = ["averageedited"]
 
         if isinstance(self.model, PERNNDistributionModel):
-            pred_df = self._predict_pernn_dataframe(test_df, outcomes)
+            pred_df = self._predict_pernn_dataframe(
+                test_df,
+                outcomes,
+                loss_func=getattr(self.model, "loss_func", None),
+            )
         else:
             dloader = self.prepare_data(test_df, y_ref=outcomes)
             pred_df = self._predict_from_loaded_or_current_model(

@@ -37,10 +37,16 @@
 #   MODELS            comma/space list to restrict weights (deepprime,oped,optiprime,pridict2).
 #                     pridict2 selects ensembles only (no single A/B evaluate jobs).
 #                     Leaving MODELS unset runs the three vendor models plus ensembles.
-#   BENCHMARKS        comma/space list of benchmark names
+#   BENCHMARKS        comma/space list of benchmark names. Extra (not in the
+#                     default heatmap matrix): deeppe-ht-test (Liu Fig. 2a HT-only).
+#   CELL_LINES        comma/space list of expanded cell-line names to keep
+#                     (e.g. hek293t,k562). Empty keeps every expanded cell.
+#   ALLOW_DATA_LEAK=1 pass --allow-data-leak (keep train-overlapping test loci
+#                     instead of excluding them / aborting no_original_test_split)
 #   PRIDICT2_HEADS    comma/space list of cell-type heads (default: HEK,K562).
 #                     Each PRIDICT2 CV run is scored with every listed head on
 #                     every benchmark (cross-cell, not just the matching head).
+#   MATCH_PRIDICT2_HEAD_TO_CELL=1  ensemble only HEK→hek293t and K562→k562
 #   SKIP_EXISTING=1   skip cells already ok in results.jsonl
 #                     (library-diverse fold-matched cells are distinct from
 #                     earlier random-holdout rows of the same weight)
@@ -76,14 +82,24 @@ RESULTS_JSONL="${OUT_DIR}/results.jsonl"
 LOG_DIR="${OUT_DIR}/logs"
 FILTER_MODELS="${MODELS:-}"
 FILTER_BENCHMARKS="${BENCHMARKS:-}"
+FILTER_CELL_LINES="${CELL_LINES:-}"
+ALLOW_DATA_LEAK="${ALLOW_DATA_LEAK:-0}"
+MATCH_PRIDICT2_HEAD_TO_CELL="${MATCH_PRIDICT2_HEAD_TO_CELL:-0}"
 WANT_PRIDICT2_ENSEMBLE=1
 mkdir -p "${OUT_DIR}" "${LOG_DIR}"
+
+LEAK_ARGS=()
+if [[ "${ALLOW_DATA_LEAK}" == "1" ]]; then
+  LEAK_ARGS+=(--allow-data-leak)
+fi
 
 print_experiment_banner "Base model evaluation (pooled benchmarks)"
 echo "RUN_ID:    ${RUN_ID}"
 echo "OUT_DIR:   ${OUT_DIR}"
 echo "DEVICE:    ${DEVICE}"
 echo "PEEN_CMD:  ${PEEN_CMD[*]}"
+echo "ALLOW_DATA_LEAK: ${ALLOW_DATA_LEAK}"
+echo "MATCH_PRIDICT2_HEAD_TO_CELL: ${MATCH_PRIDICT2_HEAD_TO_CELL}"
 echo ""
 
 # model|weights|experiment_id|cv_run
@@ -142,10 +158,21 @@ if [[ -n "${FILTER_MODELS}" ]]; then
   fi
 fi
 
+# Not in the default heatmap matrix; selectable via BENCHMARKS=deeppe-ht-test.
+EXTRA_BENCHMARKS=(
+  "deeppe-ht-test|deeppe|deeppe-ht"
+)
+
 if [[ -n "${FILTER_BENCHMARKS}" ]]; then
   BENCH_KEY=",$(echo "${FILTER_BENCHMARKS}" | tr -s ' ,' ',' | sed 's/^,//;s/,$//'),"
   FILTERED_BENCHES=()
   for spec in "${BENCHMARKS[@]}"; do
+    IFS='|' read -r name _ <<< "${spec}"
+    if [[ "${BENCH_KEY}" == *",${name},"* ]]; then
+      FILTERED_BENCHES+=("${spec}")
+    fi
+  done
+  for spec in "${EXTRA_BENCHMARKS[@]}"; do
     IFS='|' read -r name _ <<< "${spec}"
     if [[ "${BENCH_KEY}" == *",${name},"* ]]; then
       FILTERED_BENCHES+=("${spec}")
@@ -168,6 +195,40 @@ if [[ ${#BENCHMARKS[@]} -eq 0 ]]; then
   echo "Error: no benchmarks after cell-line expansion" >&2
   exit 1
 fi
+
+if [[ -n "${FILTER_CELL_LINES}" ]]; then
+  CELL_KEY=",$(echo "${FILTER_CELL_LINES}" | tr '[:upper:]' '[:lower:]' | tr -s ' ,' ',' | sed 's/^,//;s/,$//'),"
+  FILTERED_CELLS=()
+  for spec in "${BENCHMARKS[@]}"; do
+    IFS='|' read -r _name _study _datasets cell _pe <<< "${spec}"
+    cell_lc="$(echo "${cell}" | tr '[:upper:]' '[:lower:]')"
+    if [[ -z "${cell}" || "${CELL_KEY}" == *",${cell_lc},"* ]]; then
+      FILTERED_CELLS+=("${spec}")
+    fi
+  done
+  BENCHMARKS=("${FILTERED_CELLS[@]}")
+  if [[ ${#BENCHMARKS[@]} -eq 0 ]]; then
+    echo "Error: CELL_LINES='${FILTER_CELL_LINES}' matched no expanded benchmarks" >&2
+    exit 1
+  fi
+fi
+
+pridict2_head_matches_cell() {
+  local head_u cell_n
+  head_u="$(echo "${1}" | tr '[:lower:]' '[:upper:]')"
+  cell_n="$(echo "${2}" | tr '[:upper:]' '[:lower:]' | tr -d '_-')"
+  case "${head_u}" in
+    HEK|HEK293T)
+      [[ "${cell_n}" == "hek293t" || "${cell_n}" == "hek" ]]
+      ;;
+    K562)
+      [[ "${cell_n}" == "k562" ]]
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
 
 if [[ "${SMOKE:-0}" == "1" ]]; then
   if [[ ${#WEIGHTS[@]} -gt 0 ]]; then
@@ -218,11 +279,24 @@ if [[ "${SMOKE:-0}" == "1" ]]; then
 fi
 ENS_TOTAL=0
 if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
-  ENS_TOTAL=$(( ${#ENS_HEADS[@]} * ${#ENS_RUNS[@]} * ${#BENCHMARKS[@]} ))
+  if [[ "${MATCH_PRIDICT2_HEAD_TO_CELL}" == "1" ]]; then
+    for head in "${ENS_HEADS[@]}"; do
+      for _run in "${ENS_RUNS[@]}"; do
+        for bench_spec in "${BENCHMARKS[@]}"; do
+          IFS='|' read -r _n _s _d cell _p <<< "${bench_spec}"
+          if pridict2_head_matches_cell "${head}" "${cell}"; then
+            ENS_TOTAL=$((ENS_TOTAL + 1))
+          fi
+        done
+      done
+    done
+  else
+    ENS_TOTAL=$(( ${#ENS_HEADS[@]} * ${#ENS_RUNS[@]} * ${#BENCHMARKS[@]} ))
+  fi
 fi
 echo "Vendor evaluate: ${#WEIGHTS[@]} weights × ${#BENCHMARKS[@]} benchmarks = ${TOTAL} jobs (deepprime, oped, optiprime)"
 if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
-  echo "PRIDICT2 ensembles after that: ${#ENS_HEADS[@]} heads × ${#ENS_RUNS[@]} folds × ${#BENCHMARKS[@]} benchmarks = ${ENS_TOTAL} jobs"
+  echo "PRIDICT2 ensembles after that: ${ENS_TOTAL} jobs"
 else
   echo "PRIDICT2 ensembles: skipped (MODELS filter)"
 fi
@@ -233,6 +307,7 @@ cat > "${OUT_DIR}/matrix.json" <<EOF
 {
   "run_id": "${RUN_ID}",
   "device": "${DEVICE}",
+  "allow_data_leak": $([ "${ALLOW_DATA_LEAK}" = "1" ] && echo true || echo false),
   "n_weights": ${#WEIGHTS[@]},
   "n_benchmarks": ${#BENCHMARKS[@]},
   "n_evaluations": ${TOTAL},
@@ -312,7 +387,7 @@ PY
     fi
 
     META_JSON="$(
-      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${PE_SYSTEM}" <<'PY'
+      python - "${SPLIT_PLAN_JSON}" "${MODEL}" "${EFFECTIVE_WEIGHTS}" "${EXPERIMENT_ID}" "${CV_RUN}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" <<'PY'
 import json
 import sys
 
@@ -330,6 +405,7 @@ print(json.dumps({
     "pe_system": sys.argv[10] or None,
     "use_original_fold": plan["use_original_fold"],
     "original_fold_test_value": plan["original_fold_test_value"],
+    "allow_data_leak": sys.argv[11] == "1",
 }))
 PY
     )"
@@ -343,6 +419,7 @@ PY
       --study "${STUDY}" \
       "${DATASET_ARGS[@]}" \
       "${SPLIT_ARGS[@]}" \
+      "${LEAK_ARGS[@]}" \
       --sync \
       --device "${DEVICE}" \
       > "${STDOUT_FILE}" 2> "${STDERR_FILE}"
@@ -419,8 +496,11 @@ if [[ "${WANT_PRIDICT2_ENSEMBLE}" == "1" ]]; then
 
       for bench_spec in "${BENCHMARKS[@]}"; do
         IFS='|' read -r BENCH_NAME STUDY DATASETS_CSV CELL_LINE PE_SYSTEM <<< "${bench_spec}"
-        ENS_IDX=$((ENS_IDX + 1))
         ENS_NAME="pridict2-ensemble-${head}-run${run}-${BENCH_NAME}"
+        if [[ "${MATCH_PRIDICT2_HEAD_TO_CELL}" == "1" ]] && ! pridict2_head_matches_cell "${head}" "${CELL_LINE}"; then
+          continue
+        fi
+        ENS_IDX=$((ENS_IDX + 1))
 
         SPLIT_PLAN_JSON="$(
           python "${SCRIPT_DIR}/eval_split_args.py" --json \
@@ -477,7 +557,7 @@ PY
         fi
 
         META_JSON="$(
-          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" "${PE_SYSTEM}" <<'PY'
+          python - "${SPLIT_PLAN_JSON}" "${ENSEMBLE_MODEL}" "${ENS_WEIGHTS}" "${ENS_EXPERIMENT_ID}" "${run}" "${STUDY}" "${DATASETS_CSV}" "${CELL_LINE}" "${BENCH_NAME}" "${MEMBER_A}" "${MEMBER_B}" "${PE_SYSTEM}" "${ALLOW_DATA_LEAK}" <<'PY'
 import json
 import sys
 
@@ -497,6 +577,7 @@ print(json.dumps({
     "original_fold_test_value": plan["original_fold_test_value"],
     "ensemble": True,
     "ensemble_members": [sys.argv[10], sys.argv[11]],
+    "allow_data_leak": sys.argv[13] == "1",
 }))
 PY
         )"
@@ -510,6 +591,7 @@ PY
           --study "${STUDY}" \
           "${DATASET_ARGS[@]}" \
           "${SPLIT_ARGS[@]}" \
+          "${LEAK_ARGS[@]}" \
           --sync \
           --device "${DEVICE}" \
           > "${STDOUT_FILE}" 2> "${STDERR_FILE}"

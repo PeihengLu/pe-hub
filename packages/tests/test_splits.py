@@ -12,10 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pe-common"))
 
 from pe_common.splits import (
     SplitConfig,
+    apply_seed_study_suffix,
+    apply_split_study_suffix,
     assign_splits,
     exclude_test_partition,
     resolve_train_val_from_splits,
     select_evaluation_partition,
+    split_assignment_fingerprint,
     split_config_from_params,
     validate_split_config,
 )
@@ -377,3 +380,61 @@ def test_propagate_original_fold_by_target_uid():
     split_df, _ = assign_splits(out, config)
     assert set(split_df.loc[[0, 1], "split"]) == {"test"}
     assert split_df.loc[2, "split"] in {"test", "fold_0", "fold_1", "fold_2", "fold_3", "fold_4"}
+
+
+def _split_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "group_id": [0, 0, 1, 1, 2, 2],
+            "split": ["train", "train", "val", "val", "test", "test"],
+        }
+    )
+
+
+def test_split_assignment_fingerprint_is_stable():
+    df = _split_frame()
+    assert split_assignment_fingerprint(df, seed=42) == split_assignment_fingerprint(
+        df.sample(frac=1, random_state=0).reset_index(drop=True),
+        seed=42,
+    )
+
+
+def test_split_assignment_fingerprint_changes_when_row_dropped():
+    df = _split_frame()
+    full = split_assignment_fingerprint(df, seed=42)
+    dropped = split_assignment_fingerprint(df.iloc[:-1], seed=42)
+    assert full != dropped
+
+
+def test_split_assignment_fingerprint_changes_when_group_moves():
+    df = _split_frame()
+    moved = df.copy()
+    moved.loc[moved["group_id"] == 1, "split"] = "train"
+    assert split_assignment_fingerprint(df, seed=42) != split_assignment_fingerprint(
+        moved, seed=42
+    )
+
+
+def test_split_assignment_fingerprint_changes_with_seed():
+    df = _split_frame()
+    assert split_assignment_fingerprint(df, seed=42) != split_assignment_fingerprint(
+        df, seed=43
+    )
+
+
+def test_apply_seed_study_suffix_is_idempotent():
+    assert apply_seed_study_suffix("bench__seed_42", 42) == "bench__seed_42"
+    assert apply_seed_study_suffix("bench", 42) == "bench__seed_42"
+    assert (
+        apply_seed_study_suffix("bench__sp_abcd1234", 42)
+        == "bench__seed_42__sp_abcd1234"
+    )
+
+
+def test_apply_split_study_suffix_replaces_and_inserts_before_sp():
+    first = apply_split_study_suffix("bench__seed_42", "aaaaaaaa")
+    assert first == "bench__seed_42__split_aaaaaaaa"
+    replaced = apply_split_study_suffix(first, "bbbbbbbb")
+    assert replaced == "bench__seed_42__split_bbbbbbbb"
+    with_sp = apply_split_study_suffix("bench__sp_abcd1234", "aaaaaaaa")
+    assert with_sp == "bench__split_aaaaaaaa__sp_abcd1234"
