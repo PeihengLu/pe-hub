@@ -448,6 +448,43 @@ def test_optiprime_native_matches_libmmr_export_from_standardized_parquet():
         ), pos
 
 
+def test_pridict_insert_overhang_matches_homology_after_insert():
+    """PRIDICT-native rha_l is at the insert start; MinSePIE rha_l is after it.
+
+    Both must yield RToverhanglength = 3' homology length, not homology minus
+    insert (which zeros the 18-nt MinSePIE library).
+    """
+    insert = "G" * 18
+    rha = "C" * 15
+    prefix = "A" * 26
+    wt = prefix + ("N" * 18) + rha
+    mut = prefix + insert + rha
+    lha_r = len(prefix)
+    rha_r = len(mut)
+    base = {
+        "wt_sequence": [wt],
+        "mut_sequence": [mut],
+        "edit_len": [18],
+        "type_sub": [False],
+        "type_ins": [True],
+        "type_del": [False],
+        "protospacer_location_l": [6],
+        "protospacer_location_r": [26],
+        "pbs_location_l": [13],
+        "pbs_location_r": [26],
+        "rtt_location_l": [26],
+        "rtt_location_r": [rha_r],
+        "lha_location_r": [lha_r],
+        "rha_location_r": [rha_r],
+        "spcas9_score": [0.5],
+    }
+    native = pd.DataFrame({**base, "rha_location_l": [lha_r]})
+    minsepie = pd.DataFrame({**base, "rha_location_l": [lha_r + 18]})
+    for df in (native, minsepie):
+        out = standardized_to_pridict_dataframe(df).iloc[0]
+        assert float(out["RToverhanglength"]) == 15.0
+
+
 def test_pridict_rt_initial_location_accounts_for_indels():
     """rtt_location_r is the mutated RT end; WT RT end must be adjusted on indels."""
     insertion = pd.DataFrame(

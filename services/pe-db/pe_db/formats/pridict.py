@@ -108,6 +108,26 @@ def _rtt_wt_right_bounds(df: pd.DataFrame) -> pd.Series:
     return rtt_wt_r
 
 
+def _insertion_rt_overhang_left(
+    rha_l: pd.Series,
+    *,
+    lha_r: pd.Series,
+    edit_len: pd.Series,
+    type_ins: pd.Series,
+) -> pd.Series:
+    """Mut index where 3' RT overhang (homology after the insert) starts.
+
+    Vendor ``RToverhanglength`` is homology *after* the inserted bases.
+    PRIDICT-native sheets store ``rha_l`` at the insert start (``lha_r``), so
+    the overhang begins at ``lha_r + edit_len``. MinSePIE-style sheets already
+    store ``rha_l`` after the insert; adding ``edit_len`` again zeros the
+    overhang (18-nt library) or shortens it (set12).
+    """
+    insert_end = lha_r + edit_len
+    still_in_insert = type_ins.astype(bool) & rha_l.lt(insert_end)
+    return insert_end.where(still_in_insert, rha_l)
+
+
 _WT_INDEXED_COORD_COLUMNS = (
     "protospacer_location_l",
     "protospacer_location_r",
@@ -439,8 +459,12 @@ def _enrich_pridict2_features(
     out["Correction_Length"] = edit_len.astype(int)
     out["PBSlength"] = (pbs_r - pbs_l).clip(lower=0).astype(float)
     out["RTlength"] = (rtt_r - rtt_l).clip(lower=0).astype(float)
-    # Standardized rha_l sits at the insert start; vendor overhang is 3' homology after it.
-    overhang_l = rha_l.where(~type_ins, rha_l + edit_len)
+    overhang_l = _insertion_rt_overhang_left(
+        rha_l,
+        lha_r=edit_pos,
+        edit_len=edit_len,
+        type_ins=type_ins,
+    )
     out["RToverhanglength"] = (rha_r - overhang_l).clip(lower=0).astype(float)
 
     wt_series = _col_as_series(source, "wt_sequence", "").astype(str).map(normalize_target_dna)
