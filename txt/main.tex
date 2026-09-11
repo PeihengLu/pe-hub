@@ -211,6 +211,7 @@ Note that on top of the difference in delivery method, target context and experi
 Since the project is distributed using GitHub, we needed to work around the 100 MB per file limit to avoid using Git LFS(Large File Storage) and incurring substantial charges.
 Instead of a persistent DB object, the data are stored in their original tsv, csv or xlsx (Excel) format and are only transformed into standardized formats and indexed by a SQLite database after it is deployed by users.
 
+Usage of DVC is recommended for storing and synchronizing experimental data, especially when working on clusters as they offer storage that can be used for DVC store. It would require you to create a new fork of this project since it needs to work with git, but the ability to version control the training and evaluation data is a great advantage. An example of setting up DVC to work on Oxford ARC Cluster has been provided in \nolinkurl{scripts/cluster/oxford-arc/setup_dvc_remote.sh}.
 
 \subsubsection{Data Formatting}
 
@@ -220,13 +221,22 @@ The first step is data exportation, where the original data was broken down into
 
 The exported data can be used to construct the SQLite database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
 
-As briefly mentioned above, a standardized format was devised as a mediator to simplify conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
+As briefly mentioned above, a standardized format, PE-core, was devised as a mediator to simplify conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
 
-The shared PE-core schema stores, for every fully standardizable row, the wild-type and mutated target-strand sequences, mutually exclusive substitution/insertion/deletion flags, edit length, and 0-based half-open geometry for the protospacer, PBS, reverse-transcriptase template, and homology arms, together with optional SpCas9 score, measured editing efficiency, and an author fold identifier. Sequences may be padded with N so that WT and Mut share a length; vendor windows (DeepPrime 74~bp, OPED 47~bp, PRIDICT ${\sim}$99~bp) are cropped from this geometry at conversion time rather than being imposed as a standardize trim.
+The shared PE-core schema stores: 
+\begin{itemize}
+    \item the wild-type and mutated target-strand sequences,
+    \item mutually exclusive substitution/insertion/deletion flags,
+    \item edit length,
+    \item 0-based half-open geometry for the protospacer, PBS, reverse-transcriptase template, and homology arms,
+    \item optional DeepSpCas9 score,
+    \item measured editing efficiency, and
+    \item an author fold identifier.
+\end{itemize}
 
-Non-chromosomal reporter screens already publish a wide target cassette, so PE-core reconstruction is straightforward. Endogenous sheets use the same PE-core columns, not a coordinate-only stub. When a genomic reference window can be cached, the aligned WT/Mut pair is embedded in a 200~bp target-strand context with the 20-nt protospacer at offset 90 (90~bp of 5$'$ flank + spacer + 90~bp of 3$'$ flank), which is large enough that later DeepPrime, OPED, and PRIDICT crops do not have to invent 3$'$ DNA. Eight nullable \nolinkurl{endo\_*} columns record assembly, chromosome, a 0-based half-open genomic interval (typically the protospacer), strand, what the interval anchors, a provenance string, and an optional locus label. Gene, chromatin, and expression annotations are not stored; they can be recovered later from coordinates and cell-line context.
+Non-chromosomal reporter screens already publish a wide target cassette, so PE-core reconstruction is straightforward. Endogenous sheets use the same PE-core columns, but with additional columns for the genomic coordinates and the reference window. When a genomic reference window can be cached, the aligned WT/Mut pair is embedded in a 200~bp target-strand context with the 20-nt protospacer at offset 90 (90~bp of 5$'$ flank + spacer + 90~bp of 3$'$ flank), which is large enough that later DeepPrime, OPED, and PRIDICT crops do not have to invent 3$'$ DNA. Eight nullable \nolinkurl{endo\_*} columns record assembly, chromosome, a 0-based half-open genomic interval (typically the protospacer), strand, what the interval anchors, a provenance string, and an optional locus label. Gene, chromatin, and expression annotations are not stored; they can be recovered later from coordinates and cell-line context.
 
-Not every endogenous measurement can be placed in that form, so some data remain catalogued but are excluded from the full PE-core standardized tables (or from the 200~bp genomic window).
+However, not every endogenous measurement can be placed in that form, so some data remain catalogued but are excluded from the full PE-core standardized tables (or from the 200~bp genomic window).
 
 The PRIDICT1 arrayed endogenous table (\nolinkurl{endogenous}) reports locus-level efficiencies and chromatin marks without pegRNA-linked WT/Mut sequences or geometry, so it is stored as a filter-only (partial) sheet. PRIDICT2 TRIP (\nolinkurl{trip-analysis}) records barcode, hg38 integration coordinate, and efficiency for 1{,}202 sites edited with the same G$\to$C pegRNA; the deposited table does not include the reporter WT/Mut sequence, and DNA flanking each integration is chromatin context rather than the edited cassette, so inventing a 200~bp target from those coordinates would be incorrect. TRIP is therefore also partial: integration coordinates are attached, but model-format export is disabled until the shared reporter can be reconstructed.
 
@@ -367,14 +377,12 @@ The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web servi
 
 However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation on clusters. 
 
-\subsection{Introducing Custom Models}
+% \subsection{Introducing Custom Models}
 
-Clearly, a lot of potential users for this tool would not only want to run models that are already in the system, but also benchmarking their own models and compare the performance with existing models.
+% Clearly, a lot of potential users for this tool would not only want to run models that are already in the system, but also benchmarking their own models and compare the performance with existing models.
 
 
-To leverage the ever increasing capability and usage of LLMs, we also provided a prompt designed to devise all required components to add a custom model to the system for benchmarking. In the workspace of your project, using any LLM based code editor(copilot, cursor, codex, claude code etc.), enter the prompt and the agent should spin up a complete package. You can either upload the package through the web interface for it to be checked and registered, or just paste the files into the plugins directories and activate it via the CLI.
-% TODO: CLI to be developed
-
+% To leverage the ever increasing capability and usage of LLMs, we also provided a prompt designed to devise all required components to add a custom model to the system for benchmarking. In the workspace of your project, using any LLM based code editor(copilot, cursor, codex, claude code etc.), enter the prompt and the agent should spin up a complete package. You can either upload the package through the web interface for it to be checked and registered, or just paste the files into the plugins directories and activate it via the CLI.
 
 \section{Result}
 

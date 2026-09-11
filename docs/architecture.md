@@ -185,21 +185,21 @@ stay separate.
 Shared library, installed with `pip install -e packages/pe-common`. Imported by
 both services. Usage: [`packages/pe-common/README.md`](../packages/pe-common/README.md).
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `constants.py` | 102 | `DATA_ROOT`, `MODEL_ROOT`, `DEVICE` and other path/env anchors |
-| `splits.py` | 698 | `SplitConfig`, `assign_splits`, group-aware holdout/CV assignment, `exclude_test_partition`, CV fold iteration |
-| `training.py` | 524 | `fit_lightning_module` (the one Lightning trainer), seeding, LR schedulers, early stopping, `regression_metrics` |
-| `devices.py` | 198 | Device discovery, `resolve_device`, Lightning accelerator mapping |
-| `sequence_utils.py` | 202 | `align_wt_mut_sequences`, padding insert/remove, coordinate shifting |
-| `data_utils.py` | 251 | Frame helpers and `TARGET_UID_COLUMN`, the universal locus key used for leak audits |
-| `features.py` | 276 | MFE (ViennaRNA), melting temperature, GC content. Lazy-imported |
-| `model_interface.py` | ~110 | `BasePEModel` — wrappers implement train/eval/predict; default hooks cover OPED prepare and PRIDICT2 stderr |
-| `plugins.py` | 392 | Plugin manifest parsing and discovery |
-| `plugin_validation.py` | 501 | The validation harness that gates plugin activation |
-| `cell_lines.py` | 83 | Cell-line name normalization |
-| `filter_params.py` | ~280 | Catalog/edit/split field lists shared by CLI, FastAPI Query models, request bodies, and the TypeScript client |
-| `conversion_progress.py` | 44 | Progress reporting shared with PE-DB conversion |
+| Module | Responsibility |
+|---|---|
+| `constants.py` | `DATA_ROOT`, `MODEL_ROOT`, `DEVICE` and other path/env anchors |
+| `splits.py` | `SplitConfig`, `assign_splits`, group-aware holdout/CV assignment, `exclude_test_partition`, CV fold iteration |
+| `training.py` | `fit_lightning_module` (the one Lightning trainer), seeding, LR schedulers, early stopping, `regression_metrics` |
+| `devices.py` | Device discovery, `resolve_device`, Lightning accelerator mapping |
+| `sequence_utils.py` | `align_wt_mut_sequences`, padding insert/remove, coordinate shifting |
+| `data_utils.py` | Frame helpers and `TARGET_UID_COLUMN`, the universal locus key used for leak audits |
+| `features.py` | MFE (ViennaRNA), melting temperature, GC content. Lazy-imported |
+| `model_interface.py` | `BasePEModel` — wrappers implement train/eval/predict; default hooks cover OPED prepare and PRIDICT2 stderr |
+| `plugins.py` | Plugin manifest parsing and discovery |
+| `plugin_validation.py` | The validation harness that gates plugin activation |
+| `cell_lines.py` | Cell-line name normalization |
+| `filter_params.py` | Catalog/edit/split field lists shared by CLI, FastAPI Query models, request bodies, and the TypeScript client |
+| `conversion_progress.py` | Progress reporting shared with PE-DB conversion |
 
 `training.py` and `features.py` are loaded lazily because they pull in torch and
 ViennaRNA; importing `pe_common` alone stays cheap.
@@ -210,30 +210,30 @@ Catalog and data service. Usage and API: [`services/pe-db/README.md`](../service
 
 ### `pe_db/` — installable package
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `main.py` | ~300 | FastAPI catalog/filter/health routes (`/api/studies`, `/api/filter`, …) |
-| `library.py` | 349 | Headless equivalent of the HTTP API; what `pedb` and in-process `peen` call |
-| `cli.py` | ~370 | `pedb` / `pe-db` console entry |
-| `converter.py` | 199 | Orchestrates export → standardize → model-format conversion, with cache lookup |
-| `format_registry.py` | 89 | Maps a format name (`std`, `deepprime`, `pridict`, `pridict2`, `oped`, `optiprime`, plus plugin formats) to its converter |
-| `formatted_cache.py` | 311 | Revision-gated on-disk cache of converted frames |
-| `loaders.py` | 120 | Reads standardized parquet; normalizes `-`/`_` in path segments |
-| `plugin_loader.py` | 182 | Registers converters contributed by plugins |
-| `process_pool.py` | 40 | Worker pool for the expensive MFE feature pass |
-| `mfe_worker.py` | ~25 | Spawn-safe PRIDICT2 MFE worker entry |
-| `config.py` | 39 | Paths and environment flags |
+| Module | Responsibility |
+|---|---|
+| `main.py` | FastAPI catalog/filter/health routes (`/api/studies`, `/api/filter`, …) |
+| `library.py` | Headless equivalent of the HTTP API; what `pedb` and in-process `peen` call |
+| `cli.py` | `pedb` / `pe-db` console entry |
+| `converter.py` | Orchestrates export → standardize → model-format conversion, with cache lookup |
+| `format_registry.py` | Maps a format name (`std`, `deepprime`, `pridict`, `pridict2`, `oped`, `optiprime`, plus plugin formats) to its converter |
+| `formatted_cache.py` | Revision-gated on-disk cache of converted frames |
+| `loaders.py` | Reads standardized parquet; normalizes `-`/`_` in path segments |
+| `plugin_loader.py` | Registers converters contributed by plugins |
+| `process_pool.py` | Worker pool for the expensive MFE feature pass |
+| `mfe_worker.py` | Spawn-safe PRIDICT2 MFE worker entry |
+| `config.py` | Paths and environment flags |
 
 ### `pe_db/catalog/` — what data exists
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `studies.py` | registry rows | `STUDY_REGISTRY` / `DATASET_REGISTRY` |
-| `records.py` | dataclasses | `StudyRecord`, `DatasetRecord` (`partial` = filter-only parquet) |
-| `datasheets.py` | 453 | Scans `datasets/exported/` and indexes `Datasheet` rows; infers scaffolds |
-| `scaffolds.py` | 121 | pegRNA scaffold sequences and IDs |
-| `seed.py` | 167 | Writes the registries into SQL; migrates legacy columns |
-| `initialize.py` | 34 | The startup sequence: seed → export → standardize |
+| Module | Responsibility |
+|---|---|
+| `studies.py` | `STUDY_REGISTRY` / `DATASET_REGISTRY` |
+| `records.py` | `StudyRecord`, `DatasetRecord` (`partial` = filter-only parquet) |
+| `datasheets.py` | Scans `datasets/exported/` and indexes `Datasheet` rows; infers scaffolds |
+| `scaffolds.py` | pegRNA scaffold sequences and IDs |
+| `seed.py` | Writes the registries into SQL; migrates legacy columns |
+| `initialize.py` | The startup sequence: seed → export → standardize |
 
 Adding a study means catalog rows in `studies.py` plus a pipeline module under
 `pe_db/studies/` — see [README § Contributing data](../README.md#contributing-data).
@@ -271,13 +271,13 @@ Adding a study means catalog rows in `studies.py` plus a pipeline module under
 
 ### `pe_db/db/` — SQL layer
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `repository.py` | 946 | Filtering, conversion dispatch, split assignment, merge handling |
-| `models.py` | 78 | SQLAlchemy tables for the catalog |
-| `schemas.py` | 99 | Pydantic response models |
-| `session.py` | 55 | Engine and session lifecycle |
-| `base.py` | 7 | Declarative base |
+| Module | Responsibility |
+|---|---|
+| `repository.py` | Filtering, conversion dispatch, split assignment, merge handling |
+| `models.py` | SQLAlchemy tables for the catalog |
+| `schemas.py` | Pydantic response models |
+| `session.py` | Engine and session lifecycle |
+| `base.py` | Declarative base |
 
 HTTP is `uvicorn pe_db.main:app`. Ensemble HTTP is `uvicorn pe_ensemble.main:app`.
 
@@ -294,44 +294,44 @@ to `plugins/manager.py`. `plugin_loader.py` imports plugin wrappers.
 
 ### `pe_ensemble/models/` — wrappers and the weight registry
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `pridict2_wrapper.py` | 1619 | `PERNNDistributionModel` training path plus vendor PRIEML load for inference |
-| `oped_wrapper.py` | 1010 | k-mer tokenization and transformer training |
-| `deepprime_wrapper.py` | 726 | Ensemble fine-tuning and from-scratch training |
-| `optiprime_wrapper.py` | 424 | OptiPrime (JAX/Flax stack; no tuning search space) |
-| `hparams.py` | ~70 | Pretrained weight ID, evaluate() weight check, CV-fold shell |
-| `weights_registry.py` | 540 | The single place weights are written, indexed, resolved and provenance-stamped |
-| `registry.py` | 276 | `ModelSpec` catalog: the four built-in models plus active plugins |
-| `model_factory.py` | 89 | Name → wrapper instance |
-| `*_vendor_provenance.py` | 112–361 | Records which published checkpoint each vendor weight set came from |
-| `migrate_weights.py` | 203 | One-off migration of vendor weights into the registry layout |
-| `convert_oped_weights.py` | 82 | Converts OPED's pickled checkpoints to state dicts |
-| `vendor_path.py` | 53 | Locates `vendor/models/` for imports |
+| Module | Responsibility |
+|---|---|
+| `pridict2_wrapper.py` | `PERNNDistributionModel` training path plus vendor PRIEML load for inference |
+| `oped_wrapper.py` | k-mer tokenization and transformer training |
+| `deepprime_wrapper.py` | Ensemble fine-tuning and from-scratch training |
+| `optiprime_wrapper.py` | OptiPrime (JAX/Flax stack; no tuning search space) |
+| `hparams.py` | Pretrained weight ID, evaluate() weight check, CV-fold shell |
+| `weights_registry.py` | The single place weights are written, indexed, resolved and provenance-stamped |
+| `registry.py` | `ModelSpec` catalog: the four built-in models plus active plugins |
+| `model_factory.py` | Name → wrapper instance |
+| `*_vendor_provenance.py` | Records which published checkpoint each vendor weight set came from |
+| `migrate_weights.py` | One-off migration of vendor weights into the registry layout |
+| `convert_oped_weights.py` | Converts OPED's pickled checkpoints to state dicts |
+| `vendor_path.py` | Locates `vendor/models/` for imports |
 
 Weight-set layout, ID conventions and manifest fields:
 [`services/pe-ensemble/weights/README.md`](../services/pe-ensemble/weights/README.md).
 
 ### `pe_ensemble/training/` — training and tuning
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `runner.py` | ~280 | `execute_training` — fetch, wrapper hooks, train, register weights |
-| `tune_study.py` | 238 | Optuna study lifecycle, preset writing, optional final train |
-| `tune_runner.py` | 221 | One Optuna trial; extracts the objective metric per model |
-| `search_spaces.py` | 229 | Per-model search spaces and objective metric names |
-| `hyperparameter_presets.py` | 286 | Merges baselines + shipped YAML + local YAML + request overrides |
-| `data.py` | 247 | Builds PE-DB filter params and fetches the training frame |
-| `jobs.py` / `tune_jobs.py` | thin wrappers | Domain manifests; storage is `JobStore` |
-| `dataset_key.py` | 165 | Canonical preset lookup keys for merged/multi-dataset filters |
-| `progress_log.py` | 155 | Epoch log lines, stdout/stderr tee, cancellation hooks |
-| `schemas.py` | 131 | Request models, including split validation |
-| `config.py` | 138 | Job/study roots and model aliases |
-| `pe_db_access.py` | 103 | In-process vs HTTP PE-DB access |
-| `conversion_progress.py` | 71 | Streams PE-DB conversion progress into job logs |
-| `model_baselines.py` | 52 | Code-level hyperparameter fallbacks |
-| `model_architecture.py` | 39 | UI architecture choice → hyperparameters |
-| `tuning_schemas.py` | 56 | Tuning request and summary models |
+| Module | Responsibility |
+|---|---|
+| `runner.py` | `execute_training` — fetch, wrapper hooks, train, register weights |
+| `tune_study.py` | Optuna study lifecycle, preset writing, optional final train |
+| `tune_runner.py` | One Optuna trial; extracts the objective metric per model |
+| `search_spaces.py` | Per-model search spaces and objective metric names |
+| `hyperparameter_presets.py` | Merges baselines + shipped YAML + local YAML + request overrides |
+| `data.py` | Builds PE-DB filter params and fetches the training frame |
+| `jobs.py` / `tune_jobs.py` | Domain manifests; storage is `JobStore` |
+| `dataset_key.py` | Canonical preset lookup keys for merged/multi-dataset filters |
+| `progress_log.py` | Epoch log lines, stdout/stderr tee, cancellation hooks |
+| `schemas.py` | Request models, including split validation |
+| `config.py` | Job/study roots and model aliases |
+| `pe_db_access.py` | In-process vs HTTP PE-DB access |
+| `conversion_progress.py` | Streams PE-DB conversion progress into job logs |
+| `model_baselines.py` | Code-level hyperparameter fallbacks |
+| `model_architecture.py` | UI architecture choice → hyperparameters |
+| `tuning_schemas.py` | Tuning request and summary models |
 
 Hyperparameters resolve in this order, later winning: `model_baselines.py` →
 `config/training_presets/<model>.yaml` (shipped) →
@@ -341,25 +341,25 @@ layers entirely, which is what tuning trials use.
 
 ### `pe_ensemble/compute/` — scheduling and job plumbing
 
-| Module | Lines | Responsibility |
-|---|---:|---|
-| `device_scheduler.py` | ~310 | Per-device queues; kind → `JobStore` + execute table |
-| `job_store.py` | ~190 | Shared filesystem job registry (create/list/logs/status) |
-| `job_lifecycle.py` | 80 | Kill and delete semantics |
-| `job_logging.py` | 64 | Routes the root logger into a job's log file |
-| `manifest_io.py` | 51 | Atomic JSON writes and truncation-tolerant reads |
-| `job_cancel.py` | 43 | In-memory cancellation flags |
+| Module | Responsibility |
+|---|---|
+| `device_scheduler.py` | Per-device queues; kind → `JobStore` + execute table |
+| `job_store.py` | Shared filesystem job registry (create/list/logs/status) |
+| `job_lifecycle.py` | Kill and delete semantics |
+| `job_logging.py` | Routes the root logger into a job's log file |
+| `manifest_io.py` | Atomic JSON writes and truncation-tolerant reads |
+| `job_cancel.py` | In-memory cancellation flags |
 
 ### `pe_ensemble/evaluation/`, `pe_ensemble/ensemble/`, `pe_ensemble/plugins/`
 
 - `evaluation/` — `runner.py` evaluates on the test partition only, using
   wrapper `prepare_evaluation_frame` / stderr-capture hooks;
-  `leakage.py` (554) compares a weight set's recorded training loci against the
-  evaluation set and warns or excludes; `benchmark.py` (108) resolves named
+  `leakage.py` compares a weight set's recorded training loci against the
+  evaluation set and warns or excludes; `benchmark.py` resolves named
   benchmarks.
-- `ensemble/` — `combine.py` (214) fuses member predictions; `runner.py`
+- `ensemble/` — `combine.py` fuses member predictions; `runner.py`
   orchestrates multi-model jobs via `predict_on_frame`.
-- `plugins/` — `manager.py` (578) handles upload, activation and removal;
+- `plugins/` — `manager.py` handles upload, activation and removal;
   `validation_jobs.py` is a thin `JobStore` wrapper around validation manifests.
 
 `training/`, `evaluation/`, `ensemble/`, and `plugins/` keep domain `create_job`

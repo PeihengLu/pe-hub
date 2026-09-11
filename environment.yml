@@ -20,5 +20,8 @@ dependencies:
   - pip>=24
   # ViennaRNA used by pe-db conversion and OptiPrime featurization.
   - viennarna>=2.5
+  # LightGBM 3.3.x (rs3 / OptiPrime). PyPI has no macOS arm64 wheel for 3.3.x,
+  # so conda-forge supplies a prebuilt binary; pip would otherwise require cmake.
+  - lightgbm>=3.0.0,<=3.3.5
   # PE Hub frontend (Vite 5 needs Node 18+; 20 LTS is the default).
   - nodejs=20
