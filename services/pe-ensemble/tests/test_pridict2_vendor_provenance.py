@@ -8,6 +8,7 @@ import pytest
 from pe_common.data_utils import target_uid_series
 
 from pe_ensemble.models.pridict2_vendor_provenance import (
+    collect_train_loci_for_run,
     parse_pridict2_vendor_run,
     sheet_target_uids,
 )
@@ -65,3 +66,31 @@ def test_library_diverse_exclude_fold_drops_only_that_fold():
     assert len(held) < len(all_loci)
     assert fold2_uids
     assert fold2_uids.isdisjoint(held)
+
+
+def test_model_b_clinvar_train_unions_excel_train_loci(monkeypatch):
+    from pe_ensemble.models import pridict2_vendor_provenance as mod
+
+    def fake_dataset_target_uids(study: str, dataset: str, **_kwargs):
+        if dataset == "library1":
+            return {"ps:lib1"}
+        if dataset == "deepprime_clinvar":
+            return {"ps:parquet-train"}
+        if dataset == "library_diverse":
+            return {"ps:diverse"}
+        raise AssertionError(f"unexpected dataset {study}/{dataset}")
+
+    monkeypatch.setattr(mod, "dataset_target_uids", fake_dataset_target_uids)
+    monkeypatch.setattr(
+        mod, "clinvar_excel_train_target_uids", lambda: {"ps:excel-mixed"}
+    )
+
+    loci, lineage = collect_train_loci_for_run(
+        "pridict1_2__exp_2023-08-28_22-22-26__run_0"
+    )
+    assert {"ps:lib1", "ps:parquet-train", "ps:excel-mixed", "ps:diverse"} <= loci
+    clinvar_notes = [
+        entry["note"] for entry in lineage if entry["dataset"] == "deepprime-clinvar"
+    ]
+    assert clinvar_notes
+    assert "Excel train-fold" in clinvar_notes[0]

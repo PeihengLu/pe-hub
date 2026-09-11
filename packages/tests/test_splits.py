@@ -300,7 +300,14 @@ def test_custom_original_fold_test_value_for_pridict2_style_folds():
         {
             "group_id": [0, 0, 1, 1, 2, 2],
             "original_fold": [0.0, 0.0, 1.0, 1.0, 2.0, 2.0],
-            "wt_sequence": [f"{'N' * 4}{'A' * 20}{'N' * 10}"] * 6,
+            "wt_sequence": [
+                f"{'N' * 4}{'A' * 20}{'N' * 10}",
+                f"{'N' * 4}{'A' * 20}{'N' * 10}",
+                f"{'N' * 4}{'C' * 20}{'N' * 10}",
+                f"{'N' * 4}{'C' * 20}{'N' * 10}",
+                f"{'N' * 4}{'G' * 20}{'N' * 10}",
+                f"{'N' * 4}{'G' * 20}{'N' * 10}",
+            ],
             "protospacer_location_l": [4] * 6,
             "protospacer_location_r": [24] * 6,
         }
@@ -380,6 +387,77 @@ def test_propagate_original_fold_by_target_uid():
     split_df, _ = assign_splits(out, config)
     assert set(split_df.loc[[0, 1], "split"]) == {"test"}
     assert split_df.loc[2, "split"] in {"test", "fold_0", "fold_1", "fold_2", "fold_3", "fold_4"}
+
+
+def test_propagate_mixed_train_and_test_locus_prefers_train():
+    from pe_common.data_utils import propagate_original_fold_by_target_uid
+
+    shared = "A" * 20
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [
+                f"{'N' * 4}{shared}{'N' * 10}",
+                f"{'N' * 4}{shared}{'N' * 10}",
+                f"{'N' * 4}{shared}{'N' * 10}",
+            ],
+            "protospacer_location_l": [4, 4, 4],
+            "protospacer_location_r": [24, 24, 24],
+            "original_fold": [0.0, -1.0, float("nan")],
+        }
+    )
+    out = propagate_original_fold_by_target_uid(df)
+    assert float(out.loc[0, "original_fold"]) == 0.0
+    assert float(out.loc[1, "original_fold"]) == 0.0
+    assert float(out.loc[2, "original_fold"]) == 0.0
+
+
+def test_assign_splits_moves_mixed_train_test_locus_to_train():
+    shared = "A" * 20
+    distinct = "C" * 20
+    df = pd.DataFrame(
+        {
+            "group_id": [0, 0, 1, 1],
+            "original_fold": [0.0, -1.0, -1.0, -1.0],
+            "wt_sequence": [
+                f"{'N' * 4}{shared}{'N' * 10}",
+                f"{'N' * 4}{shared}{'N' * 10}",
+                f"{'N' * 4}{distinct}{'N' * 10}",
+                f"{'N' * 4}{distinct}{'N' * 10}",
+            ],
+            "protospacer_location_l": [4] * 4,
+            "protospacer_location_r": [24] * 4,
+        }
+    )
+    config = split_config_from_params(
+        strategy="holdout_2",
+        train_pct=0.5,
+        test_pct=0.5,
+        use_original_fold=True,
+        original_fold_test_value=-1.0,
+    )
+    out, _ = assign_splits(df, config)
+    assert set(out.loc[out["group_id"] == 0, "split"]) == {"train"}
+    assert set(out.loc[out["group_id"] == 1, "split"]) == {"test"}
+
+
+def test_allocate_extra_train_uids_relabels_test_only_rows():
+    from pe_common.data_utils import (
+        allocate_mixed_author_test_loci_to_train,
+        compute_target_uid,
+    )
+
+    spacer = "G" * 20
+    uid = compute_target_uid(spacer)
+    df = pd.DataFrame(
+        {
+            "original_fold": [-1.0, -1.0],
+            "wt_sequence": [f"{'N' * 4}{spacer}{'N' * 10}"] * 2,
+            "protospacer_location_l": [4, 4],
+            "protospacer_location_r": [24, 24],
+        }
+    )
+    out = allocate_mixed_author_test_loci_to_train(df, extra_train_uids={uid})
+    assert out["original_fold"].tolist() == [0.0, 0.0]
 
 
 def _split_frame() -> pd.DataFrame:

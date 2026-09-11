@@ -195,6 +195,20 @@ def _any_has_test(
     return False
 
 
+def clinvar_excel_train_target_uids() -> set[str]:
+    """ClinVar spacers Yu labeled as train folds (not ``Test``).
+
+    Includes loci that also appear as ``Test`` in the workbook: they are
+    training data at the locus level and must not remain in a leak-proof
+    holdout. Used by DeepPrime and PRIDICT2 Model B provenance.
+    """
+    if not _DEEPPRIME_WORKBOOK.is_file():
+        return set()
+    specs = _read_summary()
+    loci_by_key, _ = _collect_dataset_loci(specs)
+    return _union_matching(loci_by_key, dataset="deepprime-clinvar")
+
+
 def _data_provenance(
     loci: set[str],
     *,

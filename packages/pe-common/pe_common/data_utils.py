@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 import numpy as np
 import pandas as pd
@@ -198,10 +198,103 @@ def reassign_group_ids_by_target_location(
     return output
 
 
+def _fold_is_author_test(value: float, test_value: float) -> bool:
+    return bool(np.isfinite(value) and np.isclose(value, test_value))
+
+
+def _canonical_inherited_fold(values: Iterable[float], *, test_value: float) -> float:
+    """Choose one fold to copy onto unlabeled rows that share a ``target_uid``.
+
+    A locus that appears in both train and the author test fold is training
+    data. Prefer the lowest train fold so the holdout stays leak-proof.
+    """
+    unique = sorted({float(v) for v in values})
+    train_values = [v for v in unique if not _fold_is_author_test(v, test_value)]
+    if train_values:
+        return train_values[0]
+    return unique[0]
+
+
+def allocate_mixed_author_test_loci_to_train(
+    df: pd.DataFrame,
+    *,
+    fold_col: str = "original_fold",
+    test_value: float = -1.0,
+    extra_train_uids: Optional[Iterable[str]] = None,
+    wt_col: str = "wt_sequence",
+    protospacer_l_col: str = "protospacer_location_l",
+    protospacer_r_col: str = "protospacer_location_r",
+) -> pd.DataFrame:
+    """Move locus-level train/test leakage out of the author holdout.
+
+    If a ``target_uid`` has any train-fold row (in this frame or
+    ``extra_train_uids``) and any author-test row, the test rows are relabeled
+    to a train fold. Distinct train CV folds at the same locus are left
+    unchanged. Test-only loci stay in the holdout.
+    """
+    if fold_col not in df.columns or df.empty:
+        return df.copy()
+
+    output = df.copy()
+    folds = pd.to_numeric(output[fold_col], errors="coerce")
+    if TARGET_UID_COLUMN in output.columns:
+        uids = output[TARGET_UID_COLUMN].astype("string")
+    elif wt_col in output.columns:
+        uids = target_uid_series(
+            output,
+            wt_col=wt_col,
+            protospacer_l_col=protospacer_l_col,
+            protospacer_r_col=protospacer_r_col,
+        )
+    else:
+        return output
+
+    extra = {str(uid) for uid in (extra_train_uids or []) if uid}
+    uid_text = uids.astype(str)
+    valid_uid = uid_text.str.len().gt(0) & ~uid_text.isin({"nan", "<NA>", "None"})
+    known = folds.notna() & valid_uid
+
+    train_fold_by_uid: dict[str, float] = {}
+    leaky_uids: set[str] = set()
+    if known.any():
+        known_df = pd.DataFrame(
+            {"uid": uid_text[known], "fold": folds[known].astype(float)}
+        )
+        for uid, group in known_df.groupby("uid", sort=True):
+            values = [float(v) for v in group["fold"].tolist()]
+            train_values = [
+                value for value in values if not _fold_is_author_test(value, test_value)
+            ]
+            has_test = any(_fold_is_author_test(value, test_value) for value in values)
+            uid_key = str(uid)
+            if train_values:
+                train_fold_by_uid[uid_key] = min(train_values)
+            if (train_values and has_test) or uid_key in extra:
+                leaky_uids.add(uid_key)
+
+    for uid in extra:
+        leaky_uids.add(uid)
+        train_fold_by_uid.setdefault(uid, 0.0)
+
+    if not leaky_uids:
+        output[fold_col] = folds
+        return output
+
+    is_test = folds.notna() & (folds - float(test_value)).abs().le(1e-9)
+    relabel = is_test & valid_uid & uid_text.isin(leaky_uids)
+    if relabel.any():
+        folds.loc[relabel] = (
+            uid_text.loc[relabel].map(train_fold_by_uid).astype(float).to_numpy()
+        )
+    output[fold_col] = folds
+    return output
+
+
 def propagate_original_fold_by_target_uid(
     df: pd.DataFrame,
     *,
     fold_col: str = "original_fold",
+    test_value: float = -1.0,
     wt_col: str = "wt_sequence",
     protospacer_l_col: str = "protospacer_location_l",
     protospacer_r_col: str = "protospacer_location_r",
@@ -213,6 +306,10 @@ def propagate_original_fold_by_target_uid(
     merged table can use ``use_original_fold=True`` consistently. Rows whose
     target never appears with a known fold stay NaN and fall back to
     target-location random splits in ``assign_splits``.
+
+    When one locus carries both a train fold and the author test fold, unlabeled
+    overlap rows inherit train (not test) and mixed test rows are allocated to
+    train so the holdout stays leak-proof.
     """
     if fold_col not in df.columns or df.empty:
         return df.copy()
@@ -230,17 +327,13 @@ def propagate_original_fold_by_target_uid(
         output[fold_col] = folds
         return output
 
-    # One fold per target_uid: mode among known values (stable via sorted unique).
     fold_by_uid: dict[str, float] = {}
     known_df = pd.DataFrame({"uid": uids[known].astype(str), "fold": folds[known]})
     for uid, group in known_df.groupby("uid", sort=True):
-        values = sorted({float(v) for v in group["fold"].tolist()})
-        if len(values) == 1:
-            fold_by_uid[str(uid)] = values[0]
-        else:
-            # Conflicting author folds for one locus — prefer DeepPrime test (-1)
-            # when present, else the lowest fold id for determinism.
-            fold_by_uid[str(uid)] = -1.0 if -1.0 in values else values[0]
+        fold_by_uid[str(uid)] = _canonical_inherited_fold(
+            group["fold"].tolist(),
+            test_value=test_value,
+        )
 
     missing = folds.isna() & uids.astype(str).str.len().gt(0)
     if missing.any():
@@ -248,4 +341,11 @@ def propagate_original_fold_by_target_uid(
         folds.loc[missing] = inherited.to_numpy()
 
     output[fold_col] = folds
-    return output
+    return allocate_mixed_author_test_loci_to_train(
+        output,
+        fold_col=fold_col,
+        test_value=test_value,
+        wt_col=wt_col,
+        protospacer_l_col=protospacer_l_col,
+        protospacer_r_col=protospacer_r_col,
+    )

@@ -11,6 +11,10 @@ import numpy as np
 import pandas as pd
 
 from pe_common.constants import DATA_ROOT
+from pe_common.data_utils import (
+    allocate_mixed_author_test_loci_to_train,
+    compute_target_uid,
+)
 from pe_common.sequence_utils import (
     align_wt_mut_sequences,
     reverse_complement,
@@ -123,6 +127,32 @@ def _export_deepprime_datasheets() -> None:
         logger.info("Saved DeepPrime datasheet: %s", output_path)
 
 
+def _author_train_target_uids_from_deepprime_frame(frame: pd.DataFrame) -> set[str]:
+    """Loci Yu labeled as train, including spacers that also appear as ``Test``.
+
+    Rows that later fail alignment still mark the spacer as training data so
+    surviving Test pegRNAs at that site are not kept as a leak-proof holdout.
+    """
+    if frame.empty or "fold" not in frame.columns or "wt_sequence" not in frame.columns:
+        return set()
+    tokens = frame["fold"].astype("string").str.strip()
+    is_test = tokens.str.lower().isin({"test", "-1"})
+    numeric = pd.to_numeric(tokens, errors="coerce")
+    train_mask = ~is_test & numeric.notna()
+    if not bool(train_mask.any()):
+        return set()
+    loci: set[str] = set()
+    for wt in frame.loc[train_mask, "wt_sequence"].astype("string").fillna(""):
+        wt_value = str(wt).strip().upper()
+        if not wt_value:
+            continue
+        protospacer = wt_value[4:24] if len(wt_value) >= 24 else wt_value
+        uid = compute_target_uid(protospacer, wt_value)
+        if uid:
+            loci.add(uid)
+    return loci
+
+
 def _standardize_deepprime_ontarget(
     data: Optional[pd.DataFrame],
     cell_line: str,
@@ -155,6 +185,7 @@ def _standardize_deepprime_ontarget(
         len(data),
     )
     df = data.copy()
+    author_train_uids = _author_train_target_uids_from_deepprime_frame(df)
 
     # ---- Step 1: Determine mutation type and filter invalid rows ----
     # Keep the one-hot booleans for output; derive an integer mut_type for internal calculations
@@ -285,6 +316,11 @@ def _standardize_deepprime_ontarget(
         coords['pbs_l'], coords['pbs_r'], coords['rtt_l'], coords['rtt_r'],
         coords['lha_l'], coords['lha_r'], coords['rha_l'], coords['rha_r'],
         df['deepspcas9_score'], df['measured_pe_efficiency'], original_fold)
+
+    output_df = allocate_mixed_author_test_loci_to_train(
+        output_df,
+        extra_train_uids=author_train_uids,
+    )
 
     # export the data to a parquet file
     output_path = DATA_ROOT / "standardized" / study_key / dataset / output_name

@@ -26,6 +26,7 @@ from .sequence_utils import (
 from .data_utils import (
     TARGET_UID_COLUMN,
     add_target_uid,
+    allocate_mixed_author_test_loci_to_train,
     build_test_mask_from_group_id,
     compute_target_uid,
     propagate_original_fold_by_target_uid,
@@ -88,6 +89,7 @@ __all__ = [
     "shift_coords_after_indel_pad",
     "unpadded_coordinate",
     "build_test_mask_from_group_id",
+    "allocate_mixed_author_test_loci_to_train",
     "propagate_original_fold_by_target_uid",
     "reassign_group_ids_by_target_location",
     "target_location_group_series",

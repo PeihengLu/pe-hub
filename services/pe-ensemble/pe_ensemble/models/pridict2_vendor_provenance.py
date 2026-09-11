@@ -28,6 +28,7 @@ import pandas as pd
 from pe_common.data_utils import TARGET_UID_COLUMN, compute_target_uid, target_uid_series
 
 from . import weights_registry
+from .deepprime_vendor_provenance import clinvar_excel_train_target_uids
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _STANDARDIZED = _REPO_ROOT / "datasets" / "standardized"
@@ -158,12 +159,18 @@ def collect_train_loci_for_run(weight_id: str, *, standardized_root: Path = _STA
             drop_author_test=True,
             standardized_root=standardized_root,
         )
+        # Excel train-fold spacers that the catalog only kept as Test still
+        # trained DeepPrime/PRIDICT2-style ClinVar models at the locus level.
+        clinvar |= clinvar_excel_train_target_uids()
         loci |= clinvar
         lineage_entries.append(
             {
                 "study": "deepprime",
                 "dataset": "deepprime-clinvar",
-                "note": "author original_fold=-1 excluded",
+                "note": (
+                    "author original_fold=-1 excluded; Excel train-fold loci "
+                    "included so mixed train/test spacers stay in train"
+                ),
             }
         )
 

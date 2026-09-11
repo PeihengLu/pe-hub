@@ -10,7 +10,11 @@ from typing import Any, Literal, Mapping, Optional
 import numpy as np
 import pandas as pd
 
-from .data_utils import _stable_group_sort_key, target_location_group_series
+from .data_utils import (
+    _stable_group_sort_key,
+    allocate_mixed_author_test_loci_to_train,
+    target_location_group_series,
+)
 
 SplitStrategy = Literal["none", "holdout_2", "holdout_3", "cv"]
 SplitSource = Literal["original_fold", "group_id"]
@@ -363,11 +367,14 @@ def assign_splits(
     Assign ``split`` and ``split_source`` columns according to ``config``.
 
     When ``use_original_fold=True``, author ``original_fold`` values drive assignment
-    and stored ``group_id`` values are ignored. Rows without author folds fall back to
-    target-location grouping (protospacer). For ``holdout_2``, if an author test
-    fold is present those unlabeled rows go to train rather than a second
-    synthetic test (DeepPE endo mixed with HT/type/position ``-1``). If every row
-    lacks ``original_fold``, unlabeled groups still receive a synthetic holdout.
+    and stored ``group_id`` values are ignored. Loci that appear in both a train
+    fold and the author test fold are allocated to train before assignment so
+    the holdout is leak-proof at ``target_uid`` granularity. Rows without author
+    folds fall back to target-location grouping (protospacer). For ``holdout_2``,
+    if an author test fold is present those unlabeled rows go to train rather
+    than a second synthetic test (DeepPE endo mixed with HT/type/position
+    ``-1``). If every row lacks ``original_fold``, unlabeled groups still receive
+    a synthetic holdout.
     After merging datasheets, callers should reassign ``group_id`` via
     ``reassign_group_ids_by_target_location`` before calling this function with
     ``use_original_fold=False``. When merging DeepPrime with a sheet that lacks
@@ -394,6 +401,12 @@ def assign_splits(
         return empty, {"strategy": config.strategy, "by_partition": {}, "by_source": {}}
 
     output = df.copy()
+    if config.use_original_fold and config.original_fold_col in output.columns:
+        output = allocate_mixed_author_test_loci_to_train(
+            output,
+            fold_col=config.original_fold_col,
+            test_value=config.original_fold_test_value,
+        )
     group_series = _resolve_split_group_series(
         output,
         config,
