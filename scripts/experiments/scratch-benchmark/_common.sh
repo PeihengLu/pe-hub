@@ -12,6 +12,8 @@ set -euo pipefail
 EXP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HP_DIR="$(cd "${EXP_DIR}/../../hyperparameter" && pwd)"
 BENCH_PY="${EXP_DIR}/../datasheet-benchmark/run_benchmark.py"
+# shellcheck source=../../python-env.sh
+source "${EXP_DIR}/../../python-env.sh"
 
 # Nested protocol defaults — set before hyperparameter/_common.sh so its
 # N_TRIALS="${N_TRIALS:-20}" keeps 10.
@@ -129,7 +131,10 @@ run_datasheet_benchmark_cell() {
     local skip_eval="${2:-0}"
     local extra_args=("${@:3}")
     local py out_dir
-    py="$(command -v python 2>/dev/null || command -v python3)"
+    py="$(pe_hub_resolve_python)" || {
+        echo "Error: no Python interpreter found" >&2
+        exit 1
+    }
     out_dir="$(cell_out_dir "${model}" "${MATRIX_BENCH}")"
     mkdir -p "${out_dir}"
 
@@ -214,7 +219,10 @@ dataset_name_for_cell() {
 fixed_tune_hp_json() {
     local model="$1"
     local py
-    py="$(command -v python 2>/dev/null || command -v python3)"
+    py="$(pe_hub_resolve_python)" || {
+        echo "Error: no Python interpreter found" >&2
+        exit 1
+    }
     MODEL="${model}" "${py}" - <<'PY'
 import json, os
 model = os.environ["MODEL"].strip().lower()
