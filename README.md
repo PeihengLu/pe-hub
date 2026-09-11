@@ -142,6 +142,11 @@ source venv/bin/activate
 # Skip OptiPrime / JAX stack (DeepPrime, OPED, PRIDICT2 only)
 SKIP_OPTIPRIME=1 ./scripts/install-clis.sh
 
+# Apple Silicon note: LightGBM 3.3.x (OptiPrime/rs3) has no arm64 PyPI wheel.
+# setup-python-env.sh installs it from conda-forge. If you use --venv instead:
+#   brew install cmake libomp
+# then re-run install-clis.sh.
+
 # Reload tab completion after install
 conda deactivate && conda activate pe-hub
 ```
