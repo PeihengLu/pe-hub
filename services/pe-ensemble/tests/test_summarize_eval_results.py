@@ -545,4 +545,8 @@ def test_bar_fill_kind_distinguishes_measured_author_and_missing():
     assert "minsepie-insert-pooled__rc__pe2" not in bench_keys
     assert "minsepie-insert-pooled__rc__pe2" not in panel_keys
     assert "minsepie-insert-pooled__hek293t__pe2" in bench_keys
+    assert "deeppe-pooled__hct116" not in panel_keys
+    assert "deeppe-pooled__mda_mb_231" not in panel_keys
+    first_row = [key for key, _label, _study in HEATMAP_PANELS[0]]
+    assert "minsepie-insert-pooled__hek293t__pe2" in first_row
 

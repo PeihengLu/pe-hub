@@ -285,7 +285,7 @@ Additionally, for easier benchmarking of new machine learning systems with exist
 
 \subsubsection{Database Usage}
 
-A number of Python FastAPI endpoints were exposed, and can be used by PyTorch dataloaders during training and evaluation. See \autoref{app:api} for more details. A web portal was also developed for users trying to do some lightweight data exploration and exportation, and it is described in \autoref{sec:pe-hub-web-portal}.
+A number of Python FastAPI endpoints were exposed, and can be used by PyTorch dataloaders during training and evaluation. See \autoref{app:api} for more details. A web portal was also developed for users trying to do some lightweight data exploration and exportation, and it is described in \autoref{sec:pe-hub-web-portal}. The CLI version with the same functionality is also available.
 
 \subsection{PE Ensemble}
 
@@ -387,20 +387,73 @@ To leverage the ever increasing capability and usage of LLMs, we also provided a
 
 
 
-\subsection{Benchmarking Deep Learning Models}
+\subsection{Benchmarking Vendor Models}
 
-To start with, we evaluate the performance of the models using provided weights, using the most conservative data leakage prevention guidelines that would disregard any target loci that could be part of the training set. 
+As a starting point, the four vendor weight sets---DeepPrime~\cite{yuPredictionEfficienciesDiverse2023}, OPED~\cite{liuDesignPrimeeditingGuide2023}, OptiPrime~\cite{hsuMechanisticMachineLearning2026}, and the two PRIDICT2.0 heads~\cite{mathisMachineLearningPrediction2024}---were evaluated without retraining. Pearson $r$ between predicted and measured intended-edit efficiency is the heatmap metric (\autoref{fig:pearson-heatmap}). A very conservative leak prevention strategy was applied, overlapping training loci~(across multiple datasets for model using transfer learning) are excluded from the test set when a author provided test split is available. In-domain evaluation of a sheet that has no recoverable author test split is aborted rather than scored on a synthetic partition of the training loci.
 
-Performance showed a drop compared to the author reported results, which is to be expected since I used a more conservative data leakage prevention guidelines. PRIDICT library-1 did not provide a vendor hold-out split, so the entire dataset was treated as training data for any models using this datasets.  Additionally, DeepPrime ClinVar dataset's training set showed slight leakage into the test set, this has been rectified and resulted in a slight regression in performance.
+\subsubsection{Participating datasheets}
 
-Additionally, OptiPrime provided very limited information on the usage of training data. They stratified the training data by protospacer sequence, but did not provide the exact split of the data for each fold, neither did they state whether the split provided by Yu's or Mathis's holdouts were used. As a result, only 
+The heatmap is restricted to screens that are large enough for a stable correlation: typically thousands of pegRNA--target pairs, or a locus-grouped holdout of that order, small validation datasets are omitted. 
+
+The datasets that remain are:
+
+\begin{itemize}
+    \item \textbf{DeepPE HEK293T} (\nolinkurl{deeppe-ht}, \nolinkurl{deeppe-type}, \nolinkurl{deeppe-position}, and HEK endogenous rows pooled). Kim et al.\cite{kimPredictingEfficiencyPrime2021} is the original high-throughput PE2 reporter screen and the training domain of OPED. Author-fold test rows give $n \approx 5{,}000$.
+    \item \textbf{DeepPrime ClinVar} (\nolinkurl{deepprime-clinvar}). Yu et al.\cite{yuPredictionEfficienciesDiverse2023} measured ${\sim}$259{,}000 pegRNAs on synthetic 74~bp contexts in HEK293T; the author \texttt{Test} fold used here has $n \approx 28{,}000$. This is the training domain of \nolinkurl{DeepPrime\_base}.
+    \item \textbf{PRIDICT Library 1} (\nolinkurl{library1}). Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} screened 92{,}423 HEK293T reporter pegRNAs. No vendor hold-out is distributed, so in-domain scoring of PRIDICT2 and OptiPrime cannot be performed given our limited information.
+    \item \textbf{PRIDICT2 Library-Diverse} in HEK293T, K562, and K562-MLH1dn (\nolinkurl{library-diverse}). Mathis et al.\cite{mathisMachineLearningPrediction2024} extended the reporter format to longer and more mixed edits; each cell-line sheet has $n \approx 4{,}000$--$4{,}500$ on the fold-matched test. This is the fine-tuning domain of the two PRIDICT2 heads.
+    \item \textbf{MinSePIE HEK PE2} (pooled insertion screens at endogenous HEK3 / EMX1 / FANCF / CLYBL). Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} is the only large insertion-centric set ($n = 4{,}301$), with a median insert length of 18~nt.
+    \item \textbf{OptiPrime Lib-MMR and Lib-CV}, HEK293T and HeLa cell lines edtied with PE2 and PE4. Hsu et al.\cite{hsuMechanisticMachineLearning2026} screened ${\sim}$10{,}000 pegRNAs per library in a lentiviral reporter. HEK293T is mismatch-repair deficient relative to HeLa; PE4 co-expresses dominant-negative MLH1. A 20\% locus-grouped holdout devised by PE Hub ($n \approx 1{,}500$--$2{,}100$) is scored for every model that is not in-domain.
+\end{itemize}
+
+These panels therefore cover the training domains of all four models, plus two deliberate transfer tests: long endogenous insertions (MinSePIE) and an MMR-stratified PE2/PE4 pair (Hsu).
+
+\subsubsection{Missing scores and author-reported fills}
+
+Blank cells are evaluations that PE-hub refuses to run. OptiPrime was trained on the union of Lib-MMR, Lib-CV, Library~1, ClinVar, and Library-Diverse, with protospacer-stratified cross-validation whose fold membership is not in the deposited tables~\cite{hsuMechanisticMachineLearning2026}. Scoring those sheets with a random holdout would test training loci, so ClinVar, Library~1, and Library-Diverse stay empty for OptiPrime. The PRIDICT2 K562 head is likewise blank on Library~1: that library is HEK293T-only, and there is no K562-head paper number to display.
+
+Hatched cells are not PE-hub measurements. When an in-domain job aborts, the heatmap copies a published figure where one exists and marks it as an author-reported fill:
+
+\begin{itemize}
+    \item PRIDICT2 HEK $\times$ Library~1 uses the PRIDICT (not PRIDICT2) grouped five-fold CV from Mathis et al.\ 2023, $r = 0.86$ / $\rho = 0.85$\cite{schwankgeraldPredictingPrimeEditing2023}. PRIDICT2.0 was subsequently trained on every Library~1 locus, so this fill is a different model on a different protocol.
+    \item OptiPrime $\times$ Lib-MMR / Lib-CV uses Hsu et al.\ Fig.~4. HeLa PE2 and HeLa PE4 are the published test-set scatters ($r = 0.760$ / $0.803$) with Lib-MMR and Lib-CV pooled. HEK PE2 and HEK PE4 are the four-condition mean quoted in the text ($r = 0.723$), because Hsu does not report HEK-only or per-library test correlations\cite{hsuMechanisticMachineLearning2026}. The same two numbers are therefore repeated across both libraries.
+\end{itemize}
+
+Where a close protocol match can be measured, PE-hub recovers the paper: DeepPrime on ClinVar $r = 0.834$ versus $0.84$\cite{yuPredictionEfficienciesDiverse2023}; PRIDICT2 HEK on Diverse HEK $r = 0.895$ versus $0.90$, and K562 on Diverse K562 $r = 0.700$ versus $0.70$\cite{mathisMachineLearningPrediction2024}. Remaining gaps are therefore transfer, domain shift, or an intentional protocol difference, not a loading error.
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap.pdf}
-    \caption{Pearson Correlation Heatmap of the models}
+    \caption{Pearson $r$ between vendor-model predictions and measured intended-edit efficiency. Columns are study panels; rows are weight sets. White cells were not scored (in-domain leak abort, or no matching head). Hatched cells are author-reported fills, not PE-hub measurements.}
     \label{fig:pearson-heatmap}
 \end{figure}
+
+\subsubsection{Evaluation Results}
+
+\paragraph{DeepPE HEK293T.}
+OPED is in-domain here and reaches $r = 0.76$ ($n = 5{,}060$), close to figure reported by Liu et al. ($r = 0.769$ on the HT-test alone, $n = 4{,}457$)\cite{liuDesignPrimeeditingGuide2023}. The $0.001$ shortfall is likely a protocol difference, since this evaluation pools HT, type, and position instead of HT-test alone. DeepPrime transfers reasonably ($r = 0.66$): ClinVar and DeepPE are both HEK reporter screens of short edits. OptiPrime ($r = 0.47$) and both PRIDICT2 heads ($r \approx 0.31$--$0.35$) are weaker, as expected for models whose training libraries post-date DeepPE and use different reporter geometries.
+
+\paragraph{DeepPrime ClinVar.}
+\nolinkurl{DeepPrime\_base} on the author test fold is the cleanest in-domain cell in the matrix: $r = 0.83$ ($n = 28{,}221$) against Yu's $0.84$ ($n = 28{,}883$)\cite{yuPredictionEfficienciesDiverse2023}. The slightly smaller $n$ is leftover-exclusion of loci that appear in both the published train and test tables using our protospacer based leak prevention strategy compared to the author's split using the entire pegRNA sequence. OPED ($r = 0.46$) and PRIDICT2 ($r \approx 0.48$--$0.50$) see the same sheet as transfer. OptiPrime is blank because Hsu trained on ClinVar and did not publish a compatible hold-out.
+
+\paragraph{PRIDICT Library 1.}
+No author test split is on the sheet, so PRIDICT2 and OptiPrime cannot be measured in-domain. The hatched $0.86$ is the earlier PRIDICT CV number discussed above. The measured column is transfer of DeepPE-trained OPED ($r = 0.24$) and ClinVar-trained DeepPrime ($r = 0.43$). Liu et al.\ reported $r = 0.912$ only after \emph{retraining} OPED on the Library~1 split\cite{liuDesignPrimeeditingGuide2023}; that experiment is not this heatmap row.
+
+\paragraph{PRIDICT2 Library-Diverse.}
+Fold-matched evaluation of each PRIDICT2 head on its own cell line reproduces Mathis et al.: HEK$\to$HEK $r = 0.90$, K562$\to$K562 $r = 0.70$\cite{mathisMachineLearningPrediction2024}, the evaluation data points dropped due to the stricter leak prevention strategy did not affect the correlation. Cross-cell behaviour is the more informative result. HEK293T is mismatch-repair deficient; K562 is proficient; K562-MLH1dn phenocopies deficiency with dominant-negative MLH1, as PE4 does in the Hsu screens. The HEK head's performance collapses on MMR-proficient K562 ($r = 0.48$) and recovers on MLH1dn ($r = 0.81$, $\rho = 0.88$, matching the paper). The K562 head is more consistent ($r = 0.62$ / $0.70$ / $0.72$; Spearman already ${\sim}0.81$--$0.83$ in Mathis). That pattern is in the published numbers and in the efficiency distributions of the three sheets (median intended-edit ${\sim}11\%$ / $0.8\%$ / $3.8\%$). It is not a swapped-head bug: the K562 decoder was never an MMR classifier, and MLH1dn was an evaluation condition, not a third training head.
+
+DeepPrime's Spearman on these sheets ($R = 0.79$ / $0.59$ / $0.75$) is in the same range as Yu's $\leq 3$~bp subset of Library-Diverse; Pearson is lower because the unfiltered library includes edits outside DeepPrime's 1--3~bp training support. OptiPrime is again blank (Hsu trained on this library). OPED remains a modest transfer model ($r \approx 0.25$--$0.30$).
+
+\paragraph{MinSePIE HEK PE2.}
+This column is almost entirely insertions (median 18~nt, RT templates often $>50$~nt) at a handful of endogenous loci, still in HEK293T PE2. DeepPrime goes to $r = -0.05$: \nolinkurl{Edited74} truncates long RTs, and ClinVar never saw this edit class. OPED ($r = 0.52$) and OptiPrime ($r = 0.46$) retain a usable ranking, which is consistent with OPED's nucleotide decoder not being hard-capped at 3~bp and with OptiPrime's kinetic features still responding to PBS/RT length. The PRIDICT2 surprise is that the HEK head ($r = 0.15$) underperforms the K562 head ($r = 0.34$) on a HEK MMR-deficient sheet. If head--MMR matching were the dominant effect, HEK should win. The more plausible reading is edit class: PRIDICT2's library-diverse insertions stop at 15~nt (median 7), whereas MinSePIE is a long-insert, few-locus endogenous assay on which the K562 ranking simply transfers better. The heatmap cell is not an RC or HAP1 mix-up; those panels were excluded.
+
+\paragraph{OptiPrime Lib-MMR.}
+Lib-MMR was built as an MMR assay: diverse substitutions and indels at 200 exonic sites, HEK293T versus HeLa, PE2 versus PE4\cite{hsuMechanisticMachineLearning2026}. OptiPrime's own scores are hatched. Among measured models, PRIDICT2 HEK behaves as the Diverse HEK head would predict. It is strongest on HEK PE2/PE4 ($r = 0.48$ / $0.53$) and on HeLa PE4 ($r = 0.56$), and weakest on MMR-proficient HeLa PE2 ($r = 0.30$). The K562 head drops less on that cell ($r = 0.43$), again matching a decoder trained in an MMR-proficient line. OPED follows the same PE2/PE4 direction at lower absolute $r$ ($0.19$ on HeLa PE2, $0.36$ on HeLa PE4).
+
+DeepPrime on HeLa PE2 is the clear outlier ($r = -0.02$, $\rho = 0.04$). This is not a mislabelled HeLa column: the four Hsu conditions share pegRNA designs, leftover-exclusion does not fire on Lib-MMR (DeepPrime $n$ matches OPED), and reconstructing the 40-locus holdout recovers the heatmap value. Two effects stack. First, Hsu's designed targets start at the spacer, so every Lib-MMR WT74 is left-padded with \texttt{NNNN}; DeepPrime encodes \texttt{N} as a zero channel, wiping the 4~bp of genomic context the CNN was trained on. Lib-CV, which supplies real 4~bp flanks, is higher for DeepPrime in every matched cell. Second, the leftover ranking that still correlates with HEK PE2 ($r = 0.16$) does not transfer to HeLa PE2, even though the HEK and HeLa PE2 \emph{labels} correlate at $r = 0.75$ on shared designs. Substitutions (72\% of the library) go to $r = -0.02$ on HeLa PE2 and recover on HeLa PE4 ($r = 0.17$ overall, $0.12$ on substitutions). Deletions on HeLa PE2 sit on the floor and weakly anti-correlate. In other words DeepPrime, trained on HEK PE2max ClinVar of 1--3~bp, is fitting a thin HEK-specific residual; Hsu's MMR-proficient PE2 condition is exactly the setting that residual does not describe. PRIDICT2 K562 still reaches $r = 0.43$ on the same rows. Using Yu's HeLa PE2max fine-tune instead of \nolinkurl{DeepPrime\_base} would be a different experiment, and would still not be PE2.
+
+\paragraph{OptiPrime Lib-CV.}
+Lib-CV is a ClinVar-correction library (${\sim}$91\% substitutions, including silent-edit combinations meant to evade MMR)\cite{hsuMechanisticMachineLearning2026}. PE4 still lifts every model relative to PE2, but the HEK-head collapse from HEK PE2 to HeLa PE2 is almost absent ($r = 0.25 \to 0.24$), unlike Lib-MMR ($0.48 \to 0.30$). That is not leftover-exclusion of ClinVar-overlapping spacers: putting those loci back changes the HEK-head contrast only from $-0.01$ to $-0.04$. The HEK head is already weak on Lib-CV HEK PE2, so there is little MMR-sensitive ranking left to lose on HeLa. DeepPrime is higher than on Lib-MMR throughout, including HeLa PE2 ($r = 0.13$), consistent with real WT74 sequence rather than \texttt{NNNN} pads; Spearman ($R = 0.30$) shows that a rank signal remains after Pearson is compressed by low PE2 efficiencies. OPED is the strongest measured transfer model on this library ($r = 0.34$--$0.49$), still well below the hatched OptiPrime fills.
 
 
 

@@ -3,7 +3,7 @@
 
 Usage:
   python scripts/experiments/plot_base_model_eval.py \\
-    results/base_model_eval/<RUN_ID>/paper_comparison.csv
+    scripts/experiments/base-model-eval/results/<RUN_ID>/paper_comparison.csv
   python scripts/experiments/plot_base_model_eval.py \\
     scripts/experiments/scratch-benchmark/results/<RUN_ID>
 """
@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DIAGRAM_DIR = REPO_ROOT / "txt" / "diagrams"
 
 # Same Tableau-style study palette as ``txt/diagrams/generate_data_summary.py``.
+# Used for heatmap panel borders; close-match bars use the Pearson navy ramp.
 STUDY_COLORS = [
     "#4E79A7",
     "#F28E2B",
@@ -39,12 +40,6 @@ STUDY_COLORS = [
     "#FF9DA7",
     "#9C755F",
 ]
-SUMMARY_BLUE = STUDY_COLORS[0]
-SUMMARY_ORANGE = STUDY_COLORS[1]
-SUMMARY_RED = STUDY_COLORS[2]
-SUMMARY_TEAL = STUDY_COLORS[3]
-SUMMARY_GREEN = STUDY_COLORS[4]
-SUMMARY_PURPLE = STUDY_COLORS[5]
 MISSING_CELL = "#F4F4F4"
 
 
@@ -65,7 +60,7 @@ def _lerp_hex(start: str, end: str, weight: float) -> str:
 
 # Full-strength poles at |r|=1 so a unit of Pearson r has the same color change
 # on both sides. Displayed range is typically −0.2…1.0.
-PEARSON_NEG_POLE = SUMMARY_RED
+PEARSON_NEG_POLE = STUDY_COLORS[2]
 PEARSON_POS_POLE = "#1F4E79"
 
 
@@ -99,15 +94,15 @@ MODEL_ORDER = [
 ]
 
 # (benchmark_key, column label, study group label)
+# DeepPE HCT/MDA (15-site endo, no author fold) and MinSePIE RC (n=57) are omitted.
 BENCH_META = [
     ("deeppe-pooled__hek293t", "HEK", "DeepPE"),
-    ("deeppe-pooled__hct116", "HCT", "DeepPE"),
-    ("deeppe-pooled__mda_mb_231", "MDA", "DeepPE"),
     ("deepprime-clinvar", "ClinVar", "DeepPrime"),
     ("pridict1-library1", "Library 1", "PRIDICT1"),
     ("pridict2-library-diverse__hek293t", "HEK", "PRIDICT2 Library-Diverse"),
     ("pridict2-library-diverse__k562", "K562", "PRIDICT2 Library-Diverse"),
     ("pridict2-library-diverse__k562mlh1dn", "MLH1dn", "PRIDICT2 Library-Diverse"),
+    ("minsepie-insert-pooled__hek293t__pe2", "HEK PE2", "MinSePIE"),
     ("optiprime-lib-mmr__hek293t__pe2", "HEK PE2", "OptiPrime Lib-MMR"),
     ("optiprime-lib-mmr__hek293t__pe4", "HEK PE4", "OptiPrime Lib-MMR"),
     ("optiprime-lib-mmr__hela__pe2", "HeLa PE2", "OptiPrime Lib-MMR"),
@@ -116,14 +111,12 @@ BENCH_META = [
     ("optiprime-lib-cv__hek293t__pe4", "HEK PE4", "OptiPrime Lib-CV"),
     ("optiprime-lib-cv__hela__pe2", "HeLa PE2", "OptiPrime Lib-CV"),
     ("optiprime-lib-cv__hela__pe4", "HeLa PE4", "OptiPrime Lib-CV"),
-    ("minsepie-insert-pooled__hek293t__pe2", "HEK PE2", "MinSePIE"),
 ]
 BENCH_ORDER = [(key, f"{study} {label}" if study not in label else label) for key, label, study in BENCH_META]
 
-# Two heatmap rows; MinSePIE RC (n=57) is dropped.
 HEATMAP_PANELS = [
-    BENCH_META[:8],
-    BENCH_META[8:],
+    BENCH_META[:7],
+    BENCH_META[7:],
 ]
 
 STUDY_GROUP_COLORS = {
@@ -140,23 +133,6 @@ FILL_MEASURED = "measured"
 FILL_AUTHOR = "author_fill"
 FILL_MISSING = "missing"
 
-# One hue per model, taken from the data-summary study palette.
-MODEL_COLORS = {
-    "DeepPrime": SUMMARY_ORANGE,
-    "OPED": SUMMARY_BLUE,
-    "OptiPrime": SUMMARY_TEAL,
-    "PRIDICT2 HEK": SUMMARY_PURPLE,
-    "PRIDICT2 K562": SUMMARY_GREEN,
-}
-
-# Extra x-gap after these labels so library families stay readable.
-FAMILY_GAP_AFTER = {
-    "DeepPE MDA": 0.45,
-    "PRIDICT1 Library 1": 0.45,
-    "PRIDICT2 Library-Diverse MLH1dn": 0.45,
-    "OptiPrime Lib-CV HeLa PE4": 0.45,
-}
-
 SCRATCH_MODEL_ORDER = [
     ("deepprime", "", "DeepPrime"),
     ("oped", "", "OPED"),
@@ -171,16 +147,6 @@ SCRATCH_BENCH_META = [
     ("optiprime-lib-mmr", "Lib-MMR", "OptiPrime Lib-MMR"),
     ("optiprime-lib-cv", "Lib-CV", "OptiPrime Lib-CV"),
 ]
-SCRATCH_FAMILY_GAP_AFTER = {
-    "PRIDICT1 Library 1": 0.35,
-    "DeepPrime ClinVar": 0.35,
-    "MinSePIE Insert": 0.35,
-}
-SCRATCH_MODEL_COLORS = {
-    "DeepPrime": SUMMARY_ORANGE,
-    "OPED": SUMMARY_BLUE,
-    "PRIDICT2": SUMMARY_GREEN,
-}
 
 
 @dataclass(frozen=True)
@@ -189,12 +155,8 @@ class PlotLayout:
     model_order: list[tuple[str, str, str]]
     bench_meta: list[tuple[str, str, str]]
     heatmap_panels: list[list[tuple[str, str, str]]]
-    model_colors: dict[str, str]
-    family_gap_after: dict[str, float]
     value_column: str
-    bar_title: str
     cbar_label: str
-    bar_width: float = 0.14
 
     @property
     def bench_order(self) -> list[tuple[str, str]]:
@@ -209,10 +171,7 @@ BASE_LAYOUT = PlotLayout(
     model_order=MODEL_ORDER,
     bench_meta=BENCH_META,
     heatmap_panels=HEATMAP_PANELS,
-    model_colors=MODEL_COLORS,
-    family_gap_after=FAMILY_GAP_AFTER,
     value_column="pearson_plot",
-    bar_title="Base-model Pearson r across PE-hub benchmarks",
     cbar_label="Pearson r",
 )
 SCRATCH_LAYOUT = PlotLayout(
@@ -220,12 +179,8 @@ SCRATCH_LAYOUT = PlotLayout(
     model_order=SCRATCH_MODEL_ORDER,
     bench_meta=SCRATCH_BENCH_META,
     heatmap_panels=[SCRATCH_BENCH_META],
-    model_colors=SCRATCH_MODEL_COLORS,
-    family_gap_after=SCRATCH_FAMILY_GAP_AFTER,
     value_column="spearman_plot",
-    bar_title="From-scratch holdout_3 test Spearman R",
     cbar_label="Spearman R",
-    bar_width=0.22,
 )
 
 
@@ -243,14 +198,6 @@ def cell_fill_kind(
     if _f(row.get(value_column)) is None:
         return FILL_MISSING
     return FILL_MEASURED
-
-
-CLOSE_MATCH_ORDER = [
-    ("deepprime", "", "deepprime-clinvar", "DeepPrime\nClinVar"),
-    ("oped", "", "deeppe-ht-test", "OPED\nDeepPE HT-test"),
-    ("pridict2", "HEK", "pridict2-library-diverse__hek293t", "PRIDICT2 HEK\nDiverse HEK"),
-    ("pridict2", "K562", "pridict2-library-diverse__k562", "PRIDICT2 K562\nDiverse K562"),
-]
 
 
 def _f(value: Any) -> Optional[float]:
@@ -401,170 +348,6 @@ def apply_style() -> None:
             "hatch.linewidth": 0.7,
         }
     )
-
-
-def plot_benchmark_bars(
-    rows: list[dict[str, Any]],
-    out_path: Path,
-    layout: PlotLayout = BASE_LAYOUT,
-) -> Path:
-    """Double-column grouped bars: model color + fill pattern for data source."""
-    by_key = index_rows(rows)
-    n_models = len(layout.model_order)
-    bar_width = layout.bar_width
-    bar_pad = 0.018
-    cluster = n_models * bar_width + (n_models - 1) * bar_pad
-    bench_order = layout.bench_order
-
-    centers: list[float] = []
-    labels: list[str] = []
-    cursor = 0.0
-    for bench_key, bench_label in bench_order:
-        centers.append(cursor)
-        labels.append(bench_label)
-        cursor += 1.0 + layout.family_gap_after.get(bench_label, 0.0)
-
-    fig, ax = plt.subplots(figsize=(9.6, 5.05))
-    missing_stub_half = 0.045
-
-    for model_index, (model, head, model_label) in enumerate(layout.model_order):
-        color = layout.model_colors[model_label]
-        offset = (model_index - (n_models - 1) / 2) * (bar_width + bar_pad)
-        xs: list[float] = []
-        heights: list[float] = []
-        bottoms: list[float] = []
-        kinds: list[str] = []
-        for center, (bench_key, _label) in zip(centers, bench_order):
-            row = by_key.get((model, head, bench_key))
-            kind = cell_fill_kind(row, layout.value_column)
-            xs.append(center + offset)
-            kinds.append(kind)
-            if kind == FILL_MISSING:
-                heights.append(2 * missing_stub_half)
-                bottoms.append(-missing_stub_half)
-            else:
-                value = _f(row.get(layout.value_column)) if row else None
-                heights.append(float(value) if value is not None else 0.0)
-                bottoms.append(0.0)
-
-        measured_x, measured_h = [], []
-        author_x, author_h = [], []
-        missing_x, missing_h, missing_b = [], [], []
-        for x, height, bottom, kind in zip(xs, heights, bottoms, kinds):
-            if kind == FILL_MEASURED:
-                measured_x.append(x)
-                measured_h.append(height)
-            elif kind == FILL_AUTHOR:
-                author_x.append(x)
-                author_h.append(height)
-            else:
-                missing_x.append(x)
-                missing_h.append(height)
-                missing_b.append(bottom)
-
-        if measured_x:
-            ax.bar(
-                measured_x,
-                measured_h,
-                width=bar_width,
-                color=color,
-                edgecolor=color,
-                linewidth=0.4,
-                zorder=3,
-            )
-        if author_x:
-            ax.bar(
-                author_x,
-                author_h,
-                width=bar_width,
-                facecolor="white",
-                edgecolor=color,
-                linewidth=0.9,
-                hatch="///",
-                zorder=3,
-            )
-        if missing_x:
-            ax.bar(
-                missing_x,
-                missing_h,
-                width=bar_width,
-                bottom=missing_b,
-                facecolor="white",
-                edgecolor="#8A8A8A",
-                linewidth=0.7,
-                hatch="xxx",
-                linestyle="dotted",
-                zorder=2,
-            )
-
-    ax.axhline(0.0, color="#666666", linewidth=0.7, zorder=1)
-    ax.set_ylabel(layout.cbar_label)
-    ax.set_ylim(-0.65, 1.02)
-    ax.set_xlim(centers[0] - cluster / 2 - 0.15, centers[-1] + cluster / 2 + 0.15)
-    ax.set_xticks(centers)
-    ax.set_xticklabels(labels, rotation=40, ha="right")
-    ax.yaxis.grid(True, color="#E8E8E8", linewidth=0.7)
-    ax.set_axisbelow(True)
-    ax.set_title(
-        layout.bar_title,
-        loc="left",
-        fontsize=11,
-        pad=8,
-    )
-    ax.tick_params(length=3)
-
-    model_handles = [
-        Patch(facecolor=layout.model_colors[label], edgecolor=layout.model_colors[label], label=label)
-        for _model, _head, label in layout.model_order
-    ]
-    fill_handles = [
-        Patch(facecolor="#555555", edgecolor="#555555", label="PE-hub measured"),
-    ]
-    if layout.name == "base":
-        fill_handles.append(
-            Patch(
-                facecolor="white",
-                edgecolor="#555555",
-                hatch="///",
-                label="Author-reported fill",
-            )
-        )
-    fill_handles.append(
-        Patch(
-            facecolor="white",
-            edgecolor="#8A8A8A",
-            hatch="xxx",
-            linestyle="dotted",
-            label="Not scored",
-        )
-    )
-    legend_models = ax.legend(
-        handles=model_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.28),
-        ncol=min(5, n_models),
-        frameon=False,
-        fontsize=8,
-        handlelength=1.1,
-        columnspacing=1.1,
-    )
-    ax.add_artist(legend_models)
-    ax.legend(
-        handles=fill_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.40),
-        ncol=3,
-        frameon=False,
-        fontsize=8,
-        handlelength=1.6,
-        columnspacing=1.4,
-    )
-    fig.subplots_adjust(bottom=0.32, left=0.08, right=0.995, top=0.92)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path)
-    fig.savefig(out_path.with_suffix(".png"))
-    plt.close(fig)
-    return out_path
 
 
 def _label_on_color(hex_color: str) -> str:
@@ -829,101 +612,6 @@ def plot_heatmap(
     return out_path
 
 
-def plot_vs_paper(
-    rows: list[dict[str, Any]],
-    out_path: Path,
-    leak_on_rows: Optional[list[dict[str, Any]]] = None,
-) -> Path:
-    """Grouped bars: leak-off PE-hub (converters) vs paper, optional leak-on overlay.
-
-    Palette matches the data-summary Tableau colors used on the heatmap.
-    """
-    by_key = index_rows(rows)
-    leak_on_by_key = index_rows(leak_on_rows) if leak_on_rows else {}
-    categories: list[str] = []
-    leak_off: list[float] = []
-    paper: list[float] = []
-    leak_on: list[Optional[float]] = []
-    for model, head, bench, label in CLOSE_MATCH_ORDER:
-        row = by_key.get((model, head, bench))
-        if row is None:
-            continue
-        off = _f(row.get("pearson_measured"))
-        pub = _f(row.get("paper_pearson"))
-        if off is None or pub is None:
-            continue
-        categories.append(label)
-        leak_off.append(off)
-        paper.append(pub)
-        on_row = leak_on_by_key.get((model, head, bench))
-        leak_on.append(_f(on_row.get("pearson_measured")) if on_row else None)
-
-    show_leak_on = any(value is not None for value in leak_on)
-    n_series = 3 if show_leak_on else 2
-    x = np.arange(len(categories))
-    width = 0.24 if show_leak_on else 0.32
-    offsets = np.linspace(-(n_series - 1) / 2, (n_series - 1) / 2, n_series) * width
-    fig, ax = plt.subplots(figsize=(8.2, 4.4))
-    series = [
-        (offsets[0], leak_off, "PE-hub leak-off", SUMMARY_GREEN),
-    ]
-    if show_leak_on:
-        series.append(
-            (
-                offsets[1],
-                [value if value is not None else 0.0 for value in leak_on],
-                "PE-hub leak-on",
-                SUMMARY_ORANGE,
-            )
-        )
-        series.append((offsets[2], paper, "Paper reported", "#9C755F"))
-    else:
-        series.append((offsets[1], paper, "Paper reported", "#9C755F"))
-
-    for offset, heights, label, color in series:
-        bars = ax.bar(
-            x + offset,
-            heights,
-            width * 0.92,
-            label=label,
-            color=color,
-            edgecolor="none",
-            zorder=3,
-        )
-        for bar, height in zip(bars, heights):
-            if height <= 0:
-                continue
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                height + 0.008,
-                f"{height:.3f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color="#444444",
-            )
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(categories)
-    ax.set_ylabel("Pearson r")
-    ax.set_ylim(0.6, 1.0)
-    ax.set_title(
-        "Close-match cells: converters vs paper"
-        + (" (leak-on overlay)" if show_leak_on else ""),
-        loc="left",
-        fontsize=12,
-    )
-    ax.yaxis.grid(True, color="#E6E6E6", linewidth=0.8)
-    ax.set_axisbelow(True)
-    ax.legend(frameon=False, loc="upper right")
-    fig.tight_layout()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path)
-    fig.savefig(out_path.with_suffix(".png"))
-    plt.close(fig)
-    return out_path
-
-
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -947,27 +635,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--layout",
         choices=("auto", "base", "scratch"),
         default="auto",
-        help="Heatmap/bar layout. auto infers from benchmark_name keys.",
+        help="Heatmap layout. auto infers from benchmark_name keys.",
     )
     parser.add_argument(
         "--metric",
         choices=("auto", "pearson", "spearman"),
         default="auto",
         help="Which comparison column to plot (default: pearson for base, spearman for scratch).",
-    )
-    parser.add_argument(
-        "--all-figures",
-        action="store_true",
-        help="Also write grouped-bar (and close-match vs-paper when paper values exist).",
-    )
-    parser.add_argument(
-        "--close-match-csv",
-        type=Path,
-        default=None,
-        help=(
-            "Leak-off paper_comparison.csv for eval_vs_paper.pdf. "
-            "When set, current rows are the leak-on overlay."
-        ),
     )
     args = parser.parse_args(argv)
     input_path = args.comparison_csv.resolve()
@@ -1008,20 +682,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     heat = plot_heatmap(rows, out_dir / heatmap_name, layout=layout)
     print(f"Wrote {heat}")
     print(f"Wrote {heat.with_suffix('.png')}")
-    if args.all_figures:
-        bars = plot_benchmark_bars(rows, out_dir / "eval_benchmark_bars.pdf", layout=layout)
-        print(f"Wrote {bars}")
-        if layout.name == "base":
-            if args.close_match_csv is not None:
-                leak_off_rows = load_comparison(args.close_match_csv.resolve())
-                vs_paper = plot_vs_paper(
-                    leak_off_rows,
-                    out_dir / "eval_vs_paper.pdf",
-                    leak_on_rows=rows,
-                )
-            else:
-                vs_paper = plot_vs_paper(rows, out_dir / "eval_vs_paper.pdf")
-            print(f"Wrote {vs_paper}")
     return 0
 
 
