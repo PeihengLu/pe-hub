@@ -217,6 +217,10 @@ async def get_statistics(
         None, description="Filter by target context (endogenous, non_endogenous)."
     ),
     scaffold_name: Optional[str] = Query(None, description="Filter by pegRNA scaffold name."),
+    design_ruleset: Optional[str] = Query(
+        None,
+        description="Well-designed pegRNA ruleset (optiprime, anzalone, or an atomic rule).",
+    ),
 ):
     """Descriptive statistics over edit rows, with optional catalog and entry filters."""
     try:
@@ -229,6 +233,7 @@ async def get_statistics(
             experimental_method=experimental_method,
             target_context=target_context,
             scaffold_name=scaffold_name,
+            design_ruleset=design_ruleset,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

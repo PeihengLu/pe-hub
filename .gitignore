@@ -33,3 +33,4 @@ scripts/cluster/oxford-arc/env.sh
 
 /scripts/experiments/scratch-benchmark/state
 /scripts/experiments/scratch-benchmark/results
+/scripts/experiments/base-model-eval/results

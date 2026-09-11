@@ -200,7 +200,8 @@ pedb studies
 pedb datasets --study deepprime
 pedb datasheets --study deepprime --dataset library2
 pedb scaffolds
-pedb statistics --edit-type sub
+pedb filter --format std --study deepprime --dataset deepprime-clinvar \
+  --design-ruleset optiprime --split-strategy none --summary-only
 pedb formats
 pedb plugins reload
 ```

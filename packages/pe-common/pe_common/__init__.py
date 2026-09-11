@@ -45,6 +45,11 @@ from .splits import (
     summarize_splits,
     validate_split_config,
 )
+from .design_rules import (
+    KNOWN_DESIGN_RULESETS,
+    apply_design_ruleset_mask,
+    expand_design_rulesets,
+)
 from .filter_params import (
     FILTER_LIST_FIELDS,
     FILTER_RANGE_FIELDS,
@@ -111,6 +116,9 @@ __all__ = [
     "FILTER_LIST_FIELDS",
     "FILTER_RANGE_FIELDS",
     "SPLIT_QUERY_FIELDS",
+    "KNOWN_DESIGN_RULESETS",
+    "apply_design_ruleset_mask",
+    "expand_design_rulesets",
     "CatalogFilterBody",
     "CatalogFilterQuery",
     "SplitExportQuery",

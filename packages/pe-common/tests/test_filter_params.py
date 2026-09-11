@@ -90,6 +90,13 @@ def _ts_const_string_tuple(source: str, name: str) -> tuple[str, ...]:
     return tuple(re.findall(r"['\"]([A-Za-z0-9_]+)['\"]", match.group(1)))
 
 
+_BATCH_REQUEST_BUILDERS = (
+    PROJECT_ROOT / "pe-hub" / "src" / "apps" / "ensemble" / "utils" / "trainingRequest.ts",
+    PROJECT_ROOT / "pe-hub" / "src" / "apps" / "ensemble" / "utils" / "ensembleRequest.ts",
+    PROJECT_ROOT / "pe-hub" / "src" / "apps" / "ensemble" / "utils" / "benchmarkRequest.ts",
+)
+
+
 def test_ts_filter_and_split_fields_match_python():
     source = (
         PROJECT_ROOT / "pe-hub" / "src" / "apps" / "database" / "config" / "exportAttributes.ts"
@@ -97,3 +104,35 @@ def test_ts_filter_and_split_fields_match_python():
     assert _ts_const_string_tuple(source, "FILTER_LIST_FIELDS") == FILTER_LIST_FIELDS
     assert _ts_const_string_tuple(source, "FILTER_RANGE_FIELDS") == FILTER_RANGE_FIELDS
     assert _ts_const_string_tuple(source, "SPLIT_QUERY_FIELDS") == SPLIT_QUERY_FIELDS
+    datasheet_keys = _ts_const_string_tuple(source, "DATASHEET_FILTER_KEYS")
+    assert datasheet_keys == ("study", "dataset", "cell_line", "pe_system")
+    assert set(datasheet_keys) <= set(FILTER_LIST_FIELDS)
+    assert "filtersForDatasheetGroup" in source
+    assert "DESIGN_RULESET_CHOICES" in source
+    assert "value: 'optiprime'" in source
+    assert "value: 'anzalone'" in source
+
+
+def test_ts_batch_request_builders_keep_row_filters():
+    """Train/ensemble/evaluate batch jobs must reuse the shared group helper.
+
+    The old train/ensemble builders pinned only study/dataset/cell_line/pe_system
+    and dropped row-level filters such as design_ruleset.
+    """
+    for path in _BATCH_REQUEST_BUILDERS:
+        source = path.read_text(encoding="utf-8")
+        assert "filtersForDatasheetGroup" in source, path
+        assert re.search(r"filtersForDatasheetGroup\([^)]*filterRows", source), path
+        assert "study: [input.group.study]" not in source, path
+
+
+def test_ts_design_ruleset_panel_is_on_export_train_and_eval():
+    frontend = PROJECT_ROOT / "pe-hub" / "src"
+    panel = frontend / "apps" / "database" / "components" / "DesignRulesetPanel.tsx"
+    assert panel.is_file()
+    for rel in (
+        "apps/database/pages/ExportPage.tsx",
+        "apps/ensemble/components/ModelDataPanel.tsx",
+    ):
+        source = (frontend / rel).read_text(encoding="utf-8")
+        assert "DesignRulesetPanel" in source, rel

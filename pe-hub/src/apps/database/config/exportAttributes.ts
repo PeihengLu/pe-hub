@@ -13,6 +13,15 @@ export const FILTER_LIST_FIELDS = [
   'experimental_method',
   'target_context',
   'scaffold_name',
+  'design_ruleset',
+] as const
+
+/** Catalog keys that identify one datasheet. Batch jobs pin these and keep the rest. */
+export const DATASHEET_FILTER_KEYS = [
+  'study',
+  'dataset',
+  'cell_line',
+  'pe_system',
 ] as const
 
 export const FILTER_RANGE_FIELDS = ['edit_efficiency_min', 'edit_efficiency_max'] as const
@@ -125,6 +134,7 @@ const FILTER_ATTRIBUTE_LABELS: Record<FilterAttributeKey, string> = {
   experimental_method: 'Experimental method',
   target_context: 'Target context',
   scaffold_name: 'Scaffold',
+  design_ruleset: 'Design ruleset',
 }
 
 export type CatalogFilterParams = {
@@ -161,7 +171,9 @@ export const EXPORT_FORMATS: { value: ExportFormat; label: string; description: 
   },
 ]
 
-export const FILTER_ATTRIBUTES: FilterAttributeDef[] = FILTER_LIST_FIELDS.map((key) => ({
+export const FILTER_ATTRIBUTES: FilterAttributeDef[] = FILTER_LIST_FIELDS.filter(
+  (key) => key !== 'design_ruleset'
+).map((key) => ({
   key,
   label: FILTER_ATTRIBUTE_LABELS[key],
 }))
@@ -171,12 +183,59 @@ export const STATIC_FILTER_OPTIONS: Partial<Record<FilterAttributeKey, string[]>
   edit_scope: ['on_target', 'off_target'],
   experimental_method: ['in_vitro', 'in_vivo'],
   target_context: ['endogenous', 'non_endogenous'],
+  design_ruleset: ['optiprime', 'anzalone'],
 }
+
+export const DESIGN_RULESET_CHOICES: {
+  value: string
+  label: string
+  description: string
+}[] = [
+  {
+    value: '',
+    label: 'All pegRNAs',
+    description: 'No design-rule filter. Includes poorly designed PBS/RTT geometries.',
+  },
+  {
+    value: 'optiprime',
+    label: 'OptiPrime / Hsu',
+    description:
+      'PBS length 13; first nucleotide of the pegRNA RTT is not C; 3′ homology 9+L (substitutions) or 19+L (insertions and deletions), ±2 nt.',
+  },
+  {
+    value: 'anzalone',
+    label: 'Anzalone 2019',
+    description: 'PBS 10–16 nt, PBS GC 40–60%, RTT 10–16 nt, first RTT nucleotide not C.',
+  },
+]
 
 export interface AttributeFilterRow {
   id: string
   attribute: FilterAttributeKey | ''
   values: string[]
+}
+
+export function designRulesetFromFilterRows(rows: AttributeFilterRow[]): string {
+  const row = rows.find((item) => item.attribute === 'design_ruleset')
+  return row?.values[0] ?? ''
+}
+
+export function setDesignRulesetOnFilterRows(
+  rows: AttributeFilterRow[],
+  value: string
+): AttributeFilterRow[] {
+  const without = rows.filter((item) => item.attribute !== 'design_ruleset')
+  const trimmed = value.trim()
+  if (!trimmed) return without
+  const existing = rows.find((item) => item.attribute === 'design_ruleset')
+  return [
+    ...without,
+    {
+      id: existing?.id ?? 'design-ruleset',
+      attribute: 'design_ruleset',
+      values: [trimmed],
+    },
+  ]
 }
 
 export function buildFilterParams(
@@ -192,4 +251,36 @@ export function buildFilterParams(
     params[row.attribute] = row.values
   }
   return params
+}
+
+export type DatasheetGroup = {
+  [K in (typeof DATASHEET_FILTER_KEYS)[number]]: string
+}
+
+const DATASHEET_FILTER_KEY_SET = new Set<string>(DATASHEET_FILTER_KEYS)
+
+/**
+ * Filters for one job. With no group, this is the UI selection. With a group
+ * (batch per datasheet), pin that sheet and keep row-level filters such as
+ * edit_type and design_ruleset.
+ */
+export function filtersForDatasheetGroup(
+  rows: AttributeFilterRow[],
+  group?: DatasheetGroup
+): Record<string, string[] | number[]> {
+  const rowFilters = buildFilterParams(rows)
+  if (!group) return rowFilters
+  const rest: Record<string, string[] | number[]> = {}
+  for (const [key, value] of Object.entries(rowFilters)) {
+    if (!DATASHEET_FILTER_KEY_SET.has(key)) {
+      rest[key] = value
+    }
+  }
+  return {
+    study: [group.study],
+    dataset: [group.dataset],
+    cell_line: [group.cell_line],
+    pe_system: [group.pe_system],
+    ...rest,
+  }
 }

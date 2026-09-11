@@ -4,6 +4,7 @@ import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import SplitAssignmentPanel from '@components/SplitAssignmentPanel'
 import ExportFilterBuilder from '@apps/database/components/ExportFilterBuilder'
+import DesignRulesetPanel from '@apps/database/components/DesignRulesetPanel'
 import {
   EXPORT_FORMATS,
   buildFilterParams,
@@ -187,6 +188,15 @@ export default function ModelDataPanel({
       {incompleteRows.length > 0 && (
         <p className="mt-3 text-sm text-amber-700">{copy.incompleteHint}</p>
       )}
+
+      <div className="mt-8">
+        <h3 className="text-sm font-semibold text-slate-900 mb-3">Design ruleset</h3>
+        <DesignRulesetPanel
+          rows={filterRows}
+          onChange={onFilterRowsChange}
+          name={`${mode}-design-ruleset`}
+        />
+      </div>
 
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-slate-900 mb-3">Split assignment</h3>

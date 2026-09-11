@@ -19,6 +19,7 @@ from pe_common.data_utils import (
     reassign_group_ids_by_target_location,
     target_uid_series,
 )
+from pe_common.design_rules import apply_design_ruleset_mask
 from pe_common.splits import SplitConfig, assign_splits
 from .models import Dataset, Datasheet, Scaffold, Study
 from .schemas import (
@@ -247,6 +248,7 @@ class CatalogRepository:
         edit_length: Optional[int] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        design_ruleset: Optional[str | list[str]] = None,
     ) -> list[DatasheetRead]:
         """Return datasheets that contain at least one matching edit row on disk."""
         rows = self._session.scalars(self._datasheet_base_stmt()).unique().all()
@@ -256,6 +258,7 @@ class CatalogRepository:
             edit_length=edit_length,
             edit_efficiency_min=edit_efficiency_min,
             edit_efficiency_max=edit_efficiency_max,
+            design_ruleset=design_ruleset,
         )
 
     def filter_all(
@@ -273,6 +276,7 @@ class CatalogRepository:
         experimental_method: Optional[str | list[str]] = None,
         target_context: Optional[str | list[str]] = None,
         scaffold_name: Optional[str | list[str]] = None,
+        design_ruleset: Optional[str | list[str]] = None,
         target_format: Optional[str] = None,
         split_config: Optional[SplitConfig] = None,
         merge_groups: bool = False,
@@ -321,6 +325,7 @@ class CatalogRepository:
                 edit_length=edit_length,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
+                design_ruleset=design_ruleset,
             )
 
         return self._convert_filtered_rows_to_format(
@@ -330,6 +335,7 @@ class CatalogRepository:
             edit_length=edit_length,
             edit_efficiency_min=edit_efficiency_min,
             edit_efficiency_max=edit_efficiency_max,
+            design_ruleset=design_ruleset,
             split_config=split_config,
             merge_groups=merge_groups,
             summary_only=summary_only,
@@ -362,6 +368,7 @@ class CatalogRepository:
         edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        design_ruleset: Optional[str | list[str]] = None,
         split_config: Optional[SplitConfig] = None,
         merge_groups: bool = False,
         summary_only: bool = False,
@@ -414,6 +421,7 @@ class CatalogRepository:
                 edit_lengths=self._normalize_edit_lengths(edit_length),
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
+                design_ruleset=design_ruleset,
             )
             if filtered.empty:
                 continue
@@ -557,6 +565,7 @@ class CatalogRepository:
         experimental_method: Optional[str] = None,
         target_context: Optional[str] = None,
         scaffold_name: Optional[str] = None,
+        design_ruleset: Optional[str | list[str]] = None,
     ) -> StatisticsRead:
         """Descriptive statistics over edit rows, optionally narrowed by catalog/entry filters."""
         rows = self._session.scalars(
@@ -586,6 +595,7 @@ class CatalogRepository:
                 edit_lengths=edit_lengths,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
+                design_ruleset=design_ruleset,
             )
             if filtered.empty:
                 continue
@@ -727,12 +737,14 @@ class CatalogRepository:
         edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        design_ruleset: Optional[str | list[str]] = None,
     ) -> list[DatasheetRead]:
         if not self._entry_filters_active(
             edit_type=edit_type,
             edit_length=edit_length,
             edit_efficiency_min=edit_efficiency_min,
             edit_efficiency_max=edit_efficiency_max,
+            design_ruleset=design_ruleset,
         ):
             return [self._datasheet_to_read(row) for row in rows]
 
@@ -752,6 +764,7 @@ class CatalogRepository:
                 edit_lengths=edit_lengths,
                 edit_efficiency_min=edit_efficiency_min,
                 edit_efficiency_max=edit_efficiency_max,
+                design_ruleset=design_ruleset,
             )
             if not filtered.empty:
                 matched.append(self._datasheet_to_read(row))
@@ -764,6 +777,7 @@ class CatalogRepository:
         edit_length: Optional[int | list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        design_ruleset: Optional[str | list[str]] = None,
     ) -> bool:
         return any(
             value is not None
@@ -772,6 +786,7 @@ class CatalogRepository:
                 edit_length,
                 edit_efficiency_min,
                 edit_efficiency_max,
+                design_ruleset,
             )
         )
 
@@ -836,6 +851,7 @@ class CatalogRepository:
         edit_lengths: Optional[list[int]] = None,
         edit_efficiency_min: Optional[float] = None,
         edit_efficiency_max: Optional[float] = None,
+        design_ruleset: Optional[str | list[str]] = None,
     ) -> pd.DataFrame:
         if df.empty:
             return df
@@ -868,6 +884,9 @@ class CatalogRepository:
                 mask &= efficiency >= edit_efficiency_min
             if edit_efficiency_max is not None:
                 mask &= efficiency <= edit_efficiency_max
+
+        if design_ruleset is not None:
+            mask &= apply_design_ruleset_mask(df, design_ruleset)
 
         return df.loc[mask]
 

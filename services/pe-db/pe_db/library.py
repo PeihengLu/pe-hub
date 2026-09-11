@@ -161,6 +161,7 @@ def filter_data(
     experimental_method: Optional[list[str]] = None,
     target_context: Optional[list[str]] = None,
     scaffold_name: Optional[list[str]] = None,
+    design_ruleset: Optional[list[str]] = None,
     format_: Optional[str] = None,
     split_strategy: Optional[SplitStrategy] = None,
     train_pct: Optional[float] = None,
@@ -215,6 +216,7 @@ def filter_data(
             experimental_method=experimental_method,
             target_context=target_context,
             scaffold_name=scaffold_name,
+            design_ruleset=design_ruleset,
             target_format=format_,
             split_config=split_config,
             merge_groups=merge,
@@ -309,6 +311,7 @@ def catalog_statistics(
     experimental_method: Optional[str] = None,
     target_context: Optional[str] = None,
     scaffold_name: Optional[str] = None,
+    design_ruleset: Optional[str | list[str]] = None,
 ) -> dict[str, Any]:
     """Descriptive statistics over edit rows (same contract as ``GET /api/statistics``)."""
     with get_session() as session:
@@ -321,5 +324,6 @@ def catalog_statistics(
             experimental_method=experimental_method,
             target_context=target_context,
             scaffold_name=scaffold_name,
+            design_ruleset=design_ruleset,
         )
     return stats.model_dump()

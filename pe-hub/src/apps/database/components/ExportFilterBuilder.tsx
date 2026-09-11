@@ -22,8 +22,11 @@ export default function ExportFilterBuilder({
   getOptionsForRow,
   onChange,
 }: ExportFilterBuilderProps) {
+  const catalogRows = rows.filter((row) => row.attribute !== 'design_ruleset')
   const usedAttributes = new Set(
-    rows.map((row) => row.attribute).filter((value): value is FilterAttributeKey => value !== '')
+    catalogRows
+      .map((row) => row.attribute)
+      .filter((value): value is FilterAttributeKey => value !== '')
   )
 
   const addRow = () => {
@@ -52,14 +55,14 @@ export default function ExportFilterBuilder({
 
   return (
     <div className="space-y-3">
-      {rows.length === 0 && (
+      {catalogRows.length === 0 && (
         <p className="text-sm text-slate-500">
           No filters yet. Export includes all standardizable data unless you add
           attributes below.
         </p>
       )}
 
-      {rows.map((row) => {
+      {catalogRows.map((row) => {
         const availableAttributes = FILTER_ATTRIBUTES.filter(
           (attribute) =>
             attribute.key === row.attribute || !usedAttributes.has(attribute.key)
@@ -138,7 +141,7 @@ export default function ExportFilterBuilder({
                     <p className="text-xs text-slate-500">
                       {optionList.length} value{optionList.length === 1 ? '' : 's'} in this
                       catalog
-                      {rows.length > 1 ? ' matching your other filters' : ''}
+                      {catalogRows.length > 1 ? ' matching your other filters' : ''}
                     </p>
                   )}
                   {catalogLimited && optionList.length === 0 && (

@@ -102,11 +102,13 @@ cd ../..
 
 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # Script invokes ``python -m pe_ensemble.cli`` (more reliable than the peen entrypoint).
-python scripts/experiments/summarize_eval_results.py results/base_model_eval/<RUN_ID>/results.jsonl
+python scripts/experiments/summarize_eval_results.py \
+  scripts/experiments/base-model-eval/results/<RUN_ID>/results.jsonl
 python scripts/experiments/plot_base_model_eval.py \
-  results/base_model_eval/<RUN_ID>/paper_comparison.csv
-# Writes txt/diagrams/eval_pearson_heatmap.pdf (and .png) using the same
-# Tableau palette as data_composition.png. Pass --all-figures for bars too.
+  scripts/experiments/base-model-eval/results/<RUN_ID>/paper_comparison.csv
+# Writes txt/diagrams/eval_pearson_heatmap.pdf (and .png). Study-group
+# borders use the Tableau palette from data_composition.png; cell fills
+# are the Pearson navy ramp.
 
 # Partial rerun: reuse RUN_ID so new cells replace matching rows, then summary.csv
 # is rewritten. Skip DeepPrime (already good); OptiPrime lib-* data_leak rows stay.
@@ -118,21 +120,24 @@ DEVICE=cuda:0 MODELS=pridict2 PRIDICT2_HEADS=HEK RUN_ID=<RUN_ID> \
 # Re-score library-diverse ensembles with fold-matched splits:
 DEVICE=cuda:0 MODELS=pridict2 BENCHMARKS=pridict2-library-diverse RUN_ID=<RUN_ID> \
   SKIP_EXISTING=1 ./scripts/experiments/evaluate_base_model_benchmarks.sh
+# Well-designed pegRNAs only (Hsu OptiPrime rules). Use a **new** RUN_ID:
+DEVICE=cuda:0 DESIGN_RULESET=optiprime \
+  ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # OptiPrime-only, non-leak benches. If a prior run marked OptiPrime
 # ``cli_failure`` but logs show success (vendor ``syn{50}`` in stdout), repair:
 python scripts/experiments/summarize_eval_results.py \
-  results/base_model_eval/<RUN_ID>/results.jsonl --repair-from-logs
+  scripts/experiments/base-model-eval/results/<RUN_ID>/results.jsonl --repair-from-logs
 ```
 
-Outputs under `results/base_model_eval/<RUN_ID>/`:
+Outputs under `scripts/experiments/base-model-eval/results/<RUN_ID>/` (same layout as
+scratch-benchmark; gitignored, not mixed with the web-portal `/results` tree):
 
 - `results.jsonl` — one record per evaluation (including `data_leak` aborts)
 - `summary.csv` — flat table for plotting
 - `summary_cv_mean_std.csv` — PRIDICT2 experiment × head × benchmark mean±std across folds
 
-Latest completed run id is also written to `results/base_model_eval/LATEST_RUN_ID`.
-The `results/` tree is gitignored and tracked with DVC (`results.dvc`); push/pull
-via the ARC remote (see the Oxford ARC README).
+Latest completed run id is also written to
+`scripts/experiments/base-model-eval/results/LATEST_RUN_ID`.
 
 **Notes from the reference run:**
 - Vendor provenance for DeepPrime / OPED records **train folds only** (author
@@ -239,7 +244,7 @@ finished run:
 | Script | Purpose |
 | --- | --- |
 | `summarize_eval_results.py` | `results.jsonl` → `summary.csv`; `--repair-from-logs` recovers mislabelled `cli_failure` rows |
-| `plot_base_model_eval.py` | Pearson heatmap (and `--all-figures` bars) into `txt/diagrams/` |
+| `plot_base_model_eval.py` | Pearson heatmap into `txt/diagrams/` |
 | `expand_eval_cell_lines.py` | Expands a benchmark into its per-cell-line, per-PE-system cells |
 | `eval_split_args.py` | Chooses author-fold versus random-holdout split flags per benchmark |
 | `paper_reported_metrics.py` | Published reference metrics for the comparison table |

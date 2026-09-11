@@ -1,5 +1,8 @@
-import { buildFilterParams, type AttributeFilterRow } from '@apps/database/config/exportAttributes'
-import type { ExportGroup } from '@apps/database/services/peDbApi'
+import {
+  filtersForDatasheetGroup,
+  type AttributeFilterRow,
+  type DatasheetGroup,
+} from '@apps/database/config/exportAttributes'
 import type { CombineMethod } from '@apps/ensemble/config/combineMethods'
 import type { EnsembleMemberInput, EnsembleRequest } from '@apps/ensemble/services/api'
 import type { SplitExportParams } from '@apps/ensemble/config/splitParams'
@@ -15,16 +18,9 @@ export function buildEnsembleRequestForGroup(input: {
   device: string
   split: SplitExportParams
   filterRows: AttributeFilterRow[]
-  group?: Pick<ExportGroup, 'study' | 'dataset' | 'cell_line' | 'pe_system'>
+  group?: DatasheetGroup
 }): EnsembleRequest {
-  const filters = input.group
-    ? {
-        study: [input.group.study],
-        dataset: [input.group.dataset],
-        cell_line: [input.group.cell_line],
-        pe_system: [input.group.pe_system],
-      }
-    : buildFilterParams(input.filterRows)
+  const filters = filtersForDatasheetGroup(input.filterRows, input.group)
 
   return {
     ensemble_name: buildDatasetLabel(input.filterRows, input.group),

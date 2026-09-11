@@ -205,6 +205,7 @@ export function buildBaseOptionsByAttribute(
   snapshot: CatalogSnapshot
 ): Partial<Record<FilterAttributeKey, string[]>> {
   return {
+    ...STATIC_FILTER_OPTIONS,
     study: uniqueSorted(snapshot.studies.map((study) => study.name)),
     dataset: uniqueSorted(snapshot.datasets.map((dataset) => dataset.name)),
     cell_line: uniqueSorted(snapshot.datasheets.map((sheet) => sheet.cell_line)),

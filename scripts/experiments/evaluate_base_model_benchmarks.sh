@@ -33,7 +33,7 @@
 #   DEVICE            compute device (default: auto)
 #   RUN_ID            output run id (default: UTC timestamp). Reuse an existing id
 #                     to overwrite matching cells and refresh summary.csv.
-#   OUT_ROOT          results root (default: <repo>/results/base_model_eval)
+#   OUT_ROOT          results root (default: scripts/experiments/base-model-eval/results)
 #   MODELS            comma/space list to restrict weights (deepprime,oped,optiprime,pridict2).
 #                     pridict2 selects ensembles only (no single A/B evaluate jobs).
 #                     Leaving MODELS unset runs the three vendor models plus ensembles.
@@ -52,7 +52,9 @@
 #                     earlier random-holdout rows of the same weight)
 #   SMOKE=1           evaluate only first remaining weight × first remaining benchmark;
 #                     ensemble stage also limited to first head × run_0 × that bench
-#   ENSEMBLE_ONLY=1   skip DeepPrime/OPED/OptiPrime evaluate; only run PRIDICT2 ensembles
+#   DESIGN_RULESET    well-designed pegRNA filter: optiprime (Hsu PBS=13 +
+#                     homology + first RTT not C) or anzalone (Anzalone 2019).
+#                     Use a new RUN_ID so unfiltered cells are not skipped.
 #
 # Partial rerun into an existing run (DeepPrime numbers stay; others refresh):
 #   DEVICE=cuda:0 MODELS=oped,pridict2,optiprime RUN_ID=20260902T151810Z \
@@ -76,7 +78,7 @@ PEEN_CMD=(python -m pe_ensemble.cli)
 
 DEVICE="${DEVICE:-auto}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-OUT_ROOT="${OUT_ROOT:-${REPO_ROOT}/results/base_model_eval}"
+OUT_ROOT="${OUT_ROOT:-${SCRIPT_DIR}/base-model-eval/results}"
 OUT_DIR="${OUT_ROOT}/${RUN_ID}"
 RESULTS_JSONL="${OUT_DIR}/results.jsonl"
 LOG_DIR="${OUT_DIR}/logs"
@@ -85,8 +87,14 @@ FILTER_BENCHMARKS="${BENCHMARKS:-}"
 FILTER_CELL_LINES="${CELL_LINES:-}"
 ALLOW_DATA_LEAK="${ALLOW_DATA_LEAK:-0}"
 MATCH_PRIDICT2_HEAD_TO_CELL="${MATCH_PRIDICT2_HEAD_TO_CELL:-0}"
+DESIGN_RULESET="${DESIGN_RULESET:-}"
 WANT_PRIDICT2_ENSEMBLE=1
 mkdir -p "${OUT_DIR}" "${LOG_DIR}"
+
+DESIGN_RULE_ARGS=()
+if [[ -n "${DESIGN_RULESET}" ]]; then
+  DESIGN_RULE_ARGS+=(--design-ruleset "${DESIGN_RULESET}")
+fi
 
 LEAK_ARGS=()
 if [[ "${ALLOW_DATA_LEAK}" == "1" ]]; then
@@ -99,6 +107,7 @@ echo "OUT_DIR:   ${OUT_DIR}"
 echo "DEVICE:    ${DEVICE}"
 echo "PEEN_CMD:  ${PEEN_CMD[*]}"
 echo "ALLOW_DATA_LEAK: ${ALLOW_DATA_LEAK}"
+echo "DESIGN_RULESET: ${DESIGN_RULESET:-none}"
 echo "MATCH_PRIDICT2_HEAD_TO_CELL: ${MATCH_PRIDICT2_HEAD_TO_CELL}"
 echo ""
 
@@ -418,6 +427,7 @@ PY
       --benchmark-name "${BENCH_NAME}" \
       --study "${STUDY}" \
       "${DATASET_ARGS[@]}" \
+      "${DESIGN_RULE_ARGS[@]}" \
       "${SPLIT_ARGS[@]}" \
       "${LEAK_ARGS[@]}" \
       --sync \
@@ -590,6 +600,7 @@ PY
           --member "${ENSEMBLE_MODEL}:${MEMBER_B}" \
           --study "${STUDY}" \
           "${DATASET_ARGS[@]}" \
+          "${DESIGN_RULE_ARGS[@]}" \
           "${SPLIT_ARGS[@]}" \
           "${LEAK_ARGS[@]}" \
           --sync \

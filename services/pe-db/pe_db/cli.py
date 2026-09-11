@@ -165,6 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     stats_p.add_argument("--experimental-method", default=None)
     stats_p.add_argument("--target-context", default=None)
     stats_p.add_argument("--scaffold-name", default=None)
+    stats_p.add_argument("--design-ruleset", default=None)
     stats_p.set_defaults(func=cmd_statistics)
 
     formats_p = sub.add_parser("formats", help="List supported filter output formats")
@@ -307,6 +308,7 @@ def cmd_statistics(args: argparse.Namespace) -> int:
         experimental_method=args.experimental_method,
         target_context=args.target_context,
         scaffold_name=args.scaffold_name,
+        design_ruleset=args.design_ruleset,
     )
     print(json.dumps(result, indent=2, default=str))
     return 0

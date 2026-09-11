@@ -27,6 +27,7 @@ FILTER_LIST_FIELDS: tuple[str, ...] = (
     "experimental_method",
     "target_context",
     "scaffold_name",
+    "design_ruleset",
 )
 
 FILTER_RANGE_FIELDS: tuple[str, ...] = (
@@ -45,6 +46,11 @@ FILTER_LIST_DESCRIPTIONS: dict[str, str] = {
     "experimental_method": "Filter by experimental method.",
     "target_context": "Filter by target context.",
     "scaffold_name": "Filter by pegRNA scaffold name.",
+    "design_ruleset": (
+        "Keep well-designed pegRNAs only. Presets: optiprime (Hsu Lib-MMR/CV: "
+        "PBS=13, first RTT base not C, homology 9+L / 19+L ±2) or anzalone "
+        "(PBS 10–16, PBS GC 40–60%, RTT 10–16, first RTT not C)."
+    ),
 }
 
 FILTER_RANGE_DESCRIPTIONS: dict[str, str] = {

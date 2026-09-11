@@ -1,10 +1,13 @@
 import {
+  DATASHEET_FILTER_KEYS,
+  FILTER_LIST_FIELDS,
   buildFilterParams,
   buildSplitParams,
+  filtersForDatasheetGroup,
   type AttributeFilterRow,
+  type DatasheetGroup,
   type SplitStrategy,
 } from '@apps/database/config/exportAttributes'
-import type { ExportGroup } from '@apps/database/services/peDbApi'
 import type { TrainingRequest } from '@apps/ensemble/services/api'
 import type { SplitExportParams } from '@apps/ensemble/config/splitParams'
 
@@ -32,22 +35,14 @@ export function buildTrainingSplitParams(config: {
   })
 }
 
-const DATASHEET_FILTER_KEYS = ['study', 'dataset', 'cell_line', 'pe_system'] as const
-
-const ROW_FILTER_KEYS = [
-  'edit_type',
-  'edit_length',
-  'edit_scope',
-  'experimental_method',
-  'target_context',
-  'scaffold_name',
-] as const
+const DATASHEET_FILTER_KEY_SET = new Set<string>(DATASHEET_FILTER_KEYS)
 
 function formatAttachedRowFilters(
   filters: Record<string, string[] | number[]>
 ): string {
   const parts: string[] = []
-  for (const key of ROW_FILTER_KEYS) {
+  for (const key of FILTER_LIST_FIELDS) {
+    if (DATASHEET_FILTER_KEY_SET.has(key)) continue
     const values = filters[key]
     if (!Array.isArray(values) || values.length === 0) continue
     parts.push(`${key}=${values.join('|')}`)
@@ -57,7 +52,7 @@ function formatAttachedRowFilters(
 
 export function buildDatasetLabel(
   filterRows: AttributeFilterRow[],
-  group?: Pick<ExportGroup, 'study' | 'dataset' | 'cell_line' | 'pe_system'>
+  group?: DatasheetGroup
 ): string {
   const filters = buildFilterParams(filterRows)
   const attached = formatAttachedRowFilters(filters)
@@ -86,17 +81,10 @@ export function buildTrainingRequestForGroup(input: {
   modelKwargs?: Record<string, unknown>
   split: SplitExportParams
   filterRows: AttributeFilterRow[]
-  group?: Pick<ExportGroup, 'study' | 'dataset' | 'cell_line' | 'pe_system'>
+  group?: DatasheetGroup
   notes?: string
 }): TrainingRequest {
-  const filters = input.group
-    ? {
-        study: [input.group.study],
-        dataset: [input.group.dataset],
-        cell_line: [input.group.cell_line],
-        pe_system: [input.group.pe_system],
-      }
-    : buildFilterParams(input.filterRows)
+  const filters = filtersForDatasheetGroup(input.filterRows, input.group)
 
   return {
     model_name: input.modelName,

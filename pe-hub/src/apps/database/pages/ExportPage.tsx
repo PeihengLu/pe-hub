@@ -4,6 +4,7 @@ import Card from '@components/Card'
 import LoadingSpinner from '@components/LoadingSpinner'
 import ErrorAlert from '@components/ErrorAlert'
 import ExportFilterBuilder from '@apps/database/components/ExportFilterBuilder'
+import DesignRulesetPanel from '@apps/database/components/DesignRulesetPanel'
 import {
   EXPORT_FORMATS,
   SPLIT_STRATEGIES,
@@ -151,6 +152,10 @@ export default function ExportPage() {
             Each added attribute needs at least one value before export.
           </p>
         )}
+      </Card>
+
+      <Card title="Design ruleset">
+        <DesignRulesetPanel rows={filterRows} onChange={setFilterRows} name="export-design-ruleset" />
       </Card>
 
       <Card title="Split assignment">

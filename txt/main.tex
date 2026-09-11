@@ -267,7 +267,14 @@ Hsu et al. \cite{hsuMechanisticMachineLearning2026} pointed out existing dataset
 
 A set of design rules were thus implemented in the PE-DB, allowing users to select the rulesets they deem appropriate for additional filtering.
 
-% TODO: add description of the rulesets after the function is implemented
+Two named rulesets are available as \nolinkurl{--design-ruleset} (also on \nolinkurl{peen evaluate}):
+
+\begin{itemize}
+    \item \textbf{\nolinkurl{optiprime}} (alias \nolinkurl{hsu}) --- Hsu et al.\ library construction: PBS length 13; first nucleotide of the pegRNA reverse-transcriptase template is not C; 3$'$ homology of $9+L$ (substitutions) or $19+L$ (insertions and deletions), with a $\pm$2\,nt tolerance because Hsu then nudged the RTT so the first base is not C.
+    \item \textbf{\nolinkurl{anzalone}} --- Anzalone et al.\ (2019) starting recommendations: PBS 10--16\,nt, PBS GC content 40--60\%, RTT 10--16\,nt, and first RTT nucleotide not C.
+\end{itemize}
+
+Atomic rules (\nolinkurl{pbs\_13}, \nolinkurl{rtt\_not\_c}, \ldots) can be selected individually; multiple names are combined with AND. The unfiltered evaluation remains the default; repeating the base-model matrix with \nolinkurl{DESIGN\_RULESET=optiprime} scores only the well-designed subset.
 
 
 \subsubsection{Data Retrieval and Interaction}
