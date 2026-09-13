@@ -280,11 +280,11 @@ A set of design rules were thus implemented in the PE-DB, allowing users to sele
 Two named rulesets are available as \nolinkurl{--design-ruleset} (also on \nolinkurl{peen evaluate}):
 
 \begin{itemize}
-    \item \textbf{\nolinkurl{optiprime}} (alias \nolinkurl{hsu}) --- Hsu et al.\ library construction: PBS length 13; first nucleotide of the pegRNA reverse-transcriptase template is not C; 3$'$ homology of $9+L$ (substitutions) or $19+L$ (insertions and deletions), with a $\pm$2\,nt tolerance because Hsu then nudged the RTT so the first base is not C.
+    \item \textbf{\nolinkurl{optiprime}} (alias \nolinkurl{hsu}) --- Hsu et al.\ library construction constraints that the deposited libraries follow consistently: PBS length 13; first nucleotide of the pegRNA reverse-transcriptase template is not C. Hsu's Methods also prescribe 3$'$ homology of $9+L$ (substitutions) or $19+L$ (insertions and deletions), then a length nudge so the first RTT base is not C; that clause is implemented as the optional atomic rule \nolinkurl{homology\_hsu} but is \emph{not} part of the named preset (see Results).
     \item \textbf{\nolinkurl{anzalone}} --- Anzalone et al.\ (2019) starting recommendations: PBS 10--16\,nt, PBS GC content 40--60\%, RTT 10--16\,nt, and first RTT nucleotide not C.
 \end{itemize}
 
-Atomic rules (\nolinkurl{pbs\_13}, \nolinkurl{rtt\_not\_c}, \ldots) can be selected individually; multiple names are combined with AND. The unfiltered evaluation remains the default; repeating the base-model matrix with \nolinkurl{DESIGN\_RULESET=optiprime} scores only the well-designed subset.
+Atomic rules (\nolinkurl{pbs\_13}, \nolinkurl{rtt\_not\_c}, \nolinkurl{homology\_hsu}, \ldots) can be selected individually; multiple names are combined with AND. The unfiltered evaluation remains the default; repeating the base-model matrix with \nolinkurl{DESIGN\_RULESET=optiprime} scores only the well-designed subset.
 
 
 \subsubsection{Data Retrieval and Interaction}
@@ -427,7 +427,7 @@ Hatched cells are not PE-hub measurements. When an in-domain job aborts, the hea
     \item OptiPrime $\times$ Lib-MMR / Lib-CV uses Hsu et al.\ Fig.~4. HeLa PE2 and HeLa PE4 are the published test-set scatters ($r = 0.760$ / $0.803$) with Lib-MMR and Lib-CV pooled. HEK PE2 and HEK PE4 are the four-condition mean quoted in the text ($r = 0.723$), because Hsu does not report HEK-only or per-library test correlations\cite{hsuMechanisticMachineLearning2026}. The same two numbers are therefore repeated across both libraries.
 \end{itemize}
 
-Where a close protocol match can be measured, PE-hub recovers the paper: DeepPrime on ClinVar $r = 0.834$ versus $0.84$\cite{yuPredictionEfficienciesDiverse2023}; PRIDICT2 HEK on Diverse HEK $r = 0.895$ versus $0.90$, and K562 on Diverse K562 $r = 0.700$ versus $0.70$\cite{mathisMachineLearningPrediction2024}. Remaining gaps are therefore transfer, domain shift, or an intentional protocol difference, not a loading error.
+Where a close protocol match can be measured, PE-hub replicates the paper's result: DeepPrime on ClinVar $r = 0.834$ versus $0.84$\cite{yuPredictionEfficienciesDiverse2023}; PRIDICT2 HEK on Diverse HEK $r = 0.895$ versus $0.90$, and K562 on Diverse K562 $r = 0.700$ versus $0.70$\cite{mathisMachineLearningPrediction2024}. Remaining gaps are therefore transfer, domain shift, or an intentional protocol difference, not a loading error.
 
 \begin{figure}[ht]
     \centering
@@ -463,7 +463,28 @@ DeepPrime on HeLa PE2 is the clear outlier ($r = -0.02$, $\rho = 0.04$). This is
 \paragraph{OptiPrime Lib-CV.}
 Lib-CV is a ClinVar-correction library (${\sim}$91\% substitutions, including silent-edit combinations meant to evade MMR)\cite{hsuMechanisticMachineLearning2026}. PE4 still lifts every model relative to PE2, but the HEK-head collapse from HEK PE2 to HeLa PE2 is almost absent ($r = 0.25 \to 0.24$), unlike Lib-MMR ($0.48 \to 0.30$). That is not leftover-exclusion of ClinVar-overlapping spacers: putting those loci back changes the HEK-head contrast only from $-0.01$ to $-0.04$. The HEK head is already weak on Lib-CV HEK PE2, so there is little MMR-sensitive ranking left to lose on HeLa. DeepPrime is higher than on Lib-MMR throughout, including HeLa PE2 ($r = 0.13$), consistent with real WT74 sequence rather than \texttt{NNNN} pads; Spearman ($R = 0.30$) shows that a rank signal remains after Pearson is compressed by low PE2 efficiencies. OPED is the strongest measured transfer model on this library ($r = 0.34$--$0.49$), still well below the hatched OptiPrime fills.
 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap_design_rules.pdf}
+    \caption{(a)~Hsu / OptiPrime filter used here: PBS length 13 and first RTT nucleotide not C.
+    (b)~Anzalone 2019 starting recommendations (PBS 10--16\,nt, PBS GC 40--60\%, RTT 10--16\,nt, first RTT nucleotide not C); MinSePIE is omitted because no pegRNA has an RTT in that window.
+    Pearson $r$ on the filtered subset of each sheet. The OptiPrime model row is omitted; hatched cells remain author-reported fills.
+    Cells with $n<10$ are blank (DeepPE HCT116 and MDA-MB-231 keep only three pegRNAs under the Hsu filter).}
+    \label{fig:pearson-heatmap-design-rules}
+\end{figure}
 
+
+\subsubsection{Design-rule filtered evaluation}
+
+Hsu et al.\ argued that many published pegRNAs would never be ordered in practice, and that correlations for other models may therefore look better than they should~\cite{hsuMechanisticMachineLearning2026}. We repeated the unfiltered matrix of \autoref{fig:pearson-heatmap} under the two named PE-DB rulesets (Methods): Hsu's PBS and RTT-start constraints (\nolinkurl{optiprime}) and the Anzalone et al.\ 2019 starting recommendations (\nolinkurl{anzalone})~\cite{anzaloneSearchandreplaceGenomeEditing2019}. Layout and colour scale are unchanged; only which rows are scored changes (\autoref{fig:pearson-heatmap-design-rules}).
+
+Hsu's Methods also prescribe 3$'$ homology of $9+L$ (substitutions) or $19+L$ (insertions and deletions), then a length nudge so the RTT does not start with C. We leave that clause out of the named \nolinkurl{optiprime} preset. It fits single-base Lib-MMR substitutions exactly, but the deposited sheets do not follow it more generally: multi-base edits and short indels sit on ${\sim}$15\,nt arms, longer indels on ${\sim}$20\,nt arms rather than $19+L$, and on Lib-CV the standardized RHA often disagrees with the author homology-arm column. Enforcing the formula would discard a large share of Hsu's own holdouts for reasons other than a bad PBS or a leading C, so the preset keeps only those two checks (the optional atomic rule \nolinkurl{homology\_hsu} remains available).
+
+Under that PBS/RTT filter, Hsu's Lib-MMR / Lib-CV panels are essentially intact (${\sim}$95--100\% of DeepPrime $n$). The cut falls on external sheets instead: DeepPrime-row $n$ drops to 21\% of DeepPE HEK ($5{,}021 \to 1{,}033$), 5\% of ClinVar ($28{,}221 \to 1{,}367$), and about three-quarters of Library~1 and Library-Diverse. Pearson values move little in a consistent direction. DeepPrime is slightly down on DeepPE ($0.66 \to 0.61$), almost unchanged on ClinVar and Library~1, and slightly up on Library-Diverse HEK ($0.54 \to 0.56$). OPED falls on DeepPE ($0.76 \to 0.70$) and on the remaining MinSePIE inserts ($0.52 \to 0.21$), while rising modestly on Library~1 ($0.24 \to 0.29$). PRIDICT2's in-domain Diverse HEK cell is flat ($0.90$), and transfer onto Hsu's libraries shifts by only a few hundredths.
+
+Anzalone's 10--16\,nt RTT window is a different cut (\autoref{fig:pearson-heatmap-design-rules}b). It empties MinSePIE (median insert 18\,nt), keeps only 3--8\% of Lib-MMR / Lib-CV, and leaves $n \approx 50$--$135$ on those Hsu sheets---too small to read ranking changes. On the larger external remainders the picture is again mixed: DeepPE OPED falls ($0.76 \to 0.63$), ClinVar PRIDICT2 HEK rises ($0.48 \to 0.62$), and DeepPrime on Library-Diverse HEK improves ($0.54 \to 0.64$).
+
+So Hsu is right that many published designs fail simple practitioner checks on PBS and RTT start base, and the $n$ drop on external libraries shows that. What the filtered matrices do \emph{not} support is the stronger claim that other models look good mainly because of those designs: removing them helps some cells and hurts others. We also do not treat departures from $9+L$ / $19+L$ on Hsu's own sheets as a reason to call those pegRNAs poorly designed. 
 
 % \subsection{PE Ensemble}
 

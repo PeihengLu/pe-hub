@@ -48,8 +48,8 @@ FILTER_LIST_DESCRIPTIONS: dict[str, str] = {
     "scaffold_name": "Filter by pegRNA scaffold name.",
     "design_ruleset": (
         "Keep well-designed pegRNAs only. Presets: optiprime (Hsu Lib-MMR/CV: "
-        "PBS=13, first RTT base not C, homology 9+L / 19+L ±2) or anzalone "
-        "(PBS 10–16, PBS GC 40–60%, RTT 10–16, first RTT not C)."
+        "PBS=13, first RTT base not C) or anzalone (PBS 10–16, PBS GC 40–60%, "
+        "RTT 10–16, first RTT not C). Atomic homology_hsu is optional."
     ),
 }
 

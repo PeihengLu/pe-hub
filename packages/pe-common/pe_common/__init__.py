@@ -50,6 +50,7 @@ from .design_rules import (
     KNOWN_DESIGN_RULESETS,
     apply_design_ruleset_mask,
     expand_design_rulesets,
+    hsu_c_nudge_homology_length,
 )
 from .filter_params import (
     FILTER_LIST_FIELDS,
@@ -121,6 +122,7 @@ __all__ = [
     "KNOWN_DESIGN_RULESETS",
     "apply_design_ruleset_mask",
     "expand_design_rulesets",
+    "hsu_c_nudge_homology_length",
     "CatalogFilterBody",
     "CatalogFilterQuery",
     "SplitExportQuery",

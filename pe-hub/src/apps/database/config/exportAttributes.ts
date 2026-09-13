@@ -200,7 +200,7 @@ export const DESIGN_RULESET_CHOICES: {
     value: 'optiprime',
     label: 'OptiPrime / Hsu',
     description:
-      'PBS length 13; first nucleotide of the pegRNA RTT is not C; 3′ homology 9+L (substitutions) or 19+L (insertions and deletions), ±2 nt.',
+      'PBS length 13; first nucleotide of the pegRNA RTT is not C. (Hsu 9+L / 19+L homology is not applied: deposited Lib-MMR/Lib-CV arms deviate for multi-base edits and indels.)',
   },
   {
     value: 'anzalone',

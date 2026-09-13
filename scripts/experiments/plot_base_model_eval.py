@@ -6,6 +6,10 @@ Usage:
     scripts/experiments/base-model-eval/results/<RUN_ID>/paper_comparison.csv
   python scripts/experiments/plot_base_model_eval.py \\
     scripts/experiments/scratch-benchmark/results/<RUN_ID>
+  python scripts/experiments/plot_base_model_eval.py \\
+    results/<RUN_A>/paper_comparison.csv \\
+    --stack results/<RUN_B>/paper_comparison.csv \\
+    --panel-titles "Hsu / OptiPrime design rules" "Anzalone 2019 design rules"
 """
 from __future__ import annotations
 
@@ -184,6 +188,27 @@ SCRATCH_LAYOUT = PlotLayout(
 )
 
 
+def layout_without_optiprime_model(layout: PlotLayout) -> PlotLayout:
+    """Drop the OptiPrime weight-set row (in-domain blanks / author fills)."""
+    models = [row for row in layout.model_order if row[0] != "optiprime"]
+    return replace(layout, model_order=models)
+
+
+def layout_without_minsepie(layout: PlotLayout) -> PlotLayout:
+    """Drop MinSePIE columns (no rows pass Anzalone RTT 10–16)."""
+    panels = []
+    for panel in layout.heatmap_panels:
+        kept = [col for col in panel if "minsepie" not in str(col[0])]
+        if kept:
+            panels.append(kept)
+    benches = [col for panel in panels for col in panel]
+    return replace(
+        layout,
+        heatmap_panels=panels or layout.heatmap_panels,
+        bench_meta=benches or layout.bench_meta,
+    )
+
+
 def cell_fill_kind(
     row: Optional[dict[str, Any]],
     value_column: str = "pearson_plot",
@@ -215,6 +240,28 @@ def _f(value: Any) -> Optional[float]:
 def load_comparison(path: Path) -> list[dict[str, Any]]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def blank_small_n(
+    rows: list[dict[str, Any]],
+    min_n: int,
+    *,
+    value_columns: tuple[str, ...] = ("pearson_plot", "spearman_plot"),
+) -> list[dict[str, Any]]:
+    """Clear plot values when ``n_samples`` is below ``min_n`` (tiny-n artefacts)."""
+    if min_n <= 0:
+        return rows
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        n = _f(row.get("n_samples"))
+        if n is not None and n < min_n:
+            cleared = dict(row)
+            for col in value_columns:
+                cleared[col] = ""
+            out.append(cleared)
+        else:
+            out.append(row)
+    return out
 
 
 def _mean(values: list[float]) -> Optional[float]:
@@ -513,14 +560,9 @@ def _draw_heatmap_panel(
     return im
 
 
-def plot_heatmap(
-    rows: list[dict[str, Any]],
-    out_path: Path,
-    layout: PlotLayout = BASE_LAYOUT,
-) -> Path:
-    by_key = index_rows(rows)
-    panels = layout.heatmap_panels
-    matrices = [_heatmap_values(by_key, panel, layout) for panel in panels]
+def _pearson_limits(
+    matrices: list[tuple[np.ndarray, np.ndarray]],
+) -> tuple[float, float, Normalize, LinearSegmentedColormap]:
     finite = np.concatenate(
         [values[np.isfinite(values)] for values, _hatch in matrices if np.isfinite(values).any()]
     )
@@ -530,7 +572,75 @@ def plot_heatmap(
     vmax = max(1.0, np.ceil(data_max * 10.0) / 10.0)
     norm = Normalize(vmin=vmin, vmax=vmax)
     cmap = _pearson_cmap(vmin, vmax)
-    max_cols = max(len(panel) for panel in panels)
+    return vmin, vmax, norm, cmap
+
+
+def _save_heatmap_figure(fig: Any, out_path: Path) -> Path:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=600, facecolor="white", bbox_inches="tight", pad_inches=0.18)
+    fig.savefig(
+        out_path.with_suffix(".png"),
+        dpi=600,
+        facecolor="white",
+        bbox_inches="tight",
+        pad_inches=0.18,
+    )
+    plt.close(fig)
+    return out_path
+
+
+def _add_heatmap_colorbar(
+    fig: Any,
+    image: Any,
+    axes: list[Any],
+    *,
+    vmin: float,
+    vmax: float,
+    label: str,
+) -> None:
+    fig.canvas.draw()
+    top_pos = axes[0].get_position()
+    bot_pos = axes[-1].get_position()
+    colorbar_ax = fig.add_axes(
+        [top_pos.x1 + 0.005, bot_pos.y0, 0.016, top_pos.y1 - bot_pos.y0]
+    )
+    cbar = fig.colorbar(image, cax=colorbar_ax)
+    cbar.set_label(label, fontsize=12, color="#444444")
+    cbar.set_ticks(np.arange(vmin, vmax + 1e-9, 0.2))
+    cbar.ax.tick_params(labelsize=11, colors="#555555")
+    cbar.outline.set_visible(False)
+
+
+def _add_heatmap_legend(fig: Any, layout: PlotLayout, legend_anchor: tuple[float, float]) -> None:
+    legend_handles = [
+        Patch(facecolor=MISSING_CELL, edgecolor="#D0D0D0", label="Not scored"),
+    ]
+    if layout.name == "base":
+        legend_handles.append(
+            Patch(facecolor="white", edgecolor="#888888", hatch="///", label="Author-reported fill")
+        )
+    fig.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=legend_anchor,
+        ncol=2,
+        frameon=True,
+        facecolor="white",
+        edgecolor="#D0D0D0",
+        framealpha=1.0,
+        fontsize=11,
+    )
+
+
+def plot_heatmap(
+    rows: list[dict[str, Any]],
+    out_path: Path,
+    layout: PlotLayout = BASE_LAYOUT,
+) -> Path:
+    by_key = index_rows(rows)
+    panels = layout.heatmap_panels
+    matrices = [_heatmap_values(by_key, panel, layout) for panel in panels]
+    vmin, vmax, norm, cmap = _pearson_limits(matrices)
     n_panels = len(panels)
 
     if n_panels == 1:
@@ -565,51 +675,88 @@ def plot_heatmap(
                 panel,
                 cmap=cmap,
                 norm=norm,
-                max_cols=max_cols,
+                max_cols=len(panel),
                 show_ylabel=True,
                 model_order=layout.model_order,
             )
         )
-    fig.canvas.draw()
-    top_pos = axes[0].get_position()
-    bot_pos = axes[-1].get_position()
-    colorbar_ax = fig.add_axes(
-        [top_pos.x1 + 0.005, bot_pos.y0, 0.016, top_pos.y1 - bot_pos.y0]
+    _add_heatmap_colorbar(
+        fig, images[0], axes, vmin=vmin, vmax=vmax, label=layout.cbar_label
     )
-    cbar = fig.colorbar(images[0], cax=colorbar_ax)
-    cbar.set_label(layout.cbar_label, fontsize=12, color="#444444")
-    cbar.set_ticks(np.arange(vmin, vmax + 1e-9, 0.2))
-    cbar.ax.tick_params(labelsize=11, colors="#555555")
-    cbar.outline.set_visible(False)
-    legend_handles = [
-        Patch(facecolor=MISSING_CELL, edgecolor="#D0D0D0", label="Not scored"),
-    ]
-    if layout.name == "base":
-        legend_handles.append(
-            Patch(facecolor="white", edgecolor="#888888", hatch="///", label="Author-reported fill")
-        )
-    fig.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=legend_anchor,
-        ncol=2,
-        frameon=True,
-        facecolor="white",
-        edgecolor="#D0D0D0",
-        framealpha=1.0,
-        fontsize=11,
+    _add_heatmap_legend(fig, layout, legend_anchor)
+    return _save_heatmap_figure(fig, out_path)
+
+
+def plot_stacked_heatmaps(
+    groups: list[tuple[str, list[dict[str, Any]]]],
+    out_path: Path,
+    layout: PlotLayout = BASE_LAYOUT,
+    group_layouts: Optional[list[PlotLayout]] = None,
+) -> Path:
+    """Stack complete heatmaps top-down, sharing one colour scale and colourbar."""
+    if len(groups) < 2:
+        raise ValueError("plot_stacked_heatmaps expects at least two (title, rows) groups")
+    layouts = group_layouts or [layout] * len(groups)
+    if len(layouts) != len(groups):
+        raise ValueError("group_layouts must have one PlotLayout per stacked group")
+    grouped: list[tuple[PlotLayout, list[tuple[str, str, str]], list[tuple[np.ndarray, np.ndarray]]]] = []
+    all_matrices: list[tuple[np.ndarray, np.ndarray]] = []
+    for (_title, rows), group_layout in zip(groups, layouts):
+        by_key = index_rows(rows)
+        panels = group_layout.heatmap_panels
+        matrices = [_heatmap_values(by_key, panel, group_layout) for panel in panels]
+        grouped.append((group_layout, panels, matrices))
+        all_matrices.extend(matrices)
+    vmin, vmax, norm, cmap = _pearson_limits(all_matrices)
+    n_groups = len(groups)
+    n_inner = max(len(item[1]) for item in grouped)
+    row_h = 3.6 if n_inner == 1 else 6.6
+    fig_w = 12.2 if n_inner == 1 else 14.4
+    fig = plt.figure(figsize=(fig_w, row_h * n_groups + 0.8))
+    outer = fig.add_gridspec(
+        n_groups,
+        1,
+        hspace=0.28 if n_inner == 1 else 0.22,
+        left=0.12 if n_inner == 1 else 0.10,
+        right=0.82,
+        top=0.94,
+        bottom=0.16 if n_inner == 1 else 0.10,
     )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=600, facecolor="white", bbox_inches="tight", pad_inches=0.18)
-    fig.savefig(
-        out_path.with_suffix(".png"),
-        dpi=600,
-        facecolor="white",
-        bbox_inches="tight",
-        pad_inches=0.18,
+    axes: list[Any] = []
+    images = []
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    for g, ((title, _rows), (group_layout, panels, matrices)) in enumerate(zip(groups, grouped)):
+        inner = outer[g].subgridspec(len(panels), 1, hspace=0.28)
+        for local_i, (panel, (values, hatch)) in enumerate(zip(panels, matrices)):
+            ax = fig.add_subplot(inner[local_i])
+            axes.append(ax)
+            images.append(
+                _draw_heatmap_panel(
+                    ax,
+                    values,
+                    hatch,
+                    panel,
+                    cmap=cmap,
+                    norm=norm,
+                    max_cols=len(panel),
+                    show_ylabel=True,
+                    model_order=group_layout.model_order,
+                )
+            )
+            if local_i == 0:
+                ax.set_title(
+                    f"({letters[g]})  {title}",
+                    loc="left",
+                    fontsize=12,
+                    fontweight="600",
+                    color="#222222",
+                    pad=10,
+                )
+    _add_heatmap_colorbar(
+        fig, images[0], axes, vmin=vmin, vmax=vmax, label=layout.cbar_label
     )
-    plt.close(fig)
-    return out_path
+    _add_heatmap_legend(fig, layouts[0], (0.46, 0.045))
+    return _save_heatmap_figure(fig, out_path)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -643,6 +790,34 @@ def main(argv: Optional[list[str]] = None) -> int:
         default="auto",
         help="Which comparison column to plot (default: pearson for base, spearman for scratch).",
     )
+    parser.add_argument(
+        "--stack",
+        type=Path,
+        action="append",
+        default=None,
+        help=(
+            "Additional paper_comparison.csv to stack below the positional file. "
+            "Repeatable. Use with --panel-titles (one title per heatmap, including the first)."
+        ),
+    )
+    parser.add_argument(
+        "--panel-titles",
+        nargs="+",
+        default=None,
+        help="Titles for stacked heatmaps, in order (positional CSV first).",
+    )
+    parser.add_argument(
+        "--out-name",
+        default=None,
+        help="Output PDF name (default: eval_pearson_heatmap.pdf, or "
+        "eval_pearson_heatmap_design_rules.pdf when --stack is set).",
+    )
+    parser.add_argument(
+        "--min-n",
+        type=int,
+        default=0,
+        help="Blank plot cells with n_samples below this threshold (0 keeps all).",
+    )
     args = parser.parse_args(argv)
     input_path = args.comparison_csv.resolve()
     if input_path.is_dir():
@@ -674,12 +849,43 @@ def main(argv: Optional[list[str]] = None) -> int:
     elif args.metric == "spearman":
         layout = replace(layout, value_column="spearman_plot", cbar_label="Spearman R")
 
+    rows = blank_small_n(rows, args.min_n)
     out_dir = args.out_dir or default_out
     apply_style()
-    heatmap_name = (
-        "eval_spearman_heatmap.pdf" if layout.value_column == "spearman_plot" else "eval_pearson_heatmap.pdf"
-    )
-    heat = plot_heatmap(rows, out_dir / heatmap_name, layout=layout)
+    stack_paths = [path.resolve() for path in (args.stack or [])]
+    if stack_paths:
+        titles = list(args.panel_titles or [])
+        expected = 1 + len(stack_paths)
+        if len(titles) != expected:
+            raise SystemExit(
+                f"Error: --panel-titles needs {expected} titles "
+                f"(positional CSV plus each --stack); got {len(titles)}"
+            )
+        groups: list[tuple[str, list[dict[str, Any]]]] = [(titles[0], rows)]
+        for title, extra_path in zip(titles[1:], stack_paths):
+            if not extra_path.is_file():
+                raise SystemExit(f"Error: {extra_path} not found")
+            groups.append((title, blank_small_n(load_comparison(extra_path), args.min_n)))
+        group_layouts = None
+        if layout.name == "base":
+            shared = layout_without_optiprime_model(layout)
+            group_layouts = [shared] + [layout_without_minsepie(shared)] * (len(groups) - 1)
+            layout = shared
+        heatmap_name = args.out_name or (
+            "eval_spearman_heatmap_design_rules.pdf"
+            if layout.value_column == "spearman_plot"
+            else "eval_pearson_heatmap_design_rules.pdf"
+        )
+        heat = plot_stacked_heatmaps(
+            groups, out_dir / heatmap_name, layout=layout, group_layouts=group_layouts
+        )
+    else:
+        heatmap_name = args.out_name or (
+            "eval_spearman_heatmap.pdf"
+            if layout.value_column == "spearman_plot"
+            else "eval_pearson_heatmap.pdf"
+        )
+        heat = plot_heatmap(rows, out_dir / heatmap_name, layout=layout)
     print(f"Wrote {heat}")
     print(f"Wrote {heat.with_suffix('.png')}")
     return 0

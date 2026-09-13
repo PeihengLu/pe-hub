@@ -9,10 +9,12 @@ repeated on the well-designed subset.
 Presets
 =======
 ``optiprime`` / ``hsu``
-    Library construction rules from Hsu et al. Methods (Lib-MMR / Lib-CV):
-    PBS length 13; first nucleotide of the pegRNA RTT (3′ extension) is not C;
-    3′ homology is ``9+L`` (substitutions) or ``19+L`` (insertions/deletions),
-    ±2 nt because Hsu then nudged the RTT so the first base is not C.
+    Hsu et al. library construction constraints that deposit consistently:
+    PBS length 13; first nucleotide of the pegRNA RTT (3′ extension) is not C.
+    The Methods also cite 3′ homology ``9+L`` / ``19+L`` with a C-avoiding
+    length nudge; that clause is available as the atomic rule
+    ``homology_hsu`` but is not part of this preset (deposited Lib-MMR / Lib-CV
+    arms systematically deviate for multi-base edits and indels).
 
 ``anzalone``
     Anzalone et al. 2019 starting recommendations: PBS 10–16 nt, PBS GC 40–60%,
@@ -41,8 +43,8 @@ ATOMIC_DESIGN_RULES: frozenset[str] = frozenset(
 )
 
 DESIGN_RULESET_PRESETS: dict[str, tuple[str, ...]] = {
-    "optiprime": ("pbs_13", "rtt_not_c", "homology_hsu"),
-    "hsu": ("pbs_13", "rtt_not_c", "homology_hsu"),
+    "optiprime": ("pbs_13", "rtt_not_c"),
+    "hsu": ("pbs_13", "rtt_not_c"),
     "anzalone": ("pbs_10_16", "pbs_gc_40_60", "rtt_10_16", "rtt_not_c"),
 }
 
@@ -50,7 +52,8 @@ KNOWN_DESIGN_RULESETS: tuple[str, ...] = tuple(
     sorted(set(DESIGN_RULESET_PRESETS) | set(ATOMIC_DESIGN_RULES))
 )
 
-HSU_HOMOLOGY_TOLERANCE = 2
+# Cap the C-nudge search so a pathological row cannot walk the whole sequence.
+HSU_C_NUDGE_MAX_DELTA = 32
 
 
 def expand_design_rulesets(names: Optional[Iterable[str]]) -> frozenset[str]:
@@ -71,6 +74,46 @@ def expand_design_rulesets(names: Optional[Iterable[str]]) -> frozenset[str]:
         known = ", ".join(KNOWN_DESIGN_RULESETS)
         raise ValueError(f"Unknown design_ruleset {raw!r}; expected one of: {known}")
     return frozenset(resolved)
+
+
+def hsu_c_nudge_homology_length(
+    mut_sequence: str,
+    rha_start: int,
+    target: int,
+    *,
+    max_delta: int = HSU_C_NUDGE_MAX_DELTA,
+) -> int:
+    """Closest 3′ homology length to ``target`` whose distal DNA base is not G.
+
+    Hsu et al. start at homology ``9+L`` / ``19+L``, then alter RTT/homology
+    length so the first pegRNA RTT base is not C. That first pegRNA base is the
+    reverse complement of the last DNA homology base, so avoiding C means
+    avoiding G at the 3′ end of the DNA arm. On equal distance, prefer the
+    shorter arm (``target-d`` before ``target+d``); that matches Hsu Lib-MMR
+    single-SNP designs exactly.
+    """
+    if target <= 0:
+        return 0
+    mut = str(mut_sequence).upper().replace("U", "T")
+    start = int(rha_start)
+    if start < 0 or start >= len(mut):
+        return 0
+    max_len = len(mut) - start
+
+    def ok(length: int) -> bool:
+        if length < 1 or length > max_len:
+            return False
+        last = mut[start + length - 1]
+        return last in "ACGT" and last != "G"
+
+    if ok(target):
+        return int(target)
+    limit = min(int(max_delta), max(max_len, int(target)))
+    for delta in range(1, limit + 1):
+        for length in (target - delta, target + delta):
+            if ok(length):
+                return int(length)
+    return 0
 
 
 def apply_design_ruleset_mask(
@@ -98,8 +141,9 @@ def apply_design_ruleset_mask(
     if "rtt_10_16" in rules:
         mask &= geo["rtt_len"].between(10, 16)
     if "homology_hsu" in rules:
-        mask &= (geo["rha_len"] - geo["hsu_homology_target"]).abs() <= HSU_HOMOLOGY_TOLERANCE
         mask &= geo["hsu_homology_target"] > 0
+        mask &= geo["rha_len"] == geo["hsu_homology_nudged"]
+        mask &= geo["hsu_homology_nudged"] > 0
     return mask.fillna(False)
 
 
@@ -130,6 +174,7 @@ def _pegRNA_geometry(df: pd.DataFrame) -> pd.DataFrame:
     rtt_first: list[str] = []
     rha_len: list[int] = []
     hsu_target: list[int] = []
+    hsu_nudged: list[int] = []
 
     for i in range(len(df)):
         pbs = sanitize_dna_sequence(str(wt.iloc[i])[int(pbs_l.iloc[i]) : int(pbs_r.iloc[i])], drop=True)
@@ -152,11 +197,17 @@ def _pegRNA_geometry(df: pd.DataFrame) -> pd.DataFrame:
         rha_len.append(len(rha))
         elen = int(edit_len.iloc[i])
         if bool(type_sub.iloc[i]):
-            hsu_target.append(9 + elen)
+            target = 9 + elen
         elif bool(type_ins.iloc[i]) or bool(type_del.iloc[i]):
-            hsu_target.append(19 + elen)
+            target = 19 + elen
         else:
-            hsu_target.append(0)
+            target = 0
+        hsu_target.append(target)
+        hsu_nudged.append(
+            hsu_c_nudge_homology_length(str(mut.iloc[i]), int(rha_l.iloc[i]), target)
+            if target > 0
+            else 0
+        )
 
     return pd.DataFrame(
         {
@@ -166,6 +217,7 @@ def _pegRNA_geometry(df: pd.DataFrame) -> pd.DataFrame:
             "rtt_first": rtt_first,
             "rha_len": rha_len,
             "hsu_homology_target": hsu_target,
+            "hsu_homology_nudged": hsu_nudged,
         },
         index=df.index,
     )

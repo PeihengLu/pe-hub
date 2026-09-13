@@ -8,6 +8,7 @@ import pytest
 from pe_common.design_rules import (
     apply_design_ruleset_mask,
     expand_design_rulesets,
+    hsu_c_nudge_homology_length,
 )
 from pe_common.sequence_utils import reverse_complement
 
@@ -41,16 +42,16 @@ def _row(
 
 
 def _hsu_like_sub() -> dict:
-    # PBS=13, 1-bp sub, RHA=10 (=9+L), RTT DNA of A's so pegRNA RTT starts with T.
+    # PBS=13, 1-bp sub, RHA=10 (=9+L). Homology ends in A (not G) so no C-nudge.
     seq = "A" * 80
     return _row(wt=seq, mut=seq, pbs=(20, 33), rtt=(33, 45), rha=(35, 45), edit_len=1)
 
 
 def test_expand_optiprime_preset():
-    assert expand_design_rulesets(["optiprime"]) == frozenset(
-        {"pbs_13", "rtt_not_c", "homology_hsu"}
-    )
+    assert expand_design_rulesets(["optiprime"]) == frozenset({"pbs_13", "rtt_not_c"})
     assert expand_design_rulesets(["hsu"]) == expand_design_rulesets(["optiprime"])
+    # Homology 9+L / 19+L remains available as an atomic rule, not the preset.
+    assert "homology_hsu" in expand_design_rulesets(["homology_hsu"])
 
 
 def test_expand_unknown_ruleset():
@@ -86,13 +87,55 @@ def test_rtt_not_c_uses_pegrna_orientation():
     assert mask.tolist() == [True, False]
 
 
-def test_homology_hsu_substitution():
+def test_hsu_c_nudge_keeps_target_when_distal_base_not_g():
+    # Target 10; base at index 9 is A → keep 10.
+    mut = "A" * 40
+    assert hsu_c_nudge_homology_length(mut, 0, 10) == 10
+
+
+def test_hsu_c_nudge_lengthens_when_only_longer_is_valid():
+    # Target 10 ends in G; -1 also ends in G; +1 ends in A.
+    mut = list("A" * 40)
+    mut[9] = "G"
+    mut[8] = "G"
+    mut[10] = "A"
+    assert hsu_c_nudge_homology_length("".join(mut), 0, 10) == 11
+
+
+def test_hsu_c_nudge_shortens_when_target_ends_in_g():
+    # Target 10 ends in G; prefer -1 (base at 8 is A) over +1 on equal distance.
+    mut = list("A" * 40)
+    mut[9] = "G"
+    mut[10] = "A"
+    mut[8] = "A"
+    assert hsu_c_nudge_homology_length("".join(mut), 0, 10) == 9
+
+
+def test_homology_hsu_accepts_exact_nudged_length():
     good = _hsu_like_sub()
     short = dict(good)
-    short["rha_location_l"] = 42  # 3 nt homology, target is 10
+    short["rha_location_l"] = 42  # 3 nt homology; nudged target is 10
     df = pd.DataFrame([good, short])
     mask = apply_design_ruleset_mask(df, ["homology_hsu"])
     assert mask.tolist() == [True, False]
+
+
+def test_homology_hsu_accepts_c_nudged_shorter_arm():
+    # 9+L = 10 ends in G → nudged length 9; row with RHA=9 passes.
+    mut = list("A" * 80)
+    mut[44] = "G"  # last base of length-10 arm starting at 35
+    mut[43] = "A"  # last base of length-9 arm
+    mut_s = "".join(mut)
+    row = _row(
+        wt="A" * 80,
+        mut=mut_s,
+        pbs=(20, 33),
+        rtt=(33, 44),
+        rha=(35, 44),  # length 9
+        edit_len=1,
+    )
+    assert hsu_c_nudge_homology_length(mut_s, 35, 10) == 9
+    assert apply_design_ruleset_mask(pd.DataFrame([row]), ["homology_hsu"]).tolist() == [True]
 
 
 def test_optiprime_preset_keeps_hsu_like_row():

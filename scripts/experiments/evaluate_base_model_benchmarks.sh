@@ -53,7 +53,7 @@
 #   SMOKE=1           evaluate only first remaining weight × first remaining benchmark;
 #                     ensemble stage also limited to first head × run_0 × that bench
 #   DESIGN_RULESET    well-designed pegRNA filter: optiprime (Hsu PBS=13 +
-#                     homology + first RTT not C) or anzalone (Anzalone 2019).
+#                     first RTT not C) or anzalone (Anzalone 2019).
 #                     Use a new RUN_ID so unfiltered cells are not skipped.
 #
 # Partial rerun into an existing run (DeepPrime numbers stay; others refresh):
