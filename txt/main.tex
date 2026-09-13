@@ -16,6 +16,7 @@
 \addbibresource{term-paper.bib}
 \graphicspath{diagrams/illustration/}
 
+
 % increase text width
 \usepackage{geometry}
 \geometry{a4paper, margin=1in}
@@ -65,7 +66,7 @@ The editor protein fuses a Cas9 nickase to a reverse transcriptase, and the prim
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=0.75\linewidth]{diagrams/illustration/prime editing process.pdf}
+    \includegraphics[width=\linewidth]{diagrams/illustration/prime editing process.pdf}
     \caption{Prime editing components and mechanism~\cite{anzaloneSearchandreplaceGenomeEditing2019}.
     A prime editor (PE) fuses a Cas9 nickase with reverse transcriptase; both protein modules are omitted here for visual clarity.
     The prime editing guide RNA (pegRNA) contains a target-directing \textit{spacer}, a Cas9 \textit{scaffold}, a \textit{primer-binding site} (PBS), and a \textit{reverse-transcriptase template} (RTT) encoding the desired change as left homology arm (LHA), \textit{edit}, and right homology arm (RHA); the \textit{PAM} (red) enables target recognition and nicking.}
@@ -110,45 +111,45 @@ To address this gap, I present a prime editing benchmarking platform that unifie
 
 \subsection{Project Structure Overview}
 
-This project consists of two main services. The first service, PE Database, can be run as a stand-alone docker application that serves data from requested data source in desirable format. The second service is PE Ensemble, which as the name suggests provides an interface for users to play with current state of the art model architectures in prime editing efficiency prediction, and relies on PE Database to provide data formatted for the selected models to train or evaluate.
+The platform comprises two Python FastAPI services and a shared web interface. PE Database (PE-DB) owns the experimental-data catalog, standardization, filtering, and conversion to model-specific inputs. PE Ensemble owns model loading, training, hyperparameter search, evaluation, and prediction combination. PE Hub provides a React/TypeScript interface to both services. A shared Python package, \nolinkurl{pe-common}, implements sequence utilities, target identifiers, data splitting, regression metrics, and training helpers so that the services use the same definitions. Both backends also expose in-process Python libraries and command-line interfaces, allowing the same workflows to run without HTTP servers.
 
 \subsection{PE Database}
 % overview of the database operations
 
-With interest in prime editing guide RNA design steadily growing, the volume of big-data studies researching various aspects of prime editing guide RNA design and efficiency prediction has been increasing year by year. However, none of the studies have agreed upon a standardized format for their model inputs, and as the volume of studies involving prime editing grows, the challenge of comparing new deep learning system benchmarks becomes more pronounced. To streamline the reviewing process, I established a central database for storing prime editing experimental data. This database, called PE DB, is crafted to store and retrieve data from prime editing experiments, including guide RNA sequences, target DNA sequences, and the outcomes of editing. 
+Large-scale prime editing studies have produced a growing body of data, but differences in input formats and experimental annotations make their models difficult to compare. PE-DB was developed to make these datasets accessible through a common representation. PE-DB brings together guide RNA sequences, target DNA sequences, and measured editing outcomes from these experiments.
 
-Instead of a general PE knowledge base, PE DB is tailored to function as a benchmarking dataset for prime editing efficiency prediction models that often requires a lager training set to achieve good performance. Thus the smaller datasets produced by biological studies on specific prime editing systems, such as Nelson et al.\cite{nelsonEngineeredPegRNAsImprove2022}, are not included in this project. 
+PE-DB focuses on datasets suitable for training and benchmarking efficiency predictors. Small datasets from studies of specific prime editing systems, such as Nelson et al.\cite{nelsonEngineeredPegRNAsImprove2022}, are therefore not included in this project.
 
-However, popular validation datasets such as Anazalone et al.\cite{anzaloneSearchandreplaceGenomeEditing2019} that have direct reference in the modelling literature are included to allow more comprehensive comparison against the state of the art models, despite their small sizes.
+However, widely used validation datasets such as Anzalone et al.\cite{anzaloneSearchandreplaceGenomeEditing2019} are retained despite their small size because they are frequently used to validate published prediction models.
 
 \subsubsection{Data Source}
 
-We pooled all of the big-data studies conducted with various versions of PEs on a number of cell lines under numerous experimental settings. Six studies are included - 
+The database brings together six large-scale studies spanning several prime editor variants, cell lines, and experimental settings:
 
 \begin{enumerate}
     \item \textbf{Kim et al. 2021}
-    
+
     Kim et al.\cite{kimPredictingEfficiencyPrime2021} conducted one of the first big-data studies on prime editing efficiency, performing a high-throughput evaluation of PE2 activity using 54,836 pairs of pegRNAs and target sequences in HEK293T cells. The study identified factors affecting PE2 efficiency and developed three computational models (including the deep learning model DeepPE) to predict pegRNA efficiency. The data are organized into four datasets in the database.
 
     The main library \nolinkurl{deeppe-ht} contains approximately 43,000 pegRNAs from Library~1, which focused on a G$\to$C substitution at reverse transcriptase template position +5. These pegRNAs and their corresponding synthetic target sequences were delivered via lentiviral reporters --- each construct pairs the pegRNA with an artificial target cassette rather than an endogenous genomic locus.
 
-    Library~2 is split into an edit-type subset \nolinkurl{deeppe-type}, which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset \nolinkurl{deeppe-position}, which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2. 
-    % TODO: add detailed number of counts for each subset
+    Library~2 is split into an edit-type subset \nolinkurl{deeppe-type}, which evaluates how different mutation types (substitutions, insertions, deletions) affect PE2 efficiency, and an edit-position subset \nolinkurl{deeppe-position}, which evaluates how the position of the edit within the reverse transcriptase template affects efficiency. Both subsets use the same lentiviral reporter system in HEK293T cells with PE2.
+    The exported HEK293T--PE2 sheets contain 4{,}178 rows in \nolinkurl{deeppe-type} and 1{,}974 in \nolinkurl{deeppe-position}; \nolinkurl{deeppe-ht} contains 43{,}149 rows. These are counts in the local exported tables after removing entries without a numeric efficiency measurement, before design-rule filtering or train/test partitioning.
 
     A separate endogenous validation dataset \nolinkurl{deeppe-endo} contains arrayed pegRNA experiments at native genomic loci in HEK293T, HCT116, and MDA-MB-231 cells, where both pegRNAs and PE2 were delivered by plasmid transfection. Editing efficiencies are averaged across biological and technical replicates (BR1--BR2 $\times$ TR1--TR2).
 
     \item \textbf{Yu et al. 2023}
-    
+
     As a follow up study to Kim et al. 2021, Yu et al.\cite{yuPredictionEfficienciesDiverse2023} systematically evaluated prime editing efficiencies for 338,996 pegRNA--target pairs (including 3,979 epegRNAs) in an error-free manner across eight PE systems and seven cell types. The study developed DeepPrime, a deep learning model that predicts PE efficiencies for all possible edit types up to 3~bp, and DeepPrime-FT, a fine-tuning strategy that adapts predictions to specific PE systems and cell types.
 
     The main ClinVar library \nolinkurl{deepprime-clinvar} contains approximately 259,000 pegRNA--target pairs designed around ClinVar pathogenic variants. Efficiencies were measured on synthetic 74~bp target contexts via a plasmid-based assay, not at native genomic loci. Both pegRNAs and PE were delivered by plasmid transfection. This dataset spans multiple PE systems (PE2, PE2max, PE4max, NRCH-PE2, NRCH-PE2max, NRCH-PE4max, among others) and cell types (HEK293T, A549, DLD1, HeLa, MDA-MB-231, HCT116, and NIH3T3).
 
     The fine-tuning subsets \nolinkurl{deepprime-small} are smaller datasets used for DeepPrime-FT, covering multiple cell-line and PE-system combinations with the same synthetic target context format.
 
-    Two off-target datasets are also stored in the database: a mismatch library \nolinkurl{deepprime-off} and its sub-pools \nolinkurl{deepprime-off-subpool}, which profile PE editing efficiencies at mismatched target sites. 
+    Two off-target datasets are also stored in the database: a mismatch library \nolinkurl{deepprime-off} and its sub-pools \nolinkurl{deepprime-off-subpool}, which profile PE editing efficiencies at mismatched target sites.
 
     \item \textbf{Koeppel et al. 2023}
-    
+
     Koeppel et al.\cite{koeppelPredictionPrimeEditing2023} focused specifically on prime editing insertion efficiency, designing a library of 3,604 insertion sequences of various lengths (1--69~nt) and measuring their insertion frequencies at four endogenous genomic target sites (HEK3, EMX1, FANCF, and the safe-harbor CLYBL locus) in three human cell lines (HEK293T, HAP1, and HAP1 $\Delta$MLH1). The study identified that insertion length, nucleotide composition (particularly cytosine content), and secondary structure of the insert sequence all affect insertion rates, and discovered that the 3$'$ flap nucleases TREX1 and TREX2 suppress the insertion of longer sequences. These findings were combined into the MinsePIE machine learning model, which predicts relative insertion frequencies with $R = 0.70$.
 
     MinSePIE data are split into five catalog datasets by library design and delivery:
@@ -160,7 +161,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     Only 19 out of 33 sets of experimental data from the study were recorded into the database, as the experimental results for the additional validation experiments could not be located.
 
     \item \textbf{Schwank et al. 2023}
-    
+
     Mathis et al.\cite{schwankgeraldPredictingPrimeEditing2023} performed a high-throughput screen analyzing prime editing outcomes of 92,423 pegRNAs targeting a highly diverse set of 13,349 human pathogenic mutations, including base substitutions, insertions, and deletions. The study identified sequence context features that influence prime editing and trained PRIDICT (PRIme editing guide preDICTion), an attention-based bidirectional recurrent neural network that predicts both editing efficiency and product purity.
 
     The main library \nolinkurl{library1} uses a self-targeting lentiviral reporter format in HEK293T cells: each construct pairs the pegRNA with a synthetic target cassette containing the corresponding pathogenic sequence, so edits occur at a non-endogenous reporter rather than a native chromosomal locus. The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
@@ -170,7 +171,7 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     A separate endogenous validation dataset \nolinkurl{pridict1-endo} contains arrayed pegRNA experiments at 15 genomic loci in HEK293T and K562 (three pegRNAs per locus from library~1: the endogenous-target pegRNA, \emph{endo}, plus the highest- and lowest-PRIDICT-scoring candidates, \emph{best} and \emph{worst}). Edit types are taken from the authors' endogenous CRISPResso batch amplicons (PRIDICT supplementary files): 44 pegRNAs install a 1-bp substitution and locus~3 uses a 10-bp deletion; there are no insertion edits in this validation set.
 
     \item \textbf{Mathis et al. 2024}
-    
+
     The library-diverse dataset extends the PRIDICT1 approach with a broader range of edit types, screened in HEK293T, K562, and K562 MLH1$^{-/-}$ (mismatch repair-deficient) cell lines using the same self-targeting lentiviral reporter system (non-endogenous targets). The pegRNAs were delivered by lentiviral transduction and PE2 was delivered by plasmid transfection.
 
     The library-diverse-invivo dataset validates a subset of the diverse-library pegRNAs at endogenous mouse liver loci in vivo, where both pegRNAs and PE were delivered via adenoviral vectors. This provides an important cross-context validation for computational predictions trained on in vitro reporter data.
@@ -178,13 +179,13 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     A TRIP (Thousands of Reporters Integrated in Parallel) analysis dataset profiles editing at 1,202 endogenous genomic integration sites in K562 cells, providing the chromatin context data used to train the ePRIDICT model. Every integration was edited with the same prime-editing pegRNA (\nolinkurl{TRIP\_pegRNA\_GtoC}), a uniform 1-bp G$\to$C substitution. Integration coordinates are stored, but the deposited table does not include the shared reporter WT/Mut sequence, so the dataset currently has partial standardization support (entry-level fields only).
 
     \item \textbf{Hsu et al. 2026}
-    
+
     Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime, a mechanistic machine learning model that embeds prime editing biochemistry into its architecture. To train and benchmark the model, the authors performed two large paired pegRNA--target lentiviral reporter screens in HEK293T (partially mismatch-repair deficient) and HeLa (mismatch-repair proficient) cells, measuring editing with both PE2 and PE4. In both screens, pegRNA--target pairs were packaged into lentiviral libraries and transduced at low multiplicity of infection (MOI~$<0.3$); after selection for integrated library members, cells were transfected with PE construct plasmids (PEmax-Cas9 with tevoPreQ1 epegRNAs) to induce editing. Efficiencies are therefore measured on synthetic reporter cassettes rather than native chromosomal loci.
 
     The Lib-MMR library \nolinkurl{lib-mmr} comprises ${\sim}$9,964 pegRNAs targeting 200 randomly selected exonic sites with diverse edit types, including single and multi-base substitutions, insertions, deletions, and PAM edits. The supplementary table also lists 36 additional pegRNAs with \nolinkurl{Design category = Endogenous}; these are positive controls whose sequences were previously used to edit endogenous loci (RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, and HEXA), but in this study they were assayed in the same lentiviral reporter format as the rest of Lib-MMR. PE DB therefore stores them separately as \nolinkurl{lib-mmr-controls} so that users can include or exclude reference pegRNAs without mixing them into the primary MMR diversity library.
 
     The Lib-CV library \nolinkurl{lib-cv} contains 10,406 pegRNAs designed to correct 944 ClinVar pathogenic variants, including up to nine silent edit combinations per variant to evade mismatch repair. Like Lib-MMR, Lib-CV uses the lentiviral pegRNA--target reporter system with PE2/PE4 plasmid transfection in HEK293T and HeLa. Across the two libraries, the authors report 74,769 editing measurements spanning 1,290 unique target sites in these four cell-line/PE-system combinations. Supplementary Table~3 (\nolinkurl{Endo\_gRNAs}) lists additional endogenous pegRNA designs used elsewhere in the paper but does not include the high-throughput efficiency measurements exported here.
-    
+
 \end{enumerate}
 
 \begin{figure}[ht]
@@ -194,11 +195,11 @@ We pooled all of the big-data studies conducted with various versions of PEs on 
     \label{fig:data_composition}
 \end{figure}
 
-\autoref{fig:data_composition} summarizes the composition of data from the studies. In total, there are ${\sim}$790,000 pegRNA--target pairs from six studies. 
+\autoref{fig:data_composition} summarizes the composition of data from the studies. In total, there are ${\sim}$790,000 pegRNA--target pairs from six studies.
 
-DeepPrime and PRIDICTv2 has good coverage of all editing types, with PRIDICTv2 having a larger range of edit length, from 1 to 15bp compared to DeepPrime's 1-3bp in the main library and up to 6bp in the fine-tuning subsets. 
+The DeepPrime and PRIDICT2 datasets cover substitutions, insertions, and deletions. PRIDICT2 includes edits of 1--15~bp, compared with 1--3~bp in the main DeepPrime library and up to 6~bp in its fine-tuning subsets.
 
-Note that on top of the difference in delivery method, target context and experiment methods, the processing of editing efficiency also varies among the studies. PRIDICTv1 generously provided the raw counts of editing outcomes(successful edits, unintended edits and no edits) for each pegRNA, while other studies only provides a one-value measurement of editing efficiency. Kim et al. set the standard of using the augmented editing efficiency measurement, which deducts the background editing rate from the total editing rate, for all of their datasets\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023}. The background editing rate is the editing rate of the pegRNA in the absence of the target sequence, measured in 0-100 scale, thus the $\div 100$ in \autoref{eq:augmented-editing-efficiency}. This measurement method is also followed by the PRIDICT studies\cite{schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}. Koeppel et al. however, used the ratio of successful insertions over total insertions as the editing efficiency measurement. The background editing rate was not provided in the study and thus currently impossible to recover, just bear in mind that during training of custom models this can be the source of potential discrepancy in models' performances across the datasets.
+The studies also differ in how they report editing efficiency. PRIDICT1 provides counts for intended edits, unintended edits, and unedited reads, whereas other datasets provide a single efficiency value for each pegRNA. Kim et al. set the standard of using the augmented editing efficiency measurement, which deducts the background editing rate from the total editing rate, for all of their datasets\cite{kimPredictingEfficiencyPrime2021,yuPredictionEfficienciesDiverse2023}. The background editing rate is the editing rate of the pegRNA in the absence of the target sequence, measured in 0-100 scale, thus the $\div 100$ in \autoref{eq:augmented-editing-efficiency}. This measurement method is also followed by the PRIDICT studies\cite{schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024}. Koeppel et al. however, used the ratio of successful insertions over total insertions as the editing efficiency measurement. The background editing rate was not provided in the study and thus currently impossible to recover, this difference in label definition may contribute to differences in model performance across datasets.
 
 \begin{equation}
     \text{Editing efficiency} = 100 \times \frac{\text{\# successful edits} - \text{\# total read count} \times \text{background editing rate} \div 100}{\text{\# total read count} - \text{\# total read count} \times \text{background editing rate} \div 100}
@@ -209,23 +210,23 @@ Note that on top of the difference in delivery method, target context and experi
 \subsubsection{Data Storage}
 
 Since the project is distributed using GitHub, we needed to work around the 100 MB per file limit to avoid using Git LFS(Large File Storage) and incurring substantial charges.
-Instead of a persistent DB object, the data are stored in their original tsv, csv or xlsx (Excel) format and are only transformed into standardized formats and indexed by a SQLite database after it is deployed by users.
+The original TSV, CSV, and XLSX files are retained as source data. When PE-DB is initialized, these files are exported into experiment-specific CSV tables and standardized as Parquet files. A persistent SQLite catalog stores the associated metadata and file paths, while individual editing measurements are loaded from the tables as needed.
 
 Usage of DVC is recommended for storing and synchronizing experimental data, especially when working on clusters as they offer storage that can be used for DVC store. It would require you to create a new fork of this project since it needs to work with git, but the ability to version control the training and evaluation data is a great advantage. An example of setting up DVC to work on Oxford ARC Cluster has been provided in \nolinkurl{scripts/cluster/oxford-arc/setup_dvc_remote.sh}.
 
 \subsubsection{Data Formatting}
 
-As discussed in the last section, only raw data directly acquired from the studies are stored in the repository, some preprocessing is required to convert the data into more uniformly usable format.
+The source studies use different file layouts, sequence conventions, and measurement columns. A common preprocessing pipeline makes these data usable across models.
 
-The first step is data exportation, where the original data was broken down into individual experiments(a 'datasheet') corresponding to one PE system operating on one cell-line with minimum processing. The original columns are respected to as much as this hierarchical design allows, pending further operations.
+First, each source file is divided into experiment-level tables, termed datasheets, each representing one PE system in one cell line. This export stage preserves the original columns wherever possible; sequence reconstruction and feature conversion are handled separately.
 
-The exported data can be used to construct the SQLite database containing study metainformation, since the directory structures and filenames reveals detailed information required by the Datasheet table, and the Study as well as Dataset table are hardcoded for the lack of a good automated pipeline.
+Study and dataset metadata are defined in Python registries. The exported directory structure and filenames are then used to index individual datasheets in SQLite.
 
-As briefly mentioned above, a standardized format, PE-core, was devised as a mediator to simplify conversions between formats accepted by various models. For each model a set of two converters are devised to convert original data into standardized format and back to format used in model training and inference.
+The shared PE-core format provides an intermediate representation between the source tables and the inputs required by each model. Study-specific exporters and standardizers reconstruct PE-core records from the deposited tables; a separate converter for each supported model constructs its native inputs from PE-core. This separates source-study reconstruction from model feature engineering, so adding a model does not require a new converter for every study.
 
-The shared PE-core schema stores: 
+The shared PE-core schema stores:
 \begin{itemize}
-    \item the wild-type and mutated target-strand sequences,
+    \item a protospacer-based group identifier and the wild-type and mutated target-strand sequences,
     \item mutually exclusive substitution/insertion/deletion flags,
     \item edit length,
     \item 0-based half-open geometry for the protospacer, PBS, reverse-transcriptase template, and homology arms,
@@ -249,9 +250,17 @@ During exportation, each MOESM5 experiment string is mapped to the corresponding
 The genomic anchors themselves were obtained by exact (and reverse-complement) mapping of the ST6 spacers onto GRCh38/hg38, since many author supplied location names are not conventional genomic sites. Classic PE-site coordinates cited elsewhere in the literature were checked and discarded when they did not contain the MinsePIE spacer: in particular, the HEK3 site used throughout the study maps to \textit{LINC01509} on chromosome~9 rather than the chromosome~11 locus often associated with HEK293 editing screens. For the 18-nt library, the Methods text places HEK3-S2--S6 within approximately 1~kb of that HEK3 anchor as per author's description; sites that differed from the reference by a single base (HEK3-S3/S5/S6 and some codon-variant pegRNAs) were placed by homology-arm context and the cached window was patched so that the ST6 spacer sits at a fixed 90~bp offset within a 200~bp flank. The resulting loci table (\nolinkurl{minsepie\_genomic\_loci.json}) stores chromosome, 1-based spacer start, assembly strand, and the reference window for each of the 17 ST6 targets. Standardization then inserts the measured sequence at the nick/HA-derived edit position to produce length-matched WT (N-padded at the insertion) and Mut sequences on that 200~bp window, and records the corresponding hg38 protospacer interval.
 
 
+\subsubsection{Model-specific Feature Construction}
+
+Model-format conversion is implemented centrally in PE-DB. DeepPrime receives a 74-base wild-type window with the protospacer starting at offset four, a masked 74-base edited representation containing the PBS and RTT, and its engineered sequence features. These include lengths, edit indicators, GC composition, melting temperatures, RNA minimum free energies, and the DeepSpCas9 score. OPED receives a 47-base unedited target window, a PBS extracted from the wild-type sequence, and an RT sequence extracted from the mutant sequence. Insertion-alignment padding is removed before constructing the unedited target, preventing an inserted allele from entering the wild-type input.
+
+The PRIDICT and PRIDICT2 format names invoke the same PRIDICT2 conversion pipeline. It constructs initial and mutated target sequences, edit positions and lengths, region annotations, and thermodynamic features, including seven ViennaRNA minimum-free-energy features for the spacer, scaffold, PBS, RT, and their combinations. Extended endogenous windows are shifted into the author's coordinate frame, with the spacer at offset ten. OptiPrime receives the spacer and reverse-complemented PBS and RTT in the RNA alphabet, together with unedited and edited DNA contexts. Its converter also supplies fixed defaults for scaffold, stabilizing motif, Cas9, PE type, and assay time; these fields should therefore not be interpreted as a complete reconstruction of every source experiment's conditions.
+
+Where the source lacks sufficient flanking sequence, conversion follows model-specific padding conventions: DeepPrime uses \texttt{N} for missing target context and \texttt{X} for masked edited positions, whereas OPED uses \texttt{A} placeholders to complete its target window. Such placeholders do not recover biological context and can affect transfer to a model trained on complete windows. Converted frames are cached on disk with a converter revision check to avoid repeating expensive feature calculations. Missing or non-numeric efficiency labels are removed during standardization, while measured zeros are retained; model training rejects missing labels that reach a wrapper through an alternative input path.
+
 \subsubsection{Database Design}
 
-For efficient filtering, scalable data retrieval, and improved conceptual clarity, the database is designed using a hierarchical schema based on column propagation. This approach allows shared metadata to be stored at the highest appropriate level while enabling fine-grained filtering at lower levels without data duplication.
+The catalog uses a hierarchical schema to separate publication-level information from experiment-specific metadata. Shared annotations are stored once at the appropriate level and inherited through the table relationships, reducing duplication while supporting detailed filtering.
 
 \begin{figure}[ht]
     \centering
@@ -270,12 +279,12 @@ The \textbf{Scaffold} table stores pegRNA scaffold definitions as reusable refer
 
 The experiment level is represented by the \textbf{Datasheet} table. Each datasheet points to one exported CSV file and stores the condition-specific metadata required by the API: file path, cell line, PE system, scaffold, number of samples, and an \nolinkurl{updated\_at} timestamp. Foreign keys (\nolinkurl{dataset\_id} and \nolinkurl{scaffold\_id}) connect each datasheet to both its parent dataset and scaffold record.
 
-Because most metadata required for filtering and selection are fully represented within this hierarchical schema, the individual experimental data points themselves are not stored directly in the database. Instead, only file paths referencing the raw data are maintained. This design choice significantly reduces memory usage, accelerates database initialization, and allows the system to scale efficiently while deferring large data loading operations until explicitly required. When users requires to filter using fields not represented in the catalog schema, we then go through each datasheet that fulfills metadata requirements and retrieve the rows satisfying the datasheet-level filter criteria.
+The catalog contains the metadata needed to select experiments, while individual editing measurements remain in separate files. Instead, the catalog stores paths to the exported experiment tables, with standardized Parquet files used for filtering and model-format conversion. This keeps the relational catalog small and defers loading the larger measurement tables until they are needed. Filters on individual edits are applied after selecting the datasheets that meet the requested experimental conditions.
 
 \subsubsection{Filtering for well-designed pegRNAs}
 Hsu et al. \cite{hsuMechanisticMachineLearning2026} pointed out existing datasets contain a large amount of poorly designed pegRNAs that would never be used in practice by experienced technicians, thus the performance of existing models trained and benchmarked on these datasets are not representative of the real world performance and are potentially inflated with easily identifiable features that lead to poor editing efficiency.
 
-A set of design rules were thus implemented in the PE-DB, allowing users to select the rulesets they deem appropriate for additional filtering.
+PE-DB therefore includes optional design rules that users can apply before export or evaluation.
 
 Two named rulesets are available as \nolinkurl{--design-ruleset} (also on \nolinkurl{peen evaluate}):
 
@@ -289,45 +298,45 @@ Atomic rules (\nolinkurl{pbs\_13}, \nolinkurl{rtt\_not\_c}, \nolinkurl{homology\
 
 \subsubsection{Data Retrieval and Interaction}
 
-A set of Python FastAPI endpoints were developed for accessing and filtering of data.
+PE-DB provides FastAPI endpoints for browsing studies, datasets, datasheets, and scaffolds, retrieving summary statistics, and filtering experimental records.
 
-Additionally, for easier benchmarking of new machine learning systems with existing state of the art models, the database also provides the options to export the data with features required by top performing models, such DeepPrime by Yu et al.\cite{yuPredictionEfficienciesDiverse2023}.
+The shared filtering endpoint first selects experiments by their catalog metadata, then applies row-level constraints such as edit type, edit length, and design rules. The resulting records can be returned in PE-core or converted to a supported model format. Partial datasets remain available for exploration, but model-format requests skip tables that lack the required sequence information and report the reason.
 
 \subsubsection{Database Usage}
 
-A number of Python FastAPI endpoints were exposed, and can be used by PyTorch dataloaders during training and evaluation. See \autoref{app:api} for more details. A web portal was also developed for users trying to do some lightweight data exploration and exportation, and it is described in \autoref{sec:pe-hub-web-portal}. The CLI version with the same functionality is also available.
+The database can be accessed through the API (\autoref{app:api}), the PE Hub web interface (\autoref{sec:pe-hub-web-portal}), or the \nolinkurl{pedb} command-line tool. These interfaces share the same filtering and conversion functions, allowing an interactive data selection to be reused in a training or evaluation workflow.
 
 \subsection{PE Ensemble}
 
-To showcase the usability of PE-DB, we developed another tool for easy benchmarking and training of deep learning models, as well as creating custom ensembles trying to achieve the best overall performance.
+PE Ensemble builds on PE-DB to support model benchmarking, retraining, and the evaluation of custom ensembles.
 
-Leveraging the PE-DB data conversion and exportation functionality, 
+For each job, PE Ensemble requests the selected experiments in the format registered for the model, resolves a named weight set or training configuration, and calls a common model-wrapper interface. This allows the same data selection to be reused across architectures while retaining their native preprocessing and inference routines.
 
-PE Ensemble also exposes APIs for model evaluation and training, which are mostly used by the frontend user interface, but can also be called directly for easier retraining or finetuning.
+These operations are available through the web interface, API, and command line.
 
 \subsubsection{Models}
 
-We are only considering models with general prime editing efficiency prediction capability, so various models in DeepPE, as well as MinsePIE, who are only designed to work on specific editing types are not included in this study. Additionally, PRIDICTv1 and PRIDICTv2 has minimal changes in term of architecture, thus only the more up to date PRIDICTv2 model is studied. This leaves us with three current state of the art deep learning models - OPED\cite{liuDesignPrimeeditingGuide2023}, DeepPrime\cite{yuPredictionEfficienciesDiverse2023} and PRIDICTv2\cite{mathisMachineLearningPrediction2024}. 
+Model selection focused on predictors that support multiple edit types. DeepPE and MinsePIE were therefore excluded as predictors, although their experimental datasets were retained. PRIDICT2 was selected in preference to the earlier PRIDICT architecture. The three selected deep learning architectures are OPED\cite{liuDesignPrimeeditingGuide2023}, DeepPrime\cite{yuPredictionEfficienciesDiverse2023} and PRIDICTv2\cite{mathisMachineLearningPrediction2024}, complemented by the mechanistic OptiPrime model.
 
 \begin{enumerate}
     \item \textbf{DeepPrime}
-    
+
     Yu et al.\cite{yuPredictionEfficienciesDiverse2023} developed DeepPrime as a hybrid convolutional and recurrent architecture that encodes inter-sequence features between the target DNA and pegRNA. One-hot target--pegRNA tensors are processed by a 2D/1D CNN stack followed by a bidirectional GRU, while 24 engineered sequence features (for example GC content, melting temperatures, and minimum folding energies) are passed through a multilayer perceptron; the two representations are concatenated to predict editing efficiency. The model was trained on the ClinVar library ($\sim$259,000 pegRNA--target pairs from 338,996 total measurements) and generalizes across substitutions, insertions, and deletions of up to 3~bp, PBS lengths of 1--17~nt, and RT lengths of 1--50~nt. On the held-out ClinVar test set ($n = 28{,}883$), DeepPrime achieved Pearson $r = 0.84$ and Spearman $R = 0.86$; performance remained high across nine edit-type subsets ($r = 0.76$--$0.89$, median $0.81$; $R = 0.70$--$0.88$, median $0.83$). The same study also introduced DeepPrime-FT, which fine-tunes the base model to 18 cell-line and PE-system combinations across seven cell types and eight PE variants.
 
     \item \textbf{PRIDICTv2}
-    
+
     Mathis et al.\cite{mathisMachineLearningPrediction2024} extended the original PRIDICT framework with PRIDICT2.0, an ensemble of attention-based bidirectional recurrent neural networks. The model averages predictions from two components: one pretrained on PRIDICT library~1 and fine-tuned on the new Library-Diverse screen, and another additionally pretrained on the DeepPrime ClinVar library before fine-tuning on Library-Diverse. Dual RNN encoders with attention layers process the wild-type and edited target sequence contexts separately, enabling predictions for substitutions, insertions, and deletions of up to 15~bp in both mismatch-repair-proficient (HEK293T, K562) and mismatch-repair-deficient (K562 MLH1$^{-/-}$) contexts, as well as in vivo in mouse liver. Library-Diverse comprises 22,619 pegRNA--target pairs in HEK293T and 22,752 in K562; in fivefold cross-validation, PRIDICT2.0 outperformed PRIDICT~v1 and six other machine-learning baselines (Extended Data Fig.~2) and showed consistently higher accuracy across edit types and edit lengths (Fig.~2a--c). Whereas PRIDICT~v1 reached Spearman $R = 0.85$ for intended edits on its 92,423-pegRNA library\cite{schwankgeraldPredictingPrimeEditing2023}, PRIDICT2.0 further improved generalization to longer edits and additional cellular contexts, including validation on endogenous loci and external datasets.
 
     \item \textbf{OPED}
-    
+
     Liu et al.\cite{liuDesignPrimeeditingGuide2023} developed Optimized Prime Editing Design (OPED), an interpretable nucleotide language model that applies transfer learning to pegRNA efficiency prediction. A transformer encoder extracts features from the 47-bp target sequence, while custom transformer decoders model the PBS and RT template sequences and their cross-sequence dependencies; attention weights provide post-hoc interpretability of individual nucleotide contributions. OPED was initially trained on the DeepPE high-throughput training set and validated on three held-out DeepPE subsets that were never used during training. On the HT-test, Type-test, and Position-test sets ($n = 4{,}457$, 403, and 200, respectively), OPED achieved Pearson $r = 0.769$, 0.612, and 0.628 and Spearman $R = 0.798$, 0.624, and 0.562; pegRNAs with higher predicted scores showed 8.0-, 3.1-, and 2.2-fold higher measured editing efficiencies. When retrained on the PRIDICT library~1 training split, OPED reported $r = 0.912$ and $R = 0.905$ for editing efficiency and $r = 0.810$ and $R = 0.826$ for unintended editing rates on the test set ($n = 18{,}485$), consistently outperforming DeepPE, Easy-Prime, and PRIDICT. Experimental validation with optimized pegRNAs yielded up to 44-fold higher editing efficiencies than competing design tools across PE2, PE3/PE3b, and ePE systems, and the authors released the OPEDVar database of optimized designs from over two billion candidate pegRNAs.
 
     \item \textbf{OptiPrime}
-    
-    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime as a mechanistic model for prime editing efficiency prediction. OptiPrime is a kinetic model that uses deep learning to predict the kinetic parameters of the prime editing reaction. 
+
+    Hsu et al.\cite{hsuMechanisticMachineLearning2026} developed OptiPrime as a mechanistic model for prime editing efficiency prediction. OptiPrime is a kinetic model that uses deep learning to predict the kinetic parameters of the prime editing reaction.
 \end{enumerate}
 
-On top of the four deep learning models, a small number of conventional machine learning models were also selected to provide a baseline for performance comparison. 
+The built-in registry contains these four model families. DeepPrime, OPED, and PRIDICT2 support custom training; OptiPrime is integrated for pretrained inference through its JAX/Flax implementation, and its wrapper does not currently fit new parameters.
 
 \subsubsection{Synchronizing PyTorch Versions}
 
@@ -335,40 +344,66 @@ The three deep learning models originally targeted markedly different releases: 
 
 While DeepPrime and PRIDICTv2 distribute their weights as state dictionaries and consequently load without modification under a modern PyTorch, OPED published checkpoint is a full pickled model that fails to deserialize under PyTorch~$\geq$~2.0. We therefore converted the OPED checkpoint once into a weights-only state dictionary (\nolinkurl{*\_weights.pt}) by loading the original object under a compatibility shim that maps its legacy module paths to the vendored implementation, extracting \nolinkurl{state\_dict()}, and re-serializing it. The OPED wrapper was then updated to load this portable artifact by default, to deserialize with \nolinkurl{weights\_only=True}, and to reject the legacy full-pickle checkpoints with an actionable error rather than failing silently at runtime.
 
-Each vendor also ships multiple pretrained weight sets rather than a single checkpoint. DeepPrime provides 20 cell-line and PE-system variants (e.g.\ \nolinkurl{DeepPrime\_base}, \nolinkurl{DP\_variant\_293T\_PE4max\_Opti\_220728}), PRIDICTv2 provides 20 cross-validation runs across four experiment folders and two cell lines(HEK293T and K562, for MMR deficient and proficient cell lines), and OPED provides one portable state dictionary. The ensemble wrappers expose these as named weight sets via \nolinkurl{list\_available\_weights()}, and the evaluation API accepts an optional \nolinkurl{weights} parameter so that a specific pretrained checkpoint can be selected without retraining. When \nolinkurl{weights} is omitted, the currently loaded or freshly trained model is used instead.
+Each vendor's checkpoints are exposed as named weight sets in a common registry. DeepPrime entries distinguish cell-line and PE-system variants, while PRIDICT2 entries distinguish pretraining lineage, cell-line head, and cross-validation run. OptiPrime retains its native checkpoint layout. Registry manifests distinguish vendor and locally trained weights and record the files needed for loading, training configuration, validation summaries, and available data provenance. Evaluation requests require an explicit registered weight identifier, making the checkpoint used for a score unambiguous.
+
+\subsubsection{Data Partitioning and Evaluation}
+
+PE-DB assigns partitions before the model wrapper receives its input. Supported strategies are a two-way train/test holdout, a three-way train/validation/test holdout, and grouped cross-validation with an optional separate test holdout. Synthetic partitions shuffle target groups with a configurable random seed (default 42), so pegRNAs sharing a protospacer remain together. Fractions apply to groups rather than individual rows; consequently, realized row proportions can differ from the requested proportions. When datasheets are explicitly merged, group identifiers are reassigned from protospacer sequences across the merged collection before splitting.
+
+Author-provided partitions can be selected through \nolinkurl{original_fold}. The default evaluation request asks for an 80/20 holdout while preferring author folds, with $-1$ as the default author test identifier; a different identifier can select a PRIDICT2 held-out run. Author-fold assignments take precedence over synthetic fractions where available. The evaluation service can reconstruct the filters and split from a weight manifest, or accept an explicitly selected external benchmark. It obtains model-formatted data, selects the test partition, checks training provenance, and evaluates the specified checkpoint. The leakage checks below determine whether a synthetic or author-defined partition is admissible for that weight set.
+
+The shared metric routine reports Pearson correlation, Spearman rank correlation, mean squared error, mean absolute error, and the number of usable prediction--measurement pairs. Pairs containing a missing prediction or label are omitted from that metric calculation; fewer than two usable pairs produce undefined metrics, and a constant vector gives an undefined correlation. PRIDICT2 additionally reports outcome-specific metrics when those labels are available, with intended-edit efficiency used for the common comparison. Job results preserve sample counts and any skipped-datasheet or leakage-exclusion information, since conversion support and checkpoint provenance can change the rows available to each comparison.
 
 \subsubsection{Preventing Data Leakage}
 
-Model can perform exceptionally well if it is tested on examples that are too similar or even identical to the ones in the training set. This is known as data leakage, and it is a major problem in machine learning. 
+Testing on target loci already encountered during training can inflate apparent predictive performance, even when the pegRNA designs differ. PE Ensemble therefore checks overlap at the protospacer level before evaluation.
 
-In the context of prime editing efficiency prediction, data leakage can occur if the model is trained on target loci that are identical to the ones in the test set, inflating the performance metrics.
-
-To mitigate this, PE-Ensemble performs an automatic data-leak check before running evaluation. For each selected weight set, we load the set of training target loci stored as \nolinkurl{train_target_loci.json}; each locus is represented by a universal hash identifier (\texttt{target\_uid}) computed from the wild-type protospacer sequence. We compute \texttt{target\_uid} for every row in the requested evaluation split and detect whether any test loci overlap the model's training loci. By default, overlapping rows are excluded from the evaluation.
+To mitigate this, PE-Ensemble performs an automatic data-leak check before running evaluation. For each selected weight set, the service reads the training loci recorded in \nolinkurl{train_target_loci.json}; each locus is represented by a universal hash identifier (\texttt{target\_uid}) derived by hashing the upper-case wild-type protospacer sequence. The wild-type sequence is used as a fallback when the protospacer cannot be extracted. This detects exact sequence overlap; it does not measure similarity between nearby or partially matching targets. We compute \texttt{target\_uid} for every row in the requested evaluation split and detect whether any test loci overlap the model's training loci. By default, overlapping rows are excluded from the evaluation.
 
 For shipped vendor (pretrained) models, training provenance is reconstructed conservatively as:
 \begin{itemize}
     \item \textbf{DeepPrime:} loci come from the DeepPrime author-provided ClinVar library and the fine-tuning sheets used to generate the distributed weight variants (e.g. Small and Off datasets).
-    \item \textbf{PRIDICTv2 (PRIDICT2):} loci are treated as the full PRIDICT1 target loci used for PRIDICT2 training (PRIDICT1 does not provide a vendor hold-out split in PE-DB, so all target loci in the selected PRIDICT1 Library 2 cell subsets are conservatively marked as “seen”).
+    \item \textbf{PRIDICTv2 (PRIDICT2):} both pretraining lineages include all PRIDICT1 Library~1 loci, because that library has no recoverable author holdout. Model~B additionally includes DeepPrime ClinVar training loci, excluding the author's test fold while retaining spacers also present in the original training tables. Both lineages include Library-Diverse loci except the fold held out for the selected run. Provenance is thus specific to the checkpoint's pretraining history and cross-validation fold.
     \item \textbf{OPED:} loci come from DeepPE Library 1 and Library 2 (Position/Type), as represented in PE-DB standardized datasets \nolinkurl{deeppe\_ht}, \nolinkurl{deeppe\_position}, and \nolinkurl{deeppe\_type} (HEK293T; PE2 reporters).
     \item \textbf{OptiPrime:} loci come from Lib-MMR and Lib-CV (this study) plus external training data cited by Hsu et al.: PRIDICT library~1, DeepPrime ClinVar, and PRIDICT2 library-diverse. Hsu used a pooled protospacer-stratified cross-validation, not Yu's or Mathis's author holdouts, so in-domain evaluation of those sheets aborts rather than leftover-excluding another paper's test rows.
 \end{itemize}
 
+For vendor weights evaluated within their recorded training domain, the service requires a compatible author holdout. It aborts when no such split can be recovered, when provenance cannot be verified under the applicable leakage checks, or when overlap exclusion leaves no test rows. An explicit \nolinkurl{allow_data_leak} override permits diagnostic runs and records a warning in the result; such runs do not constitute independent held-out benchmarks. For locally trained weights, provenance includes all non-test rows supplied to the training workflow, including validation rows, providing a conservative record of data used in fitting or model selection.
+
 \subsubsection{Retraining Deep Learning Models and Automatic Hyperparameter Search}
 
-PyTorch Lightning was adopted as a shared training layer for DeepPrime and OPED fine-tuning within this environment, providing a consistent optimizer and learning-rate scheduler interface without re-implementing each vendor's original training scripts.
+DeepPrime, OPED, and PRIDICT2 use a shared PyTorch Lightning training layer around their model-specific modules. The training runner fetches the formatted frame, removes the test partition, resolves hyperparameters, and invokes the wrapper. Runs can initialize new parameters or load a registered checkpoint for fine-tuning. Optional freezing restricts updates to DeepPrime's prediction head, OPED's fully connected layers, or PRIDICT2's decoder. The wrappers seed initialization and subsequent training operations before model construction, using seed 42 by default, with an option to supply another seed or disable seeding.
 
-Optuna was used for automatic hyperparameter search, it is capable of smarter and thus more efficient search strategies than grid search, such as TPE(Treee-structured Parzen Estimator), and can prune the search space based on results from previous trials. It also manages all the trials and their results so users do not have to add boilerplate code for logging. It was implemented on top of the PE-Ensemble training API, so users can easily integrate it into their own training pipelines. 
+All three wrappers use Adam with configurable learning rate and weight decay. The shared trainer supports gradient clipping, early stopping, and no scheduler or step, cosine, and exponential learning-rate schedules. It records per-epoch training and validation losses and available correlations, retains the state with the lowest validation loss, and restores that state after fitting. Cross-validation fits separate models on the assigned training/validation folds and returns fold-level summaries. A subsequent final fit uses a deterministic validation fold for early stopping, while the separate test partition remains excluded.
 
+Preprocessing parameters and label transformations are retained with the model. DeepPrime fits feature means and standard deviations on the training partition for from-scratch runs and saves them with the architecture and weights; pretrained runs use their checkpoint statistics. Its regression target is $\log(1+\max(y,0))$, and inference applies the inverse exponential transform. PRIDICT2 retains its outcome-specific decoder and loss handling; in its regression mode, fractional labels are transformed as $\log(1+100\max(y,0))$ and predictions are transformed back to fractions. Each wrapper thus retains the label convention required by its model.
+
+Hyperparameters are resolved from code defaults, shipped YAML presets, locally tuned presets, and explicit request overrides, in that order. Completed fits are registered with their dataset filters, split configuration, hyperparameters, device, validation summaries, and target-locus provenance. This makes a newly trained weight set available to the same evaluation and ensemble interfaces as vendor weights.
+
+Optuna search calls the same training runner for each trial. Built-in search spaces cover DeepPrime, OPED, and PRIDICT2, with from-scratch initialization as the search-space default. They vary learning rate ($10^{-5}$--$10^{-3}$), weight decay ($10^{-6}$--$10^{-2}$), batch size, epoch budget, and model-specific architectural dimensions; scheduler settings remain explicit training options. DeepPrime's objective maximizes negative validation loss, whereas OPED and PRIDICT2 preferentially maximize validation Spearman correlation. Fold-averaged metrics are used when cross-validation results are available; otherwise, the runner uses the corresponding validation summary. PRIDICT2 also has Pearson and negative-loss fallbacks when the preferred metric is unavailable.
+
+Studies are persisted in SQLite by default and resumed to a requested total number of trials. Search-space and split fingerprints, together with the training seed where available, distinguish incompatible studies. The implementation leaves sampler selection to Optuna and evaluates completed trials; it does not currently report intermediate trial values or invoke trial pruning. The selected hyperparameters can be written to a local YAML preset, and an optional final training run registers a model using that configuration. The settings and trial count used for an individual experiment are recorded with that job.
 
 \subsubsection{Creating Custom Ensembles}
 
-Using vendored and trained weights, users can create custom ensembles .
+An ensemble is specified as a list of model families and registered weight identifiers, together with a prediction-combination rule. Members may mix vendor and locally trained weights, and several weight sets from the same architecture can participate. The runner fetches standardized test labels and each member's native input format using the same filters and split. It computes the union of member training loci and applies leakage checks and any overlap exclusion consistently across the frames. Predictions are combined in the returned row order; unequal frame or prediction counts cause an error instead of truncating labels. Row correspondence is preserved by the PE-DB converters; the ensemble runner checks that the resulting counts agree.
 
-PE-DB would provide the datasets in format required by each model, making the evaluation process hassle free for users.
+Ten combination rules are implemented: arithmetic mean, weighted mean, median, trimmed mean, rank mean, percentile mean, geometric mean, harmonic mean, minimum, and maximum. For the weighted mean,
+\begin{equation}
+    \hat y_i^{\mathrm{ens}} = \sum_{m=1}^{M}\frac{w_m}{\sum_{j=1}^{M}w_j}\hat y_{im},
+    \qquad w_m\geq 0,\quad \sum_{m=1}^{M}w_m>0,
+    \label{eq:ensemble-weighted-mean}
+\end{equation}
+where $\hat y_{im}$ is member $m$'s prediction for row $i$. Weights are supplied by the user; the ensemble runner does not fit a stacking model. The trimmed mean discards the selected number of lowest and highest member predictions per row, defaulting to one at each end, and falls back to an arithmetic mean when there are too few members. Geometric and harmonic means clip predictions below a positive threshold, $10^{-8}$ by default.
 
+Rank mean averages within-member ranks over the evaluated batch and maps them back through the pooled prediction distribution. Percentile mean averages within-member percentiles, maps that percentile through each member's empirical distribution, and averages the resulting values. Ties use average ranks. These two rules therefore depend on the composition of the evaluated batch. The runner combines the model outputs directly, without learning an additional calibration. The result reports both ensemble and individual-member metrics on the same retained rows, along with member identifiers, combination options, row counts, and provenance details.
 
 \subsection{PE Hub}
 \label{sec:pe-hub-web-portal}
+
+PE Hub is a single-page React/TypeScript application built with Vite and styled with Tailwind CSS (\autoref{fig:pe-hub-architecture}). Its database pages browse the study/dataset/datasheet hierarchy, display summary statistics, and export data after selecting experimental metadata, edit properties, design rules, output format, and split settings. The model pages provide benchmark submission, training configuration, ensemble-member selection, and API documentation. Registered weights and backend data catalogs populate the available choices, connecting data exploration to model experiments through the same filter definitions.
+
+Training, tuning, evaluation, and ensemble operations are represented as jobs with status and log views. The frontend displays service-health indicators and gates pages when a required backend is unavailable. The interactive pegRNA-design page is currently a placeholder; the implemented workflows operate on experimental datasets and supplied records rather than generating new candidate designs from an arbitrary target sequence.
 
 \begin{figure}[ht]
     \centering
@@ -380,22 +415,36 @@ PE-DB would provide the datasets in format required by each model, making the ev
 
 \subsection{Using PE Hub}
 
-The services, pe-db, pe-ensemble and pe-hub, are designed to work as a web service and communicate with each other via HTTP requests and API endpoints. The web interface is designed to be user friendly and accessible, with thorough documentation on the endpoints.
+In web deployment, PE Hub communicates with PE-DB and PE Ensemble through HTTP endpoints. PE Ensemble obtains model-formatted data from PE-DB, and long-running operations return a job identifier for status and log retrieval. The compute scheduler maintains a queue for each available device and runs one scheduled job at a time per device, supporting CPU, CUDA, and Apple MPS where the selected model permits. Requests, manifests, logs, and results are stored on the filesystem, allowing completed jobs and registered weights to be inspected after execution.
 
-However, we recognize the need to perform large scale training and evaluation jobs on computing clusters, especially during the hyperparameter search process. Therefore, a number of CLI interfaces are also provided to facilitate the training and evaluation on clusters. 
+For cluster use, the \nolinkurl{pedb} and \nolinkurl{peen} command-line interfaces invoke the backend Python libraries directly. When \nolinkurl{PE_DB_URL} is unset, PE Ensemble accesses PE-DB in process, so a batch job needs the software environment and data files but no running web server. The repository supplies environment setup scripts, SLURM examples for Oxford ARC, and DVC configuration examples for synchronizing large datasets and results. Data filters, split assignments, weight identifiers, and training configuration are shared across the web, API, and command-line paths.
 
-% \subsection{Introducing Custom Models}
+\subsection{Introducing Custom Models}
 
-% Clearly, a lot of potential users for this tool would not only want to run models that are already in the system, but also benchmarking their own models and compare the performance with existing models.
-
-
-% To leverage the ever increasing capability and usage of LLMs, we also provided a prompt designed to devise all required components to add a custom model to the system for benchmarking. In the workspace of your project, using any LLM based code editor(copilot, cursor, codex, claude code etc.), enter the prompt and the agent should spin up a complete package. You can either upload the package through the web interface for it to be checked and registered, or just paste the files into the plugins directories and activate it via the CLI.
+Additional models can be registered as plugin bundles containing a manifest, a wrapper implementing the common model interface, and, when necessary, a converter from PE-core into a new native input format. The plugin manager checks the declared files and runs validation checks, including conversion and model-operation smoke checks, before activation. Activated wrappers extend the PE Ensemble registry, while their converters are registered in PE-DB. The web interface exposes upload and validation controls. A new architecture can then be compared using the same data-selection, training, and evaluation workflows as the built-in models.
 
 \section{Result}
 
 
 
 \subsection{Benchmarking Vendor Models}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap.pdf}
+    \caption{Pearson $r$ between vendor-model predictions and measured intended-edit efficiency. Columns are study panels; rows are weight sets. White cells were not scored (in-domain leak abort, or no matching head). Hatched cells are author-reported fills, not PE-hub measurements.}
+    \label{fig:pearson-heatmap}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap_design_rules.pdf}
+    \caption{(a)~Hsu / OptiPrime filter used here: PBS length 13 and first RTT nucleotide not C.
+    (b)~Anzalone 2019 starting recommendations (PBS 10--16\,nt, PBS GC 40--60\%, RTT 10--16\,nt, first RTT nucleotide not C); MinSePIE is omitted because no pegRNA has an RTT in that window.
+    Pearson $r$ on the filtered subset of each sheet. The OptiPrime model row is omitted; hatched cells remain author-reported fills.
+    Cells with $n<10$ are blank (DeepPE HCT116 and MDA-MB-231 keep only three pegRNAs under the Hsu filter).}
+    \label{fig:pearson-heatmap-design-rules}
+\end{figure}
 
 As a starting point, the four vendor weight sets---DeepPrime~\cite{yuPredictionEfficienciesDiverse2023}, OPED~\cite{liuDesignPrimeeditingGuide2023}, OptiPrime~\cite{hsuMechanisticMachineLearning2026}, and the two PRIDICT2.0 heads~\cite{mathisMachineLearningPrediction2024}---were evaluated without retraining. Pearson $r$ between predicted and measured intended-edit efficiency is the heatmap metric (\autoref{fig:pearson-heatmap}). A very conservative leak prevention strategy was applied, overlapping training loci~(across multiple datasets for model using transfer learning) are excluded from the test set when a author provided test split is available. In-domain evaluation of a sheet that has no recoverable author test split is aborted rather than scored on a synthetic partition of the training loci.
 
@@ -429,12 +478,8 @@ Hatched cells are not PE-hub measurements. When an in-domain job aborts, the hea
 
 Where a close protocol match can be measured, PE-hub replicates the paper's result: DeepPrime on ClinVar $r = 0.834$ versus $0.84$\cite{yuPredictionEfficienciesDiverse2023}; PRIDICT2 HEK on Diverse HEK $r = 0.895$ versus $0.90$, and K562 on Diverse K562 $r = 0.700$ versus $0.70$\cite{mathisMachineLearningPrediction2024}. Remaining gaps are therefore transfer, domain shift, or an intentional protocol difference, not a loading error.
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap.pdf}
-    \caption{Pearson $r$ between vendor-model predictions and measured intended-edit efficiency. Columns are study panels; rows are weight sets. White cells were not scored (in-domain leak abort, or no matching head). Hatched cells are author-reported fills, not PE-hub measurements.}
-    \label{fig:pearson-heatmap}
-\end{figure}
+
+
 
 \subsubsection{Evaluation Results}
 
@@ -463,21 +508,11 @@ DeepPrime on HeLa PE2 is the clear outlier ($r = -0.02$, $\rho = 0.04$). This is
 \paragraph{OptiPrime Lib-CV.}
 Lib-CV is a ClinVar-correction library (${\sim}$91\% substitutions, including silent-edit combinations meant to evade MMR)\cite{hsuMechanisticMachineLearning2026}. PE4 still lifts every model relative to PE2, but the HEK-head collapse from HEK PE2 to HeLa PE2 is almost absent ($r = 0.25 \to 0.24$), unlike Lib-MMR ($0.48 \to 0.30$). That is not leftover-exclusion of ClinVar-overlapping spacers: putting those loci back changes the HEK-head contrast only from $-0.01$ to $-0.04$. The HEK head is already weak on Lib-CV HEK PE2, so there is little MMR-sensitive ranking left to lose on HeLa. DeepPrime is higher than on Lib-MMR throughout, including HeLa PE2 ($r = 0.13$), consistent with real WT74 sequence rather than \texttt{NNNN} pads; Spearman ($R = 0.30$) shows that a rank signal remains after Pearson is compressed by low PE2 efficiencies. OPED is the strongest measured transfer model on this library ($r = 0.34$--$0.49$), still well below the hatched OptiPrime fills.
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=\linewidth]{diagrams/eval_pearson_heatmap_design_rules.pdf}
-    \caption{(a)~Hsu / OptiPrime filter used here: PBS length 13 and first RTT nucleotide not C.
-    (b)~Anzalone 2019 starting recommendations (PBS 10--16\,nt, PBS GC 40--60\%, RTT 10--16\,nt, first RTT nucleotide not C); MinSePIE is omitted because no pegRNA has an RTT in that window.
-    Pearson $r$ on the filtered subset of each sheet. The OptiPrime model row is omitted; hatched cells remain author-reported fills.
-    Cells with $n<10$ are blank (DeepPE HCT116 and MDA-MB-231 keep only three pegRNAs under the Hsu filter).}
-    \label{fig:pearson-heatmap-design-rules}
-\end{figure}
-
-
 \subsubsection{Design-rule filtered evaluation}
 
 Hsu et al.\ argued that many published pegRNAs would never be ordered in practice, and that correlations for other models may therefore look better than they should~\cite{hsuMechanisticMachineLearning2026}. We repeated the unfiltered matrix of \autoref{fig:pearson-heatmap} under the two named PE-DB rulesets (Methods): Hsu's PBS and RTT-start constraints (\nolinkurl{optiprime}) and the Anzalone et al.\ 2019 starting recommendations (\nolinkurl{anzalone})~\cite{anzaloneSearchandreplaceGenomeEditing2019}. Layout and colour scale are unchanged; only which rows are scored changes (\autoref{fig:pearson-heatmap-design-rules}).
 
+The \nolinkurl{optiprime} rule is a subset 
 Hsu's Methods also prescribe 3$'$ homology of $9+L$ (substitutions) or $19+L$ (insertions and deletions), then a length nudge so the RTT does not start with C. We leave that clause out of the named \nolinkurl{optiprime} preset. It fits single-base Lib-MMR substitutions exactly, but the deposited sheets do not follow it more generally: multi-base edits and short indels sit on ${\sim}$15\,nt arms, longer indels on ${\sim}$20\,nt arms rather than $19+L$, and on Lib-CV the standardized RHA often disagrees with the author homology-arm column. Enforcing the formula would discard a large share of Hsu's own holdouts for reasons other than a bad PBS or a leading C, so the preset keeps only those two checks (the optional atomic rule \nolinkurl{homology\_hsu} remains available).
 
 Under that PBS/RTT filter, Hsu's Lib-MMR / Lib-CV panels are essentially intact (${\sim}$95--100\% of DeepPrime $n$). The cut falls on external sheets instead: DeepPrime-row $n$ drops to 21\% of DeepPE HEK ($5{,}021 \to 1{,}033$), 5\% of ClinVar ($28{,}221 \to 1{,}367$), and about three-quarters of Library~1 and Library-Diverse. Pearson values move little in a consistent direction. DeepPrime is slightly down on DeepPE ($0.66 \to 0.61$), almost unchanged on ClinVar and Library~1, and slightly up on Library-Diverse HEK ($0.54 \to 0.56$). OPED falls on DeepPE ($0.76 \to 0.70$) and on the remaining MinSePIE inserts ($0.52 \to 0.21$), while rising modestly on Library~1 ($0.24 \to 0.29$). PRIDICT2's in-domain Diverse HEK cell is flat ($0.90$), and transfer onto Hsu's libraries shifts by only a few hundredths.
@@ -508,7 +543,7 @@ So Hsu is right that many published designs fail simple practitioner checks on P
 \section{PE Database catalog: studies}
 \label{app:studies}
 
-The following six studies are registered in PE DB (\nolinkurl{catalog/studies.py}). Each study row supplies the catalog key, display name, publication date, and author string seeded into the \textbf{Study} table.
+The following six studies are registered in PE DB (\nolinkurl{services/pe-db/pe_db/catalog/studies.py}). The table gives the identifiers and descriptive metadata used by the catalog. Dates reproduce the registry entries; they are not independently verified bibliographic dates.
 
 \begin{table}[ht]
     \centering
@@ -532,271 +567,305 @@ The following six studies are registered in PE DB (\nolinkurl{catalog/studies.py
 \section{PE Database catalog: datasets}
 \label{app:datasets}
 
-Each dataset belongs to one study and is described by catalog metadata seeded into the \textbf{Dataset} table. Attribute semantics match the catalog: \emph{pegRNA delivery} and \emph{PE delivery} record how each component reaches cells; \emph{edit scope} is \nolinkurl{on\_target} or \nolinkurl{off\_target}; \emph{experimental method} is \nolinkurl{in\_vitro} or \nolinkurl{in\_vivo}; \emph{target context} is \nolinkurl{endogenous} (native chromosomal locus) or \nolinkurl{non\_endogenous} (synthetic plasmid or lentiviral reporter target); \emph{standardizable} is \nolinkurl{True} for full conversion to the shared standardized format and \nolinkurl{False} for partial support (entry-level fields only). \autoref{tab:app-datasets-summary} lists all 23 datasets; subsections below repeat the catalog descriptions verbatim.
+Each dataset belongs to one study and may contain several datasheets, one for each cell-line and PE-system combination. \autoref{tab:app-datasets-summary} lists the 23 registered datasets. The table uses shortened delivery names: P denotes plasmid transfection, L lentiviral delivery, A adenoviral delivery, and B PiggyBac integration. The two letters give pegRNA and PE delivery, respectively.
 
-\begin{longtable}{@{}p{0.17\textwidth}p{0.09\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.08\textwidth}p{0.08\textwidth}p{0.10\textwidth}p{0.08\textwidth}@{}}
-    \caption{Dataset catalog attributes in PE DB (summary).} \label{tab:app-datasets-summary} \\
+All entries are on-target experiments except \nolinkurl{deepprime-off} and \nolinkurl{deepprime-off-subpool}. Only \nolinkurl{library2-invivo} and \nolinkurl{library-diverse-invivo} are classified as in vivo. Target context is reproduced from the catalog: R denotes a non-endogenous reporter target and E an endogenous context. These annotations describe the experiment and do not guarantee that native genomic coordinates or a complete reference window can be recovered.
+
+Support refers to conversion into PE-core. Full denotes a dataset registered as standardizable; partial denotes filter-only support without the sequences needed for model export. Actual conversion also depends on the selected datasheet, as illustrated by the mixed support within \nolinkurl{deepprime-off}. The notes below explain these exceptions and summarize each dataset without repeating every catalog field.
+
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.33\textwidth}>{\raggedright\arraybackslash}p{0.14\textwidth}p{0.12\textwidth}p{0.10\textwidth}>{\raggedright\arraybackslash}p{0.17\textwidth}@{}}
+    \caption{Registered datasets, delivery methods, target contexts, and conversion support.} \label{tab:app-datasets-summary} \\
     \hline
-    Name & Study & pegRNA del. & PE del. & Edit scope & Method & Target & Std. \\
+    Dataset & Study & Delivery & Target & Support \\
     \hline
     \endfirsthead
-    \multicolumn{8}{l}{\textit{(continued from previous page)}} \\
+    \multicolumn{5}{l}{\textit{Dataset catalog (continued)}} \\
     \hline
-    Name & Study & pegRNA del. & PE del. & Edit scope & Method & Target & Std. \\
+    Dataset & Study & Delivery & Target & Support \\
     \hline
     \endhead
     \hline
-    \multicolumn{8}{r}{\textit{continued on next page}} \\
     \endfoot
-    \hline
     \endlastfoot
-    \nolinkurl{deepprime-clinvar} & deepprime & plasmid & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{deepprime-small} & deepprime & plasmid & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{deepprime-off} & deepprime & plasmid & plasmid & off\_target & in\_vitro & non\_endo. & partial \\
-    \nolinkurl{deepprime-off-subpool} & deepprime & plasmid & plasmid & off\_target & in\_vitro & non\_endo. & partial \\
-    \nolinkurl{library1} & pridict1 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{library2} & pridict1 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{library2-invivo} & pridict1 & adenovirus & adenovirus & on\_target & in\_vivo & endogenous & yes \\
-    \nolinkurl{endogenous} & pridict1 & plasmid & plasmid & on\_target & in\_vitro & endogenous & partial \\
-    \nolinkurl{library-diverse} & pridict2 & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{library-diverse-invivo} & pridict2 & adenovirus & adenovirus & on\_target & in\_vivo & endogenous & yes \\
-    \nolinkurl{trip-analysis} & pridict2 & lentiviral & plasmid & on\_target & in\_vitro & endogenous & partial \\
-    \nolinkurl{library-insert-set12} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{library-insert-18nt} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{library-insert-codon-variant} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{library-insert-codon-hek3} & minsepie & lentiviral & plasmid & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{library-insert-piggybac} & minsepie & lentiviral & piggybac & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{deeppe-ht} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{deeppe-type} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{deeppe-position} & deeppe & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{deeppe-endo} & deeppe & plasmid & plasmid & on\_target & in\_vitro & endogenous & yes \\
-    \nolinkurl{lib-mmr} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{lib-mmr-controls} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
-    \nolinkurl{lib-cv} & optiprime & lentiviral & plasmid & on\_target & in\_vitro & non\_endo. & yes \\
+    \nolinkurl{deeppe-ht} & deeppe & L/P & R & Full \\
+    \nolinkurl{deeppe-type} & deeppe & L/P & R & Full \\
+    \nolinkurl{deeppe-position} & deeppe & L/P & R & Full \\
+    \nolinkurl{deeppe-endo} & deeppe & P/P & E & Full \\
+    \nolinkurl{library-insert-set12} & minsepie & L/P & E & Full \\
+    \nolinkurl{library-insert-18nt} & minsepie & L/P & E & Full \\
+    \nolinkurl{library-insert-codon-variant} & minsepie & L/P & E & Full \\
+    \nolinkurl{library-insert-codon-hek3} & minsepie & L/P & E & Full \\
+    \nolinkurl{library-insert-piggybac} & minsepie & L/B & E & Full \\
+    \nolinkurl{deepprime-clinvar} & deepprime & P/P & R & Full \\
+    \nolinkurl{deepprime-small} & deepprime & P/P & R & Full \\
+    \nolinkurl{deepprime-off} & deepprime & P/P & R & Sheet-dependent \\
+    \nolinkurl{deepprime-off-subpool} & deepprime & P/P & R & Partial \\
+    \nolinkurl{library1} & pridict1 & L/P & R & Full \\
+    \nolinkurl{library2} & pridict1 & L/P & R & Full \\
+    \nolinkurl{library2-invivo} & pridict1 & A/A & E & Full \\
+    \nolinkurl{endogenous} & pridict1 & P/P & E & Partial \\
+    \nolinkurl{library-diverse} & pridict2 & L/P & R & Full \\
+    \nolinkurl{library-diverse-invivo} & pridict2 & A/A & E & Full \\
+    \nolinkurl{trip-analysis} & pridict2 & L/P & E & Partial \\
+    \nolinkurl{lib-mmr} & optiprime & L/P & R & Full \\
+    \nolinkurl{lib-mmr-controls} & optiprime & L/P & R & Full \\
+    \nolinkurl{lib-cv} & optiprime & L/P & R & Full \\
 \end{longtable}
+\endgroup
 
 \subsection{DeepPE (\texorpdfstring{\nolinkurl{deeppe}}{deeppe})}
 
 \paragraph{\nolinkurl{deeppe-ht}.}
-High-throughput PE2 library 1 (G$\to$C at RTT position +5); lentiviral pegRNA/target reporters in HEK293T (${\sim}$43k pegRNAs; HT-training and HT-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+High-throughput PE2 library 1 (G$\to$C at RTT position +5); lentiviral pegRNA/target reporters in HEK293T (${\sim}$43k pegRNAs; HT-training and HT-test splits).
 
 \paragraph{\nolinkurl{deeppe-type}.}
-DeepPE library 2 edit-type subset (lentiviral reporters in HEK293T; type-training and type-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+DeepPE library 2 edit-type subset (lentiviral reporters in HEK293T; type-training and type-test splits).
 
 \paragraph{\nolinkurl{deeppe-position}.}
-DeepPE library 2 edit-position subset (lentiviral reporters in HEK293T; position-training and position-test splits). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+DeepPE library 2 edit-position subset (lentiviral reporters in HEK293T; position-training and position-test splits).
 
 \paragraph{\nolinkurl{deeppe-endo}.}
-Arrayed pegRNA validation at endogenous genomic loci (PE2 plasmid transfection); editing\_efficiency averaged over BR1--BR2 and TR1--TR2. Delivery: plasmid pegRNA and PE; on-target; in vitro; endogenous target; fully standardizable.
+Arrayed pegRNA validation at endogenous genomic loci (PE2 plasmid transfection); editing\_efficiency averaged over BR1--BR2 and TR1--TR2.
 
 \subsection{MinsePIE (\texorpdfstring{\nolinkurl{minsepie}}{minsepie})}
 
 \paragraph{\nolinkurl{library-insert-set12}.}
-Set 1 and Set 2 pooled insertion screens (Koeppel et al.\ 2023): lentiviral pegRNA with conventional scaffold, 13-nt PBS and 34-nt HA; PE2/PE3 or epegRNA by plasmid transfection in HEK293T (and rc). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+Set 1 and Set 2 pooled insertion screens (Koeppel et al.\ 2023): lentiviral pegRNA with conventional scaffold, 13-nt PBS and 34-nt HA; PE2/PE3 or epegRNA by plasmid transfection in HEK293T (and rc).
 
 \paragraph{\nolinkurl{library-insert-18nt}.}
-18-nt insertion libraries at HEK3 and five nearby sites (HEK3-S2--S6); custom MinSePIE improved scaffold, 13-nt PBS and 15-nt HA. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+18-nt insertion libraries at HEK3 and five nearby sites (HEK3-S2--S6); custom MinSePIE improved scaffold, 13-nt PBS and 15-nt HA.
 
 \paragraph{\nolinkurl{library-insert-codon-variant}.}
-Codon-variant (barnacle) library tagging ACTB, LMNB1, NOLC1, RNF2 and TP53; custom MinSePIE codon-optimization scaffold with in-frame +6 insertions. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+Codon-variant (barnacle) library tagging ACTB, LMNB1, NOLC1, RNF2 and TP53; custom MinSePIE codon-optimization scaffold with in-frame +6 insertions.
 
 \paragraph{\nolinkurl{library-insert-codon-hek3}.}
-Codon-variant library inserts at the HEK3 validation locus (barnacle screen); same codon-optimization scaffold as other codon-variant oligos, HEK3 spacer/PBS/HA. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; fully standardizable.
+Codon-variant library inserts at the HEK3 validation locus (barnacle screen); same codon-optimization scaffold as other codon-variant oligos, HEK3 spacer/PBS/HA.
 
 \paragraph{\nolinkurl{library-insert-piggybac}.}
-Set 1 pooled insertion screen in HAP1 and HAP1 $\Delta$MLH1 with dox-inducible PE2 integrated via PiggyBac (Koeppel et al.\ 2023). Delivery: lentiviral pegRNA, PiggyBac PE; on-target; in vitro; endogenous target; fully standardizable.
+Set 1 pooled insertion screen in HAP1 and HAP1 $\Delta$MLH1 with dox-inducible PE2 integrated via PiggyBac (Koeppel et al.\ 2023).
 
 \subsection{DeepPrime (\texorpdfstring{\nolinkurl{deepprime}}{deepprime})}
 
 \paragraph{\nolinkurl{deepprime-clinvar}.}
-ClinVar-variant pegRNA library (${\sim}$259k pairs); efficiencies measured on synthetic 74~bp target contexts (plasmid assay), not native genomic loci. Delivery: plasmid pegRNA and PE; on-target; in vitro; non-endogenous target; fully standardizable.
+ClinVar-variant pegRNA library (${\sim}$259k pairs); efficiencies measured on synthetic 74~bp target contexts (plasmid assay), not native genomic loci.
 
 \paragraph{\nolinkurl{deepprime-small}.}
-Multi cell line / PE-system fine-tuning subsets (DeepPrime-FT); synthetic target contexts. Delivery: plasmid pegRNA and PE; on-target; in vitro; non-endogenous target; fully standardizable.
+Multi cell line / PE-system fine-tuning subsets (DeepPrime-FT); synthetic target contexts.
 
 \paragraph{\nolinkurl{deepprime-off}.}
-Off-target mismatch library (DeepPrime-Off); synthetic mismatch reporters. Delivery: plasmid pegRNA and PE; off-target; in vitro; non-endogenous target; partial standardization.
+Synthetic mismatch reporters used for DeepPrime-Off. The HEK293T--PE2 sheet has reconstructed sequences and is registered for full standardization. The PE4max-LM mismatch-only sheet is not yet sequence-complete, so support must be checked at the datasheet level.
 
 \paragraph{\nolinkurl{deepprime-off-subpool}.}
-Off-target library sub-pools; synthetic mismatch reporters. Delivery: plasmid pegRNA and PE; off-target; in vitro; non-endogenous target; partial standardization.
+Off-target sub-pools retained for filtering and inspection. Their partial tables lack the sequence information required for model-format export.
 
 \subsection{PRIDICT1 (\texorpdfstring{\nolinkurl{pridict1}}{pridict1})}
 
 \paragraph{\nolinkurl{library1}.}
-PRIDICT1 self-targeting lentiviral HTS (${\sim}$92k pegRNAs): each construct pairs pegRNA with a synthetic target cassette (not the endogenous pathogenic locus). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+PRIDICT1 self-targeting lentiviral HTS (${\sim}$92k pegRNAs): each construct pairs pegRNA with a synthetic target cassette (not the endogenous pathogenic locus).
 
 \paragraph{\nolinkurl{library2}.}
-PRIDICT1 disease-block subscreen (${\sim}$1.9k pegRNAs): pathogenic-variant pegRNAs in lentiviral self-targeting reporters across HEK293T, U2OS, and K562 (PE2 / PEmax; MMR-proficient and K562/U2OS/HEK MLH1$^{-/-}$ lines). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+PRIDICT1 disease-block subscreen (${\sim}$1.9k pegRNAs): pathogenic-variant pegRNAs in lentiviral self-targeting reporters across HEK293T, U2OS, and K562 (PE2 / PEmax; MMR-proficient and K562/U2OS/HEK MLH1$^{-/-}$ lines).
 
 \paragraph{\nolinkurl{library2-invivo}.}
-Disease-block subscreen pegRNAs validated in GFP+ sorted mouse liver (adenoviral pegRNA and PE2 delivery; endogenous liver loci). Delivery: adenoviral pegRNA and PE; on-target; in vivo; endogenous target; fully standardizable.
+Disease-block subscreen pegRNAs validated in GFP+ sorted mouse liver (adenoviral pegRNA and PE2 delivery; endogenous liver loci).
 
 \paragraph{\nolinkurl{endogenous}.}
-Arrayed pegRNA validation at ${\sim}$45 native genomic loci in HEK293T and K562 (supplementary endogenous table; PE2 plasmid transfection). Delivery: plasmid pegRNA and PE; on-target; in vitro; endogenous target; partial standardization.
+Arrayed validation at approximately 45 native loci in HEK293T and K562. The deposited table contains efficiencies and locus annotations but lacks pegRNA-linked sequence geometry, so it remains filter-only.
 
 \subsection{PRIDICT2 (\texorpdfstring{\nolinkurl{pridict2}}{pridict2})}
 
 \paragraph{\nolinkurl{library-diverse}.}
-PRIDICT2 diverse edit-type library (HEK293T, K562, K562 MLH1$^{-/-}$); same self-targeting lentiviral reporter format as PRIDICT1. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+PRIDICT2 diverse edit-type library (HEK293T, K562, K562 MLH1$^{-/-}$); same self-targeting lentiviral reporter format as PRIDICT1.
 
 \paragraph{\nolinkurl{library-diverse-invivo}.}
-Diverse-library pegRNAs validated at endogenous mouse liver loci (PRIDICT2 supplementary AdV column; distinct from in vitro reporter HTS). Delivery: adenoviral pegRNA and PE; on-target; in vivo; endogenous target; fully standardizable.
+Mouse-liver measurements from the supplementary AdV column. The catalog classifies this dataset as endogenous and in vivo, but the standardized rows retain author-provided library contexts rather than newly reconstructed native genomic windows.
 
 \paragraph{\nolinkurl{trip-analysis}.}
-TRIP library editing survey at endogenous genomic integrations in K562 (supplementary table 12; Fig.~3 / Ext. Fig.~4--5; PE2). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; endogenous target; partial standardization.
+Editing measurements at reporter integration sites in K562. Integration coordinates describe the chromosomal context of the reporter, rather than a different pegRNA design at each site. The shared reporter sequence is not reconstructed in the current pipeline, so these records remain filter-only.
 
 \subsection{OptiPrime (\texorpdfstring{\nolinkurl{optiprime}}{optiprime})}
 
 \paragraph{\nolinkurl{lib-mmr}.}
-Lib-MMR primary library (${\sim}$9,964 pegRNAs) targeting 200 exonic sites with diverse edit types (substitutions, insertions, deletions, PAM edits); excludes 36 endogenous-site positive controls. Lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+Lib-MMR primary library (${\sim}$9,964 pegRNAs) targeting 200 exonic sites with diverse edit types (substitutions, insertions, deletions, PAM edits); excludes 36 endogenous-site positive controls. Lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA).
 
 \paragraph{\nolinkurl{lib-mmr-controls}.}
-Lib-MMR endogenous-site positive controls (36 pegRNAs previously used to edit RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, and HEXA). Assayed in the same lentiviral pegRNA--target reporter screen as Lib-MMR (not arrayed endogenous locus editing); PE2/PE4 plasmid transfection in HEK293T and HeLa. Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable.
+Lib-MMR endogenous-site positive controls (36 pegRNAs previously used to edit RNF2, FANCF, HEK3, APOE, HBB, CDKL5, PRNP, and HEXA). Assayed in the same lentiviral pegRNA--target reporter screen as Lib-MMR (not arrayed endogenous locus editing); PE2/PE4 plasmid transfection in HEK293T and HeLa.
 
 \paragraph{\nolinkurl{lib-cv}.}
-Lib-CV (${\sim}$10,406 pegRNAs) correcting 944 ClinVar pathogenic variants with up to nine silent edit combinations; lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA). Delivery: lentiviral pegRNA, plasmid PE; on-target; in vitro; non-endogenous target; fully standardizable. 
+Lib-CV (${\sim}$10,406 pegRNAs) correcting 944 ClinVar pathogenic variants with up to nine silent edit combinations; lentiviral pegRNA--target reporter library (MOI~$<0.3$) with PE2/PE4 plasmid transfection in HEK293T and HeLa (PEmax-Cas9, tevoPreQ1 epegRNA).
 
-\section{PE Database API and deployment}
+\section{Data access and model input reference}
 \label{app:api}
 
-\subsection{Service architecture}
+\subsection{Files and initialization}
 
-PE DB is one of three cooperating services in the repository:
-
-\begin{itemize}
-    \item \textbf{PE Database} (\nolinkurl{services/pe-db}, port~8000) --- catalog metadata in SQLite and edit records on disk; owns export, standardization, filtering, and model-format conversion.
-    \item \textbf{PE Ensemble} (\nolinkurl{services/pe-ensemble}, port~8001) --- vendored model wrappers, asynchronous training and evaluation jobs, and a proxy to PE Database's filter API.
-    \item \textbf{PE Hub} (\nolinkurl{pe-hub}, port~5173) --- React UI for catalog browsing, export, training, and evaluation.
-\end{itemize}
-
-Shared split logic and constants live in \nolinkurl{packages/pe-common}. Vendor model code is vendored under \nolinkurl{vendor/models/} as git submodules.
-
-\subsection{On-disk data layout}
+PE-DB stores experimental measurements separately from its SQLite metadata catalog. The default layout, relative to the repository root, is:
 
 \begin{verbatim}
 datasets/
-  raw/           # original study files (CSV, TSV, XLSX)
-  exported/      # one CSV per datasheet (generated at startup)
-  standardized/  # shared-schema parquet (generated at startup)
-  formatted/     # cached model-format parquet (generated on demand)
-  catalog/       # pe_database.db (SQLite; metadata only)
+  raw/           # deposited study files
+  exported/      # experiment-specific CSV files
+  standardized/  # PE-core Parquet tables
+  formatted/     # cached model inputs
+  catalog/       # pe_database.db: metadata and file paths
 \end{verbatim}
 
-Edit-level rows are never stored in SQL. The catalog records file paths and experiment metadata (\nolinkurl{cell\_line}, \nolinkurl{pe\_system}, scaffold, sample counts); measurements are read with Pandas when an endpoint is called.
+At startup, the service seeds study, dataset, and scaffold records, exports missing source tables, and standardizes the exported data. Existing artifacts are reused unless regeneration is requested. The command-line interface provides explicit maintenance commands:
 
-\subsection{Initialization pipeline}
+\begin{verbatim}
+pedb init                         # seed, export, and standardize
+pedb export --force-reexport       # rebuild exports and standardize
+pedb standardize --force           # rebuild standardized tables
+\end{verbatim}
 
-\nolinkurl{initialize\_database()} runs when PE Database starts (unless artifacts already exist):
+Startup regeneration can also be requested through \nolinkurl{PE_DB_FORCE_EXPORT} and \nolinkurl{PE_DB_FORCE_STANDARDIZE}. Export and standardization are administrative command-line operations; the current HTTP API does not expose the former \nolinkurl{/api/export} or \nolinkurl{/api/convert} routes.
 
-\begin{enumerate}
-    \item \textbf{Seed} --- create SQL tables; insert Study, Dataset, and Scaffold rows from \nolinkurl{app/catalog/studies.py} and \nolinkurl{scaffolds.py}.
-    \item \textbf{Export} --- write \nolinkurl{datasets/exported/} from raw files; register Datasheet rows with CSV paths.
-    \item \textbf{Standardize} --- write \nolinkurl{datasets/standardized/} parquet in the shared schema.
-\end{enumerate}
+\subsection{PE-DB endpoints}
 
-Administrators can re-run this pipeline with \nolinkurl{POST /api/export} or standardize a single sheet with \nolinkurl{POST /api/convert}. Environment variables \nolinkurl{PE\_DB\_FORCE\_EXPORT} and \nolinkurl{PE\_DB\_FORCE\_STANDARDIZE} force regeneration.
+The following routes are defined in \nolinkurl{services/pe-db/pe_db/main.py}. Paths are relative to the PE-DB service, which uses port 8000 by default.
 
-\subsection{REST endpoints}
-
-\begin{longtable}{@{}p{0.12\textwidth}p{0.28\textwidth}p{0.52\textwidth}@{}}
-    \caption{PE Database HTTP API.} \label{tab:app-api} \\
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}p{0.10\textwidth}>{\raggedright\arraybackslash}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.53\textwidth}@{}}
+    \caption{PE-DB HTTP endpoints.} \label{tab:app-api} \\
     \hline
     Method & Path & Purpose \\
     \hline
     \endfirsthead
-    \multicolumn{3}{l}{\textit{(continued)}} \\
     \hline
     Method & Path & Purpose \\
     \hline
     \endhead
     \hline
+    \endfoot
     \endlastfoot
-    GET & \nolinkurl{/api/studies} & List seeded studies. \\
-    GET & \nolinkurl{/api/datasets} & List datasets; optional \nolinkurl{?study=}. \\
-    GET & \nolinkurl{/api/datasheets} & List datasheet catalog entries. \\
-    GET & \nolinkurl{/api/scaffolds} & List pegRNA scaffold definitions. \\
-    GET & \nolinkurl{/api/data} & Point lookup: standardized rows for one datasheet (\nolinkurl{study}, \nolinkurl{dataset}, \nolinkurl{cell\_line}, \nolinkurl{pe\_system}); optional \nolinkurl{limit}. Returns \nolinkurl{format=std} only. \\
-    GET & \nolinkurl{/api/filter} & Catalog browse (no \nolinkurl{format}) or model-format export with splits (with \nolinkurl{format}). \\
-    GET & \nolinkurl{/api/statistics} & Aggregate edit statistics with optional catalog filters. \\
-    POST & \nolinkurl{/api/export} & Re-run export and optional standardization. \\
-    POST & \nolinkurl{/api/convert} & Standardize one datasheet on demand. \\
-    GET & \nolinkurl{/health} & Health check and catalog path. \\
+    GET & \nolinkurl{/api/studies} & List registered studies. \\
+    GET & \nolinkurl{/api/datasets} & List datasets, optionally restricted by study. \\
+    GET & \nolinkurl{/api/datasheets} & List experiment-level catalog records. \\
+    GET & \nolinkurl{/api/scaffolds} & List scaffold definitions and sequences. \\
+    GET & \nolinkurl{/api/filter} & Select experiments or return standardized/model-formatted rows and split summaries. \\
+    GET & \nolinkurl{/api/statistics} & Summarize editing data under the requested filters. \\
+    POST & \nolinkurl{/api/plugins/reload} & Reload registered plugin converters. \\
+    GET & \nolinkurl{/health} & Check service availability and catalog configuration. \\
 \end{longtable}
+\endgroup
 
-PE Ensemble exposes a compatible proxy at \nolinkurl{GET /data/filter} (same query parameters as \nolinkurl{/api/filter}) for PE Hub and training jobs.
+Single-datasheet retrieval also uses \nolinkurl{/api/filter}: select the study, dataset, cell line, and PE system, with \nolinkurl{format=std} and \nolinkurl{split_strategy=none}. There is no separate \nolinkurl{/api/data} route. FastAPI's interactive schema at \nolinkurl{/docs} gives the complete request and response definitions.
 
-\subsection{Filtering and model-format export}
+\subsection{Filters and partitions}
 
-\nolinkurl{GET /api/filter} operates in two modes:
+Without an output format, the filter endpoint returns matching datasheet metadata. With a format, it loads the relevant standardized records and returns converted rows. The shared filters cover study, dataset, cell line, PE system, scaffold, edit scope, experimental method, target context, edit type, and edit length. Efficiency bounds use \nolinkurl{edit_efficiency_min} and \nolinkurl{edit_efficiency_max}. Design constraints are selected through \nolinkurl{design_ruleset}; the named presets are \nolinkurl{optiprime} (also \nolinkurl{hsu}) and \nolinkurl{anzalone}, with individual rules available separately.
 
-\paragraph{Catalog browse (\nolinkurl{format} omitted).}
-Returns matching Datasheet metadata after applying catalog-level filters. Supported multi-value query parameters include \nolinkurl{study}, \nolinkurl{dataset}, \nolinkurl{cell\_line}, \nolinkurl{pe\_system}, \nolinkurl{edit\_scope}, \nolinkurl{experimental\_method}, \nolinkurl{target\_context}, and \nolinkurl{scaffold\_name}.
-
-\paragraph{Model-format export (\nolinkurl{format} set).}
-Loads standardized parquet for each matching, standardizable datasheet, applies per-edit filters (\nolinkurl{edit\_type}, \nolinkurl{edit\_length}, \nolinkurl{edit\_efficiency\_min/max}), converts to the requested schema, and optionally assigns splits. \nolinkurl{split\_strategy} is required when \nolinkurl{format} is set:
+A formatted request must specify \nolinkurl{split_strategy}. The accepted configurations are:
 
 \begin{itemize}
-    \item \nolinkurl{none} --- no partition labels;
-    \item \nolinkurl{holdout\_2} --- train/test;
-    \item \nolinkurl{holdout\_3} --- train/validation/test (default 70/15/15 in PE Ensemble);
-    \item \nolinkurl{cv} --- $K$-fold cross-validation, with optional held-out test partition via \nolinkurl{original\_fold}.
+    \item \nolinkurl{none}: return rows without assigning a partition.
+    \item \nolinkurl{holdout_2}: supply \nolinkurl{train_pct} and \nolinkurl{test_pct} summing to one.
+    \item \nolinkurl{holdout_3}: supply \nolinkurl{train_pct}, \nolinkurl{val_pct}, and \nolinkurl{test_pct} summing to one.
+    \item \nolinkurl{cv}: supply \nolinkurl{cv_folds}, with at least two folds; an optional \nolinkurl{test_pct} reserves an outer test partition.
 \end{itemize}
 
-Splits are \textbf{group-aware}: rows sharing a \nolinkurl{group\_id} (protospacer group) stay in the same partition. Setting \nolinkurl{merge=true} concatenates multiple datasheets and reassigns \nolinkurl{group\_id} before splitting. \nolinkurl{summary\_only=true} returns counts and split summaries without row payloads.
+Synthetic splits operate on protospacer groups, with \nolinkurl{split_random_state=42} by default. \nolinkurl{merge=true} combines matching datasheets and rebuilds groups across them before splitting. To preserve source partitions where available, set \nolinkurl{use_original_fold=true} and choose \nolinkurl{original_fold_test_value}: $-1$ for the DeepPrime-style test split, or the relevant run index for PRIDICT2. Author-fold selection does not itself guarantee an independent test set; PE Ensemble additionally checks the selected checkpoint's training provenance.
+
+\nolinkurl{summary_only=true} returns counts and partition summaries without row payloads or model-feature conversion. This is useful for previewing a selection, but does not establish that every row will pass a later model-specific conversion. Responses report skipped datasheets and the reasons for skipping them. Partial datasets can be inspected in standardized form when supported, but cannot supply missing model inputs.
 
 \subsection{Output formats}
 
-\begin{table}[ht]
-    \centering
-    \small
-    \begin{tabular}{@{}llp{0.55\textwidth}@{}}
-        \hline
-        Format & Consumer & Key fields \\
-        \hline
-        \nolinkurl{std} & General / preview &
-        \nolinkurl{wt\_sequence}, \nolinkurl{mut\_sequence}, edit location, \nolinkurl{editing\_efficiency}, edit-type flags, \nolinkurl{group\_id}, \nolinkurl{original\_fold}. \\
-        \nolinkurl{deepprime} & DeepPrime~\cite{yuPredictionEfficienciesDiverse2023} &
-        74~bp target windows, PBS/RT lengths, thermodynamic features (\nolinkurl{Tm1}--\nolinkurl{TmD}, MFE), \nolinkurl{DeepSpCas9\_score}. \\
-        \nolinkurl{pridict} / \nolinkurl{pridict2} & PRIDICT family~\cite{schwankgeraldPredictingPrimeEditing2023,mathisMachineLearningPrediction2024} &
-        Location strings, correction length, RT overhang features; PRIDICT2 adds normalized continuous inputs. \\
-        \nolinkurl{oped} & OPED~\cite{liuDesignPrimeeditingGuide2023} &
-        \nolinkurl{Target(47bp)}, \nolinkurl{PBS}, \nolinkurl{RT}, \nolinkurl{Efficiency}. \\
-        \nolinkurl{optiprime} & OptiPrime~\cite{hsuMechanisticMachineLearning2026} &
-        \nolinkurl{spacer}, \nolinkurl{rtt}, \nolinkurl{pbs}, \nolinkurl{full\_unedited}, \nolinkurl{full\_edited}, editor metadata. \\
-        \hline
-    \end{tabular}
-    \caption{Model-format schemas produced by \nolinkurl{/api/filter}.}
-    \label{tab:app-formats}
-\end{table}
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.22\textwidth}>{\raggedright\arraybackslash}p{0.73\textwidth}@{}}
+    \caption{Input formats available through PE-DB.} \label{tab:app-formats} \\
+    \hline
+    Format & Contents \\
+    \hline
+    \endfirsthead
+    \hline
+    Format & Contents \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+    \nolinkurl{std} & Wild-type and mutant sequences; edit flags and length; protospacer, PBS, RTT, and homology-arm coordinates; efficiency, group identifier, and author fold. Endogenous records also carry nullable genomic annotations. \\
+    \nolinkurl{deepprime} & Wild-type and masked edited 74-base inputs, length and edit features, GC content, melting temperatures, RNA folding energies, and DeepSpCas9 score. \\
+    \nolinkurl{pridict} / \nolinkurl{pridict2} & Both names use the PRIDICT2 pipeline: initial and mutated targets, edit and region annotations, continuous features, and seven RNA folding-energy features. \\
+    \nolinkurl{oped} & \nolinkurl{Target(47bp)}, \nolinkurl{PBS}, \nolinkurl{RT}, and \nolinkurl{Efficiency}. \\
+    \nolinkurl{optiprime} & RNA spacer, PBS, and RTT; unedited and edited DNA contexts; efficiency and model metadata. Several experimental fields use converter defaults, as described in Methods. \\
+\end{longtable}
+\endgroup
 
-Expensive conversions (notably DeepPrime thermodynamics) are cached under \nolinkurl{datasets/formatted/{format}/...} and invalidated when export or standardization is forced. Datasets with \nolinkurl{standardizable=False} are listed in the response \nolinkurl{skipped} array with a reason.
+PE-core coordinates use zero-based, half-open intervals. Converters account for insertion/deletion alignment padding when constructing native model inputs. Expensive feature calculations are cached under \nolinkurl{datasets/formatted/}; converter revision checks prevent reuse of incompatible cache entries. Activated plugins may register additional formats.
 
-\subsection{Integration with PyTorch training}
+\subsection{Example export}
 
-PE Database does not instantiate \nolinkurl{torch.utils.data.DataLoader}. The data path for training and evaluation is:
-
-\begin{enumerate}
-    \item A client posts to PE Ensemble \nolinkurl{POST /train} or \nolinkurl{POST /evaluate} with dataset filters and split parameters.
-    \item PE Ensemble calls \nolinkurl{GET /api/filter} on PE Database with the model's native \nolinkurl{format} and \nolinkurl{split\_strategy}.
-    \item Records are assembled into a Pandas DataFrame; training excludes the test partition (\nolinkurl{exclude\_test\_partition}), evaluation selects it (\nolinkurl{select\_evaluation\_partition}).
-    \item Each model wrapper encodes rows into tensors and builds a PyTorch \nolinkurl{DataLoader} (DeepPrime and OPED via PyTorch Lightning; PRIDICT2 via the vendor \nolinkurl{prepare\_data} pipeline).
-\end{enumerate}
-
-Long-running filter requests support a \nolinkurl{progress\_token} query parameter; PE Ensemble tails the corresponding log file into the job log stream. The default HTTP read timeout is 600~s (\nolinkurl{PE\_DB\_FILTER\_TIMEOUT\_SECONDS}).
-
-\subsection{Local deployment}
-
-From the repository root:
+After installation and data initialization, the following command exports the DeepPE high-throughput sheet with its author partition labels in OPED format:
 
 \begin{verbatim}
-./scripts/start-all.sh --install   # first run: install Python and npm dependencies
-./scripts/start-all.sh             # start all three services
+pedb filter --study deeppe --dataset deeppe-ht \
+  --cell-line HEK293T --pe-system PE2 --format oped \
+  --split-strategy holdout_2 --train-pct 0.8 --test-pct 0.2 \
+  --use-original-fold --out deeppe-oped.csv
 \end{verbatim}
 
-API documentation is served at \nolinkurl{http://localhost:8000/docs} (PE Database) and \nolinkurl{http://localhost:8001/docs} (PE Ensemble). Individual backends can also be started with \nolinkurl{uvicorn} after \nolinkurl{make install}; see the repository README.
+The fractions define a fallback where author folds are absent; they do not replace an available author split. The CSV contains the exported partitions, so evaluation must still select the test rows. Choosing a \nolinkurl{.json} output preserves the full response, including summaries and skipped-datasheet information; \nolinkurl{.csv} and \nolinkurl{.parquet} outputs contain merged row records.
 
+\section{PE Ensemble API and job records}
+\label{app:ensemble-api}
 
-\section{PE Hub Web Portal Introduction}
+PE Ensemble uses port 8001 by default. \nolinkurl{GET /models} lists the available model families, \nolinkurl{GET /models/\{model_name\}/weights} lists registered checkpoints, and \nolinkurl{GET /models/\{model_name\}/training-presets} returns preset configurations. The \nolinkurl{GET /data/filter} route forwards the PE-DB filtering contract.
 
+Training, tuning, evaluation, and ensemble evaluation share the same job lifecycle. Submit a request to \nolinkurl{POST /train}, \nolinkurl{POST /tune}, \nolinkurl{POST /evaluate}, or \nolinkurl{POST /ensemble}. Each returns a job identifier. For each of these four route prefixes, \nolinkurl{/jobs} lists jobs, \nolinkurl{/status/\{job_id\}} returns status and available results, and \nolinkurl{/logs/\{job_id\}} returns log output. The API also provides device discovery and queue information, while \nolinkurl{GET /ensemble/methods} lists the supported combination rules.
+
+Training requests identify the model, a dataset label, data filters, a split configuration, and any hyperparameter overrides. The default training split is 70/15/15. Evaluation requires a registered weight identifier; its default split is 80/20 with author-fold preference. By default, evaluation can recover its benchmark selection from the checkpoint's training metadata. Set \nolinkurl{auto_training_benchmark=false} to supply an external benchmark explicitly. Ensemble requests specify the member models and weights, the combination rule, and a shared data selection. OptiPrime currently supports pretrained inference only.
+
+Job records distinguish queued, running, stopping, succeeded, failed, cancelled, and skipped states. Requests, status manifests, logs, and results are written to disk, while registered weights retain the configuration and target-locus provenance needed for later evaluation. A successful job may still exclude overlapping loci or skip unsupported datasheets; sample counts and warnings should therefore be read alongside its metrics.
+
+The generic \nolinkurl{POST /predict} route is a placeholder that returns an empty prediction list. Dataset evaluation and ensemble jobs use the implemented model-wrapper inference methods directly.
+
+\section{Local and cluster deployment}
+\label{app:deployment}
+
+From the repository root, create the environment, activate it, and start the services:
+
+\begin{verbatim}
+./scripts/setup-python-env.sh --install
+conda activate pe-hub
+./scripts/start-all.sh --install
+\end{verbatim}
+
+For subsequent sessions, activate the environment and run \nolinkurl{./scripts/start-all.sh}. The default local addresses are \nolinkurl{http://localhost:5173} for PE Hub, \nolinkurl{http://localhost:8000/docs} for PE-DB documentation, and \nolinkurl{http://localhost:8001/docs} for PE Ensemble documentation. The launch script accepts port overrides. Data files and registered model weights must be available locally; installing the software does not replace obtaining the required data artifacts.
+
+For cluster jobs, \nolinkurl{pedb} and \nolinkurl{peen} call the Python libraries without a frontend. With \nolinkurl{PE_DB_URL} unset, PE Ensemble accesses PE-DB in process; when it is set, data access uses HTTP. The HTTP filter read timeout defaults to 600 seconds and can be changed with \nolinkurl{PE_DB_FILTER_TIMEOUT_SECONDS}. Conversion progress can be forwarded into the job log. SLURM and DVC examples are provided under \nolinkurl{scripts/cluster/oxford-arc/}.
+
+Useful inspection commands are:
+
+\begin{verbatim}
+pedb studies
+peen models
+peen weights --model deepprime
+peen devices
+peen jobs
+\end{verbatim}
+
+\section{Using the PE Hub web portal}
+\label{app:web-portal}
+
+The portal connects data exploration to model experiments through a common set of filters. A typical workflow is:
+
+\begin{enumerate}
+    \item \textbf{Browse the data.} Open the Database catalog to inspect studies and their datasets. Check the cell line, PE system, target context, and conversion support before selecting an experiment.
+    \item \textbf{Preview and export.} On the export page, choose the experimental and edit-level filters, optional design rules, output format, and partition settings. Review the returned counts before downloading the data.
+    \item \textbf{Benchmark a checkpoint.} Select a model and registered weights on the benchmark page, then choose the evaluation data and split. Follow the job status and logs, and inspect the retained sample count and leakage messages alongside the scores. Completed benchmark results can be exported as JSON.
+    \item \textbf{Train a model.} Choose a supported architecture, training data, split, device, and hyperparameters. The training page displays queued and running jobs and their logs. Registered weights from completed fits become available for subsequent evaluation.
+    \item \textbf{Compare an ensemble.} Select the member models and weight sets, choose a combination rule, and evaluate them on a shared data selection. The result reports both member and ensemble metrics.
+\end{enumerate}
+
+The Add Model page accepts plugin bundles and exposes validation and activation controls. Service-health indicators show whether the required backends are available, and the documentation page provides an API reference. The pegRNA Design page is reserved for a future interactive design workflow; it does not yet generate or score new candidate guides.
 
 \end{document}
