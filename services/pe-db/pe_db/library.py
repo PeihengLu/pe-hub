@@ -139,6 +139,50 @@ def run_convert_sheet(
     }
 
 
+def convert_standardized_records(
+    records: list[dict[str, Any]],
+    *,
+    format_: str,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> dict[str, Any]:
+    """Convert ad-hoc standardized PE-core rows into a model format.
+
+    Used by the interactive design workflow (pegRNA candidates are not catalog
+    datasheets, so they bypass ``GET /api/filter`` caching).
+    """
+    import pandas as pd
+
+    from .format_registry import convert_standardized, validate_output_format
+    from .formats.common import is_standardized_dataframe
+    from .utils.json_utils import dataframe_to_json_records
+
+    ensure_plugins_loaded()
+    target = validate_output_format(format_)
+    if not records:
+        return {
+            "format": target,
+            "num_records": 0,
+            "records": [],
+            "columns": [],
+        }
+    df = pd.DataFrame(records)
+    if target != "std" and not is_standardized_dataframe(df):
+        raise PeDbLibraryError(
+            "Input records are not in the standardized PE-core schema"
+        )
+    converted = convert_standardized(
+        df,
+        target,
+        progress_callback=progress_callback,
+    )
+    return {
+        "format": target,
+        "num_records": int(len(converted)),
+        "records": dataframe_to_json_records(converted),
+        "columns": list(converted.columns),
+    }
+
+
 def reload_plugins() -> list[str]:
     """Reload active plugin converters from ``PLUGINS_ROOT``."""
     global _plugins_loaded

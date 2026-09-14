@@ -10,10 +10,11 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Any
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from pe_common.filter_params import (
     CatalogFilterQuery,
     SplitExportQuery,
@@ -25,6 +26,7 @@ from .db.schemas import DatasetRead, DatasheetRead, ScaffoldRead, StatisticsRead
 from .library import (
     PeDbLibraryError,
     catalog_statistics,
+    convert_standardized_records,
     filter_from_params,
     list_datasheets as library_list_datasheets,
     list_datasets as library_list_datasets,
@@ -252,6 +254,31 @@ async def health_check():
         "catalog_database": str(settings.catalog_db_path),
         "catalog_database_exists": settings.catalog_db_path.exists(),
     }
+
+
+class ConvertRecordsRequest(BaseModel):
+    records: list[dict[str, Any]] = Field(default_factory=list)
+    format: str = Field(..., min_length=1, description="Target model format or 'std'")
+
+
+@app.post("/api/convert")
+async def convert_records(request: ConvertRecordsRequest):
+    """Convert standardized PE-core rows into a registered model format."""
+    try:
+        return await asyncio.to_thread(
+            convert_standardized_records,
+            request.records,
+            format_=request.format,
+        )
+    except PeDbLibraryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Error converting records: %s", exc)
+        raise HTTPException(
+            status_code=500, detail=f"Error converting records: {exc}"
+        ) from exc
 
 
 @app.post("/api/plugins/reload")

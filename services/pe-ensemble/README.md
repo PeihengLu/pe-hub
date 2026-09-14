@@ -126,7 +126,8 @@ Behaviour that is easy to break and worth knowing:
 - `GET /devices` - List compute devices (GPU, MPS, XPU, CPU, …)
 - `GET /train/devices` - Per-device training occupancy and queue depth
 - `GET /data/filter` - Proxy PE-DB filter/export (same contract as PE Hub export)
-- `POST /predict` - Sequence prediction stub (design workflow will use this later)
+- `POST /predict` - Sequence prediction stub
+- `POST /design` - Enumerate design-policy pegRNAs, score with a weight or ensemble, and rank
 - `POST /evaluate` - Queue an asynchronous benchmark job
 - `GET /evaluate/status/{job_id}` - Benchmark job status and metrics
 - `GET /evaluate/logs/{job_id}` - Benchmark job logs

@@ -52,6 +52,11 @@ from .design_rules import (
     expand_design_rulesets,
     hsu_c_nudge_homology_length,
 )
+from .design_candidates import (
+    enumerate_design_candidates,
+    find_spcas9_pam_sites,
+    parse_edit_markup,
+)
 from .filter_params import (
     FILTER_LIST_FIELDS,
     FILTER_RANGE_FIELDS,
@@ -123,6 +128,9 @@ __all__ = [
     "apply_design_ruleset_mask",
     "expand_design_rulesets",
     "hsu_c_nudge_homology_length",
+    "enumerate_design_candidates",
+    "find_spcas9_pam_sites",
+    "parse_edit_markup",
     "CatalogFilterBody",
     "CatalogFilterQuery",
     "SplitExportQuery",

@@ -49,6 +49,8 @@ from .training.schemas import (
     TrainingJobCreatedResponse,
     TrainingLogResponse,
 )
+from .design.schemas import DesignRequest
+from .design.runner import DesignError, execute_design
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +325,18 @@ async def predict(request: PredictionRequest):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "message": "Prediction endpoint - implementation pending",
     }
+
+
+@app.post("/design")
+async def design_pegrnas(request: DesignRequest):
+    """Enumerate policy-qualified pegRNAs, score with a weight or ensemble, and rank."""
+    try:
+        return await asyncio.to_thread(execute_design, request)
+    except DesignError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Design failed")
+        raise HTTPException(status_code=500, detail=f"Design failed: {exc}") from exc
 
 
 @app.get("/devices")

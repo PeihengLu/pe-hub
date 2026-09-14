@@ -16,7 +16,7 @@ Unified React frontend for the PE Database and PE Ensemble APIs.
 ### Ensemble section
 
 - **Benchmark** — evaluate models on PE-DB test splits (async job queue)
-- **Design** — pegRNA design placeholder (coming soon)
+- **Design** — enumerate OptiPrime / Anzalone-qualified pegRNAs and rank by model or ensemble score
 - **Train** — submit training jobs, pick compute device, stream logs, view job history
 - **Ensemble** — combine model outputs
 - **Docs** — inline API reference (full docs at `/docs` on each backend)

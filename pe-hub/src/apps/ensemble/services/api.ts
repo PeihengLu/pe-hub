@@ -222,6 +222,60 @@ export interface EnsembleMemberInput {
   member_weight?: number
 }
 
+export type DesignPolicy = 'optiprime' | 'anzalone'
+export type DesignMode = 'single' | 'ensemble'
+
+export interface DesignRequest {
+  sequence: string
+  design_policy: DesignPolicy
+  mode: DesignMode
+  model_name?: string
+  weights?: string
+  members?: EnsembleMemberInput[]
+  combine?: CombineMethod
+  combine_options?: Record<string, unknown>
+  device?: string
+  max_edit_distance?: number
+  top_k?: number
+}
+
+export interface DesignResultRow {
+  rank: number
+  score: number
+  pbs_len?: number | null
+  rtt_len?: number | null
+  homology_len?: number | null
+  spacer?: string | null
+  pam?: string | null
+  nick?: number | null
+  protospacer_location_l: number
+  protospacer_location_r: number
+  pbs_location_l: number
+  pbs_location_r: number
+  rtt_location_l: number
+  rtt_location_r: number
+  type_sub: boolean
+  type_ins: boolean
+  type_del: boolean
+  edit_len: number
+  wt_sequence: string
+  mut_sequence: string
+  member_scores?: Record<string, number>
+}
+
+export interface DesignResponse {
+  design_policy: DesignPolicy
+  mode: DesignMode
+  scorer?: Record<string, unknown>
+  n_candidates: number
+  n_qualified: number
+  n_returned?: number
+  designs: DesignResultRow[]
+  device: string
+  timestamp: string
+  message?: string
+}
+
 export interface EnsembleRequest extends CatalogFilterParams {
   ensemble_name: string
   combine: CombineMethod
@@ -494,6 +548,8 @@ export const api = {
   getModel: (name: string) => apiClient.get(`/models/${name}`),
   predict: (request: PredictionRequest): Promise<{ data: PredictionResponse }> =>
     apiClient.post('/predict', request),
+  design: (request: DesignRequest): Promise<{ data: DesignResponse }> =>
+    apiClient.post('/design', request),
   train: (request: TrainingRequest) =>
     apiClient.post<TrainingJobCreatedResponse>('/train', request),
   getTrainingStatus: (jobId: string) =>
