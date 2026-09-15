@@ -117,18 +117,12 @@ SUBMIT_SEEDS=0 ARC_PARTITION=medium ARC_TIME=2-00:00:00 \
 Keep `ARC_GPUS=1` and `DEVICE=cuda:0`. Pack seeds with `SUBMIT_SEEDS=0` only if
 you want fewer, longer jobs.
 
-Save only runs you care about (see
-[`scripts/cluster/oxford-arc/README.md`](../../cluster/oxford-arc/README.md#dvc-selective-artifacts)):
+Copy run artifacts with rsync on the laptop (see
+[`scripts/cluster/oxford-arc/README.md`](../../cluster/oxford-arc/README.md#sync-artifacts-laptop-to-arc)):
 
 ```bash
-# on ARC
-dvc add scripts/experiments/scratch-benchmark/results/<RUN_ID>
-dvc add services/pe-ensemble/weights/<model>/<weights_id>
-dvc push
-git add '*.dvc' && git commit -m 'scratch-benchmark run' && git push
-
-# on laptop
-git pull && dvc pull
+# on laptop — includes scripts/experiments/scratch-benchmark/results/
+./scripts/cluster/oxford-arc/pull_from_arc.sh "$USER"
 cat scripts/experiments/scratch-benchmark/results/LATEST_RUN_ID
 ```
 

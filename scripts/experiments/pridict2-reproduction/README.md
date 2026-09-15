@@ -8,11 +8,14 @@
 # 3. Fine-tune both bases on **library-diverse** HEK and K562 → four models
 # 4. **Mean-ensemble** the two fine-tunes per cell line
 #
-# Library1 uses a random holdout for *this* reproduction (author PRIDICT1 folds
-# were never published). Vendor PRIDICT2/OptiPrime training used the full
+# Library1 uses a random **holdout_3** (70/15/15) for *this* reproduction (author
+# PRIDICT1 folds were never published). Stage 01 HPO and stage 03 final train
+# share that protocol. Vendor PRIDICT2/OptiPrime training used the full
 # library1 sheet — every locus is training data for those checkpoints.
-# Other PRIDICT2 sheets use random CV + outer test for HPO (not author
-# `testset_fold`), except the merged L1+ClinVar base which aligns to DeepPrime folds.
+# Library-diverse fine-tune (05/06) uses author **5-fold CV** (`testset_fold`
+# 0–4) with **no outer random holdout**, then evaluates on fold `LD_TEST_FOLD`
+# (default 4). The merged L1+ClinVar base (02/04) aligns to DeepPrime
+# `original_fold`.
 #
 # **Loss:** PRIDICT2 is trained with a single edit-efficiency head (`MSEloss` on
 # `averageedited`, mapped from `editing_efficiency` in standardized data). All
@@ -53,14 +56,15 @@
 # | Script | Role |
 # |--------|------|
 # | `run_all.sh` | Orchestrator (tune → train → fine-tune → ensemble) |
-# | `01_tune_base_library1.sh` | HPO base on library1 |
+# | `01_tune_base_library1.sh` | HPO base on library1 (holdout_3) |
 # | `02_tune_base_l1_clinvar.sh` | HPO base on L1+ClinVar (DeepPrime folds) |
 # | `03_train_base_library1.sh` | Train + register library1 base weights |
 # | `04_train_base_l1_clinvar.sh` | Train + register L1+ClinVar base weights |
-# | `05_tune_finetune_library_diverse.sh` | HPO fine-tune stage (HEK + K562) |
-# | `06_finetune_transfer.sh` | Four transfer fine-tunes from the two bases |
-# | `07_ensemble_by_cell_line.sh` | Mean ensemble per cell line |
+# | `05_tune_finetune_library_diverse.sh` | HPO fine-tune (HEK + K562): author CV5, then eval fold 4 |
+# | `06_finetune_transfer.sh` | Four transfer fine-tunes (author CV5) + eval fold 4 |
+# | `07_ensemble_by_cell_line.sh` | Mean ensemble per cell line (eval on fold 4) |
 # | `_common.sh` | Shared env, state helpers |
+# | `submit_arc_pipeline.sh` | ARC: submit 01–07 with SLURM `afterok` dependencies |
 #
 ## State
 #
@@ -76,6 +80,20 @@
 #
 # GPU jobs go on **htc**. Submit wrappers + setup notes:
 # [`../../cluster/oxford-arc/`](../../cluster/oxford-arc/README.md).
+#
+# Full pipeline with SLURM dependencies (tune ∥ train → fine-tune → ensemble):
+#
+# ```bash
+# source scripts/cluster/oxford-arc/env.sh
+# ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
+# # or: SKIP=01,02 ./.../submit_arc_pipeline.sh   # presets already done
+# ```
+#
+# Single stage (optional dependency):
+#
+# ```bash
+# ARC_DEPENDENCY=afterok:123456 ./scripts/cluster/oxford-arc/submit.sh 03_train_base_library1.sh
+# ```
 #
 ## Shared HPO helpers
 #

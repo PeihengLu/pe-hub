@@ -178,6 +178,10 @@ def build_training_request(args: argparse.Namespace) -> TrainingRequest:
 
 def build_tuning_request(args: argparse.Namespace) -> TuningRequest:
     fixed = _parse_json_object(getattr(args, "fixed_hyperparameters_json", None)) or {}
+    if getattr(args, "pretrained_weights", None):
+        fixed = dict(fixed)
+        fixed["load_pretrained"] = True
+        fixed["weights"] = args.pretrained_weights
     training = TrainingRequest(
         model_name=args.model,
         dataset_source=getattr(args, "dataset_source", "pe-db"),
@@ -308,6 +312,11 @@ def _add_tune_parser(sub: argparse._SubParsersAction) -> None:
     _add_filter_flags(parser)
     _add_split_flags(parser)
     parser.add_argument("--fixed-hyperparameters-json", default=None)
+    parser.add_argument(
+        "--pretrained-weights",
+        default=None,
+        help="Fine-tune HPO from this weight ID (sets load_pretrained=True)",
+    )
     parser.add_argument("--model-kwargs-json", default=None)
     parser.add_argument("--notes", default=None)
     _add_env_flags(parser)

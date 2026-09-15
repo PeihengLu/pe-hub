@@ -9,7 +9,8 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
     name = model_name.strip().lower()
     if name == "deepprime":
         return {
-            "epochs": 5,
+            # Lightning max_epochs backstop; early_stopping_patience is primary.
+            "epochs": 100,
             "batch_size": 128,
             "lr": 1e-4,
             "weight_decay": 0.0,
@@ -42,7 +43,9 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
             "batch_size": 128,
             "lr": 1e-4,
             "weight_decay": 1e-4,
-            "num_epochs": 20,
+            "num_epochs": 100,
+            "early_stopping_patience": 10,
+            "early_stopping_min_delta": 0.0,
             "embed_dim": 64,
             "num_hidden_layers": 1,
             "p_dropout": 0.1,

@@ -16,13 +16,13 @@ datasets/
 ├── standardized/     # Generated parquet in shared schema (gitignored)
 ├── formatted/        # Generated model-format parquet cache (gitignored)
 ├── catalog/          # SQLite catalog DB pe_database.db (gitignored)
-├── reference/        # hg38/mm39 FASTA (DVC; see datasets/reference.dvc)
+├── reference/        # hg38/mm39 FASTA (rsync; see datasets/reference.dvc)
 └── dataprep/         # Legacy one-off prep scripts
 ```
 
-`raw/` stays in **git**. Reference genomes are **DVC** (`dvc pull`) so they are
-not in GitHub; the store is Oxford ARC (see
-[`scripts/cluster/oxford-arc/README.md`](../scripts/cluster/oxford-arc/README.md#dvc-selective-artifacts)).
+`raw/` stays in **git**. Reference genomes are bulky (`datasets/reference.dvc`);
+copy them laptop ↔ ARC with rsync, not git (see
+[`scripts/cluster/oxford-arc/README.md`](../scripts/cluster/oxford-arc/README.md#sync-artifacts-laptop-to-arc)).
 
 The PE Database service generates `exported/`, `standardized/`, and `catalog/` on
 startup via `initialize_database()` (see

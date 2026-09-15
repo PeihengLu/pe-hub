@@ -5,7 +5,7 @@ live under [`../experiments/`](../experiments/README.md).
 
 | Script | Purpose |
 |--------|---------|
-| `tune_hpo_cv5.sh` | `peen tune` with 5-fold CV plus an outer test holdout |
+| `tune_hpo_cv5.sh` | `peen tune` with 5-fold CV; optional outer test (`TEST_PCT`, default 0.15). Pure CV: `NO_OUTER_TEST=1` |
 | `tune_hpo_holdout3.sh` | `peen tune` with `holdout_3` (70/15/15) |
 | `check_tuning_status.sh` | Report whether a model × dataset preset already exists |
 | `_common.sh` | Shared defaults, option handling, skip logic — sourced by all of the above |
@@ -30,8 +30,8 @@ unclear, the answer is in `_common.sh` rather than the runner.
 
 ## Default protocol
 
-- Outer test holdout (`--test-pct`, default 0.15)
-- 5-fold CV on the remainder drives the Optuna objective
+- Outer test holdout (`--test-pct`, default 0.15), or pure CV with `NO_OUTER_TEST=1`
+- 5-fold CV on the remainder (or all rows when there is no outer holdout) drives the Optuna objective
 - DeepPrime exception: `--use-original-fold` uses the author folds (`-1` = test)
 - Merged DeepPrime ClinVar + PRIDICT library1 uses `--merge --use-original-fold`,
   where overlapping library1 loci inherit the DeepPrime `original_fold`

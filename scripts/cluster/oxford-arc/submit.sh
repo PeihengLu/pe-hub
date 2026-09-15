@@ -21,6 +21,9 @@
 # Extra sbatch flags after -- :
 #   ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh -- --constraint='gpu_sku:L40S'
 #
+# SLURM dependency (e.g. from submit_arc_pipeline.sh):
+#   ARC_DEPENDENCY=afterok:123456 ./scripts/cluster/oxford-arc/submit.sh 03_train_base_library1.sh
+#
 # Dry-run (validate + estimated start):
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_base_library1.sh
 #
@@ -125,7 +128,8 @@ SBATCH_ARGS=(
     --cpus-per-task="${ARC_CPUS}"
     --mem="${ARC_MEM}"
     --gres="gpu:${ARC_GPUS}"
-    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}",MODEL="${MODEL:-}",BENCHMARK="${BENCHMARK:-}",RUN_ID="${RUN_ID:-}",N_SEEDS="${N_SEEDS:-3}",N_TRIALS="${N_TRIALS:-10}",PROTOCOL="${PROTOCOL:-holdout_3}",INDEX="${INDEX:-}",SKIP_IF_DONE="${SKIP_IF_DONE:-0}"
+    --parsable
+    --export=ALL,PE_HUB_ROOT="${PE_HUB_ROOT}",STAGE_SCRIPT="${STAGE_SCRIPT}",SMOKE="${SMOKE:-0}",SMOKE_FULL_DATA="${SMOKE_FULL_DATA:-0}",MODEL="${MODEL:-}",BENCHMARK="${BENCHMARK:-}",RUN_ID="${RUN_ID:-}",N_SEEDS="${N_SEEDS:-3}",N_TRIALS="${N_TRIALS:-10}",PROTOCOL="${PROTOCOL:-holdout_3}",INDEX="${INDEX:-}",SKIP_IF_DONE="${SKIP_IF_DONE:-0}",SKIP_IF_TUNED="${SKIP_IF_TUNED:-0}",PRETRAINED_WEIGHTS="${PRETRAINED_WEIGHTS:-}",CELL_LINE="${CELL_LINE:-}",FIXED_HP_JSON="${FIXED_HP_JSON:-}"
     --chdir="${PE_HUB_ROOT}"
 )
 
@@ -134,6 +138,9 @@ if [[ -n "${ARC_GPU_CONSTRAINT:-}" ]]; then
 fi
 if [[ -n "${ARC_MAIL_USER:-}" ]]; then
     SBATCH_ARGS+=(--mail-type=END,FAIL --mail-user="${ARC_MAIL_USER}")
+fi
+if [[ -n "${ARC_DEPENDENCY:-}" ]]; then
+    SBATCH_ARGS+=(--dependency="${ARC_DEPENDENCY}")
 fi
 
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
@@ -145,4 +152,12 @@ fi
 echo "Submitting ${STAGE_SCRIPT}"
 echo "  cluster=${ARC_CLUSTER} partition=${ARC_PARTITION} time=${ARC_TIME} gpus=${ARC_GPUS}"
 echo "  PE_HUB_ROOT=${PE_HUB_ROOT} DEVICE=${DEVICE} SMOKE=${SMOKE:-0}"
-sbatch "${SBATCH_ARGS[@]}" "${EXTRA_SBATCH[@]}" "${SBATCH_SCRIPT}"
+if [[ -n "${ARC_DEPENDENCY:-}" ]]; then
+    echo "  dependency=${ARC_DEPENDENCY}"
+fi
+_SBATCH_OUT="$(sbatch "${SBATCH_ARGS[@]}" "${EXTRA_SBATCH[@]}" "${SBATCH_SCRIPT}")"
+# --parsable → "jobid" or "jobid;cluster"
+SUBMIT_JOB_ID="${_SBATCH_OUT%%;*}"
+export SUBMIT_JOB_ID
+echo "Submitted batch job ${SUBMIT_JOB_ID}${_SBATCH_OUT#${SUBMIT_JOB_ID}}"
+echo "${SUBMIT_JOB_ID}"

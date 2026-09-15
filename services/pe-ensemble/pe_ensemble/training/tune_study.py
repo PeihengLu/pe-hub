@@ -216,6 +216,11 @@ def execute_tuning(
             dict(best.params),
         )
         best_params.update(dict(training.hyperparameters or {}))
+        # Checkpoint IDs are run-specific; keep load_pretrained in the preset but
+        # do not bake a particular weights id into the dataset overlay.
+        preset_hyperparameters = {
+            key: value for key, value in best_params.items() if key != "weights"
+        }
 
         dataset_key = (
             request.dataset_preset_key
@@ -257,7 +262,7 @@ def execute_tuning(
                 preset_path,
                 model_name=training.model_name,
                 dataset_key=dataset_key,
-                hyperparameters=best_params,
+                hyperparameters=preset_hyperparameters,
                 provenance=provenance,
             )
             _log(f"Wrote local dataset preset to {preset_path}", job_id=job_id)

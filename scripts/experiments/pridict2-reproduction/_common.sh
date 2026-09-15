@@ -33,6 +33,10 @@ PE_SYSTEM="${PE_SYSTEM:-pe2}"
 BASE_CELL_LINE="${BASE_CELL_LINE:-hek293t}"
 FT_CELL_LINES="${FT_CELL_LINES:-hek k562}"
 
+# library-diverse author folds are 0..4. After pure CV training, peen’s final
+# export holds out the last fold for early stopping — evaluate on that fold.
+LD_TEST_FOLD="${LD_TEST_FOLD:-4}"
+
 # Stable dataset-name labels (also used as state keys).
 NAME_BASE_L1="${NAME_BASE_L1:-pridict2-repro-base-library1}"
 NAME_BASE_L1C="${NAME_BASE_L1C:-pridict2-repro-base-l1-clinvar}"
@@ -55,6 +59,29 @@ raw = (os.environ.get("PE_HUB_HP_JSON_IN") or "{}").strip() or "{}"
 data = json.loads(raw)
 data["loss_func"] = "MSEloss"
 data["y_ref"] = ["averageedited"]
+print(json.dumps(data, separators=(",", ":")))
+PY
+}
+
+# Merge load_pretrained into a hyperparameters JSON object (scratch vs transfer).
+with_load_pretrained_json() {
+    local raw="${1-}"
+    local flag="${2:?usage: with_load_pretrained_json <json> true|false}"
+    if [[ -z "${raw}" ]]; then
+        raw="{}"
+    fi
+    local py
+    py="$(command -v python 2>/dev/null || command -v python3)"
+    PE_HUB_HP_JSON_IN="${raw}" PE_HUB_LOAD_PRETRAINED="${flag}" "${py}" - <<'PY'
+import json
+import os
+
+raw = (os.environ.get("PE_HUB_HP_JSON_IN") or "{}").strip() or "{}"
+flag = (os.environ.get("PE_HUB_LOAD_PRETRAINED") or "").strip().lower()
+data = json.loads(raw)
+data["load_pretrained"] = flag in ("1", "true", "yes", "on")
+if not data["load_pretrained"]:
+    data.pop("weights", None)
 print(json.dumps(data, separators=(",", ":")))
 PY
 }
@@ -127,6 +154,45 @@ run_peen_capture_weights() {
         echo "Error: peen failed; see ${logfile}" >&2
         exit 1
     fi
+}
+
+# Author CV5 on library-diverse (folds 0–4); no outer random test holdout.
+append_library_diverse_cv_args() {
+    local -n _args="$1"
+    _args+=(
+        --split-strategy cv
+        --cv-folds "${CV_FOLDS}"
+        --use-original-fold
+        --split-random-state "${SPLIT_RANDOM_STATE}"
+    )
+}
+
+# Evaluate registered FT weights on the held-out author fold (default: 4).
+evaluate_library_diverse_test_fold() {
+    local weights_id="$1"
+    local cell="$2"
+    local fold="${3:-${LD_TEST_FOLD}}"
+    local tag="${4:-eval}"
+    local logfile
+    logfile="$(state_path "${tag}_${cell}_fold${fold}.log")"
+
+    local args=(
+        evaluate
+        --model "${MODEL}"
+        --weights "${weights_id}"
+        --benchmark-name "${NAME_FT_PREFIX}-${tag}-${cell}-fold${fold}"
+        --custom-benchmark
+        --study pridict2 --dataset library-diverse
+        --cell-line "${cell}" --pe-system "${PE_SYSTEM}"
+        --split-strategy holdout_2
+        --use-original-fold
+        --original-fold-test-value "${fold}"
+        --device "${DEVICE}"
+        --sync
+    )
+    echo "+ peen ${args[*]}"
+    echo "  (log: ${logfile})"
+    peen "${args[@]}" 2>&1 | tee "${logfile}"
 }
 
 maybe_skip_if_state() {

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Generic Optuna HPO: outer test holdout + 5-fold CV (random group splits).
+# Generic Optuna HPO: 5-fold CV (random group splits or --use-original-fold).
+#
+# Default: optional outer test holdout (--test-pct, default 0.15) + CV on the rest.
+# Pure CV (no outer holdout): NO_OUTER_TEST=1 (or TEST_PCT=).
 #
 # Usage:
 #   ./scripts/hyperparameter/tune_hpo_cv5.sh --model pridict2 \
@@ -7,7 +10,8 @@
 #     --study minsepie --dataset library-insert-set12 \
 #     --cell-line hek293t --pe-system pe2
 #
-# Env: N_TRIALS, DEVICE, CV_FOLDS, TEST_PCT, SMOKE, FIXED_HP_JSON, STUDY_NAME
+# Env: N_TRIALS, DEVICE, CV_FOLDS, TEST_PCT, NO_OUTER_TEST, SMOKE, FIXED_HP_JSON,
+#      STUDY_NAME
 #      SKIP_IF_TUNED=1  # exit early if a dataset preset already exists (needs DATASET_KEY)
 #      DATASET_KEY      # e.g. minsepie/library_insert_set12/hek293t/pe2
 
@@ -24,7 +28,16 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-print_experiment_banner "HPO: 5-fold CV + outer test (random splits)"
+NO_OUTER_TEST="${NO_OUTER_TEST:-0}"
+if [[ "${NO_OUTER_TEST}" == "1" ]]; then
+    TEST_PCT=""
+fi
+
+if [[ -n "${TEST_PCT}" ]]; then
+    print_experiment_banner "HPO: ${CV_FOLDS}-fold CV + outer test_pct=${TEST_PCT}"
+else
+    print_experiment_banner "HPO: ${CV_FOLDS}-fold CV (no outer test holdout)"
+fi
 
 EXTRA_ARGS=("$@")
 STUDY_NAME="${STUDY_NAME:-}"
@@ -70,12 +83,16 @@ TUNE_ARGS=(
     tune
     --split-strategy cv
     --cv-folds "${CV_FOLDS}"
-    --test-pct "${TEST_PCT}"
     --split-random-state "${SPLIT_RANDOM_STATE}"
     --n-trials "${N_TRIALS}"
     --device "${DEVICE}"
-    --notes "experiment: ${CV_FOLDS}-fold CV + test_pct=${TEST_PCT} HPO"
 )
+if [[ -n "${TEST_PCT}" ]]; then
+    TUNE_ARGS+=(--test-pct "${TEST_PCT}")
+    TUNE_ARGS+=(--notes "experiment: ${CV_FOLDS}-fold CV + test_pct=${TEST_PCT} HPO")
+else
+    TUNE_ARGS+=(--notes "experiment: ${CV_FOLDS}-fold CV HPO (no outer test holdout)")
+fi
 append_register_best_weights TUNE_ARGS
 
 if [[ -n "${STUDY_NAME}" ]]; then

@@ -5,9 +5,10 @@ Model weight sets used by the pe-ensemble service live here.
 - **Vendor / plugin weights** are **versioned in this repository** and indexed in
   `registry.json`.
 - **Locally trained weights** (`source: trained`) stay on disk for runtime use
-  but are **gitignored**, indexed in `local_registry.json`. To version a trained
-  set across laptop ↔ ARC: `dvc add` that directory (IDs
-  `model__scope__YYYYMMDD__shortid` only; vendor blobs must stay in git).
+  but are **gitignored**, indexed in `local_registry.json`. Copy a trained set
+  laptop ↔ ARC with rsync (IDs `model__scope__YYYYMMDD__shortid` only; vendor
+  blobs must stay in git). See
+  [`scripts/cluster/oxford-arc/README.md`](../../../scripts/cluster/oxford-arc/README.md#sync-artifacts-laptop-to-arc).
 
 Vendor pretrained weights were moved here from `vendor/models`; new weights from
 `POST /train` are registered into the same tree under structured IDs.

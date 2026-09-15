@@ -3,6 +3,9 @@
 # Requires state: base_library1, base_l1_clinvar
 # Writes: ft_base_library1_<cell>, ft_base_l1_clinvar_<cell>
 #
+# Protocol: author 5-fold CV (no outer random holdout), then evaluate each
+# registered model on LD_TEST_FOLD (default 4).
+#
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/06_finetune_transfer.sh
 #   SKIP_IF_DONE=1 SMOKE=1 DEVICE=mps ./.../06_finetune_transfer.sh
@@ -13,12 +16,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 require_peen
 
-print_repro_banner "06 Fine-tune transfer on library-diverse"
+print_repro_banner "06 Fine-tune transfer on library-diverse (author CV5)"
 
 BASE_L1="$(read_state base_library1)"
 BASE_L1C="$(read_state base_l1_clinvar)"
 echo "base_library1 weights:   ${BASE_L1}"
 echo "base_l1_clinvar weights: ${BASE_L1C}"
+echo "LD_TEST_FOLD (post-train evaluate): ${LD_TEST_FOLD}"
 echo ""
 
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
@@ -50,15 +54,21 @@ finetune_one() {
         --dataset-name "${NAME_FT_PREFIX}-${base_key}-${cell}"
         --study pridict2 --dataset library-diverse
         --cell-line "${cell}" --pe-system "${PE_SYSTEM}"
-        --split-strategy holdout_3
-        --train-pct 0.7 --val-pct 0.15 --test-pct 0.15
-        --split-random-state "${SPLIT_RANDOM_STATE}"
         --device "${DEVICE}"
         --pretrained-weights "${pretrained}"
         --hyperparameters-json "${HP_JSON}"
-        --notes "pridict2-reproduction: FT ${base_key} → library-diverse ${cell}; MSEloss"
+        --notes "pridict2-reproduction: FT ${base_key} → library-diverse ${cell}; author CV5; MSEloss"
     )
+    append_library_diverse_cv_args args
+
     run_peen_capture_weights "${state_key}" "${args[@]}"
+
+    echo "---- evaluate ${state_key} on author fold ${LD_TEST_FOLD} ----"
+    evaluate_library_diverse_test_fold \
+        "$(cat "$(state_path "${state_key}")")" \
+        "${cell}" \
+        "${LD_TEST_FOLD}" \
+        "${state_key}"
 }
 
 for cell in "${lines[@]}"; do

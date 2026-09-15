@@ -91,12 +91,14 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
     "deepprime": SearchSpaceSpec(
         metric="cv.neg_mean_best_val_loss",
         direction="maximize",
-        fixed={"load_pretrained": False},
+        # load_pretrained is script-controlled (--pretrained-weights /
+        # --fixed-hyperparameters-json), not part of the Optuna space.
+        # Epoch budget uses baseline max_epochs; early stopping is primary.
+        fixed={},
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),
             "batch_size": CategoricalParam((64, 128, 256)),
-            "epochs": IntParam(3, 20),
             "hidden_size": CategoricalParam((64, 128, 256)),
             "num_layers": CategoricalParam((1, 2, 3)),
         },
@@ -104,12 +106,11 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
     "oped": SearchSpaceSpec(
         metric="cv.mean_val_spearman",
         direction="maximize",
-        fixed={"load_pretrained": False},
+        fixed={},
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),
             "batch_size": CategoricalParam((64, 128, 256)),
-            "epoch_num": IntParam(20, 100),
             "embedding_size": CategoricalParam((32, 64, 128)),
             "ffn_dim": CategoricalParam((1024, 2048)),
             "encoder_layers": CategoricalParam((4, 6)),
@@ -121,8 +122,8 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
         metric="cv.mean_averageedited_spearman",
         direction="maximize",
         # assemb_opt/annot_embed/z_dim are hardcoded or derived in the wrapper.
+        # load_pretrained is script-controlled (scratch vs transfer HPO).
         fixed={
-            "load_pretrained": False,
             "loss_func": "MSEloss",
             "y_ref": ["averageedited"],
         },
@@ -130,7 +131,6 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),
             "batch_size": CategoricalParam((128, 256, 512, 1024)),
-            "num_epochs": IntParam(10, 30),
             "embed_dim": CategoricalParam((32, 64, 128)),
             "num_hidden_layers": CategoricalParam((1, 2, 3)),
             "p_dropout": FloatParam(0.05, 0.45),
@@ -209,7 +209,7 @@ def materialize_hyperparameters(
 
     Optuna ``best.params`` only contains suggested keys. Call this before writing
     presets or launching a final train so aliases (e.g. OPED ``ffn_dim``) and
-    fixed flags (e.g. ``load_pretrained=False``) are applied.
+    search-space fixed keys (e.g. PRIDICT2 ``loss_func``) are applied.
     """
     space = get_search_space(model_name)
     suggested: Dict[str, Any] = dict(space.fixed)

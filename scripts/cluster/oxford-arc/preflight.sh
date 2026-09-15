@@ -134,23 +134,22 @@ capture_weights() {
 run "1) peen devices / models" peen devices
 run "1b) peen models" peen models
 
-# --- Single-sheet tune (same shape as 01_tune_base_library1) ---
+# --- Single-sheet tune (same shape as 01_tune_base_library1: holdout_3) ---
 capture_weights base_library1_tune \
     tune \
     --model "${MODEL}" \
     --dataset-name "preflight-base-library1" \
     --study pridict1 --dataset library1 \
     --cell-line "${BASE_CELL}" --pe-system "${PE_SYSTEM}" \
-    --split-strategy cv \
-    --cv-folds "${CV_FOLDS}" \
-    --test-pct 0.2 \
+    --split-strategy holdout_3 \
+    --train-pct 0.7 --val-pct 0.15 --test-pct 0.15 \
     --split-random-state 42 \
     --n-trials "${N_TRIALS}" \
     --study-name "preflight__base_library1" \
     --device "${DEVICE}" \
     --fixed-hyperparameters-json "${FIXED_HP_JSON}" \
     --register-best-weights \
-    --notes "preflight: single-sheet HPO"
+    --notes "preflight: single-sheet holdout_3 HPO"
 
 if [[ "${SMOKE}" == "1" ]]; then
     echo ""

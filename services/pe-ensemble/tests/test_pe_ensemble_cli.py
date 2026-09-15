@@ -143,12 +143,14 @@ def test_build_tuning_request_wraps_training():
         split_random_state=42,
         merge=False,
         fixed_hyperparameters_json=None,
+        pretrained_weights=None,
         model_kwargs_json=None,
         notes=None,
         device="cpu",
         n_trials=3,
         study_name=None,
         study_storage=None,
+        dataset_preset_key=None,
         write_preset=None,
         no_write_preset=True,
         register_best_weights=False,
@@ -157,6 +159,52 @@ def test_build_tuning_request_wraps_training():
     assert request.n_trials == 3
     assert request.training.model_name == "deepprime"
     assert request.no_write_preset is True
+    assert request.training.hyperparameters is None
+
+
+def test_build_tuning_request_pretrained_weights_sets_load_pretrained():
+    args = argparse.Namespace(
+        model="pridict2",
+        dataset_source="pe-db",
+        dataset_name="library-diverse",
+        study=["pridict2"],
+        dataset=["library-diverse"],
+        cell_line=["hek"],
+        pe_system=["pe2"],
+        edit_type=[],
+        edit_length=[],
+        edit_scope=[],
+        experimental_method=[],
+        target_context=[],
+        scaffold_name=[],
+        edit_efficiency_min=None,
+        edit_efficiency_max=None,
+        split_strategy="cv",
+        train_pct=None,
+        val_pct=None,
+        test_pct=0.15,
+        cv_folds=5,
+        use_original_fold=False,
+        original_fold_test_value=-1.0,
+        split_random_state=42,
+        merge=False,
+        fixed_hyperparameters_json='{"loss_func":"MSEloss"}',
+        pretrained_weights="pridict2__custom__base",
+        model_kwargs_json=None,
+        notes=None,
+        device="cpu",
+        n_trials=2,
+        study_name=None,
+        study_storage=None,
+        dataset_preset_key=None,
+        write_preset=None,
+        no_write_preset=True,
+        register_best_weights=False,
+    )
+    request = build_tuning_request(args)
+    assert request.training.hyperparameters["load_pretrained"] is True
+    assert request.training.hyperparameters["weights"] == "pridict2__custom__base"
+    assert request.training.hyperparameters["loss_func"] == "MSEloss"
 
 
 def test_parse_ensemble_member():

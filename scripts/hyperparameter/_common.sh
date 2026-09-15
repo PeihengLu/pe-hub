@@ -25,6 +25,7 @@ require_peen() {
 N_TRIALS="${N_TRIALS:-20}"
 DEVICE="${DEVICE:-auto}"
 CV_FOLDS="${CV_FOLDS:-5}"
+# Outer holdout for tune_hpo_cv5.sh. Empty or NO_OUTER_TEST=1 → pure CV.
 TEST_PCT="${TEST_PCT:-0.15}"
 SMOKE="${SMOKE:-0}"
 SPLIT_RANDOM_STATE="${SPLIT_RANDOM_STATE:-42}"
@@ -48,7 +49,9 @@ append_register_best_weights() {
 if [[ "${SMOKE}" == "1" ]]; then
     N_TRIALS="${N_TRIALS_SMOKE:-1}"
     CV_FOLDS="${CV_FOLDS_SMOKE:-2}"
-    TEST_PCT="${TEST_PCT_SMOKE:-0.2}"
+    if [[ "${NO_OUTER_TEST:-0}" != "1" && -n "${TEST_PCT}" ]]; then
+        TEST_PCT="${TEST_PCT_SMOKE:-0.2}"
+    fi
 fi
 
 # Datasheet nested benchmark: N folds or random seeds (defaults to CV_FOLDS).
@@ -63,7 +66,11 @@ print_experiment_banner() {
     echo "n_trials:  ${N_TRIALS}"
     echo "device:    ${DEVICE}"
     echo "cv_folds:  ${CV_FOLDS}"
-    echo "test_pct:  ${TEST_PCT}  (ignored when --use-original-fold uses author -1)"
+    if [[ -z "${TEST_PCT}" || "${NO_OUTER_TEST:-0}" == "1" ]]; then
+        echo "test_pct:  (none — pure CV)"
+    else
+        echo "test_pct:  ${TEST_PCT}  (ignored when --use-original-fold uses author -1)"
+    fi
     if [[ "${SMOKE:-0}" == "1" ]]; then
         echo "SMOKE:     1 (mini data unless SMOKE_FULL_DATA=1)"
     fi

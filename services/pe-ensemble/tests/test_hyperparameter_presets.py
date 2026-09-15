@@ -234,7 +234,7 @@ def test_suggest_trial_hyperparameters_no_scheduler():
     suggested = suggest_trial_hyperparameters("oped", _Trial())
     assert "scheduler" not in suggested
     assert "scheduler_kwargs" not in suggested
-    assert suggested["load_pretrained"] is False
+    assert "load_pretrained" not in suggested
     assert suggested["hidden_size"] == [1024, 1024, 1024]
 
 
@@ -245,9 +245,12 @@ def test_pridict2_search_space_omits_derived_architecture_knobs():
     assert "annot_embed" not in space.fixed
     assert "annot_embed" not in space.params
     assert "z_dim" not in space.params
-    assert space.fixed["load_pretrained"] is False
+    assert "load_pretrained" not in space.fixed
+    assert "load_pretrained" not in space.params
     assert space.fixed["loss_func"] == "MSEloss"
     assert space.fixed["y_ref"] == ["averageedited"]
+    assert "num_epochs" not in space.fixed
+    assert "num_epochs" not in space.params
 
     class _Trial:
         def suggest_float(self, name, low, high, log=False):
@@ -263,9 +266,24 @@ def test_pridict2_search_space_omits_derived_architecture_knobs():
     assert suggested["embed_dim"] == 128
     assert suggested["loss_func"] == "MSEloss"
     assert suggested["y_ref"] == ["averageedited"]
+    assert "num_epochs" not in suggested
+    assert "load_pretrained" not in suggested
     assert "assemb_opt" not in suggested
     assert "annot_embed" not in suggested
     assert "z_dim" not in suggested
+
+
+def test_epoch_budgets_are_not_in_search_space():
+    for model, epoch_key in (
+        ("deepprime", "epochs"),
+        ("oped", "epoch_num"),
+        ("pridict2", "num_epochs"),
+    ):
+        space = get_search_space(model)
+        assert epoch_key not in space.params
+        assert epoch_key not in space.fixed
+        materialized = materialize_hyperparameters(model, {"lr": 1e-4})
+        assert epoch_key not in materialized
 
 
 def test_search_space_fingerprint_is_stable():
@@ -294,18 +312,19 @@ def test_materialize_hyperparameters_applies_fixed_and_oped_aliases():
             "lr": 1e-4,
         },
     )
-    assert oped["load_pretrained"] is False
     assert oped["hidden_size"] == [1024, 1024, 1024]
     assert oped["num_encoder_layers"] == [4, 4, 4]
     assert oped["drop_out"] == 0.2
     assert "ffn_dim" not in oped
     assert "encoder_layers" not in oped
+    assert "load_pretrained" not in oped
 
     deepprime = materialize_hyperparameters(
         "deepprime",
-        {"hidden_size": 256, "num_layers": 2, "epochs": 10},
+        {"hidden_size": 256, "num_layers": 2},
     )
-    assert deepprime["load_pretrained"] is False
+    assert "load_pretrained" not in deepprime
+    assert "epochs" not in deepprime
     assert deepprime["hidden_size"] == 256
 
 

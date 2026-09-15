@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stage 01 — Optuna HPO for PRIDICT2 base on PRIDICT library1
-# (random 5-fold CV + outer test; no author folds).
+# (holdout_3 70/15/15; no author folds were published). From-scratch.
 #
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh
@@ -20,7 +20,17 @@ DATASET_KEY="$(echo "${DATASET_KEY}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')"
 print_repro_banner "01 Tune base: PRIDICT library1"
 maybe_skip_if_tuned "${MODEL}" "${DATASET_KEY}"
 
-exec "${HP_DIR}/tune_hpo_cv5.sh" \
+FIXED_HP_JSON="${FIXED_HP_JSON:-}"
+if [[ "${SMOKE}" == "1" && -z "${FIXED_HP_JSON}" ]]; then
+    FIXED_HP_JSON="$(smoke_fixed_hp_json)"
+elif [[ -z "${FIXED_HP_JSON}" ]]; then
+    FIXED_HP_JSON='{}'
+fi
+FIXED_HP_JSON="$(force_mse_loss_json "${FIXED_HP_JSON}")"
+FIXED_HP_JSON="$(with_load_pretrained_json "${FIXED_HP_JSON}" false)"
+export FIXED_HP_JSON
+
+exec "${HP_DIR}/tune_hpo_holdout3.sh" \
     --model "${MODEL}" \
     --dataset-name "${NAME_BASE_L1}" \
     --study pridict1 --dataset library1 \

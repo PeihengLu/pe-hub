@@ -36,6 +36,7 @@ elif [[ -z "${FIXED_HP_JSON}" ]]; then
 fi
 # ClinVar / merge path is edit-efficiency only — keep MSEloss explicit for Optuna.
 FIXED_HP_JSON="$(force_mse_loss_json "${FIXED_HP_JSON}")"
+FIXED_HP_JSON="$(with_load_pretrained_json "${FIXED_HP_JSON}" false)"
 
 TUNE_ARGS=(
     tune

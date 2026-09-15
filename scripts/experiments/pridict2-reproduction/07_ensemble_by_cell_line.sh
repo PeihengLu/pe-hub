@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stage 07 — Mean-ensemble the two fine-tuned models per cell line.
 # Requires: ft_base_library1_<cell>, ft_base_l1_clinvar_<cell>
-# Evaluates on library-diverse for that cell line (random holdout; no author folds).
+# Evaluates on library-diverse author fold LD_TEST_FOLD (default 4).
 #
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/07_ensemble_by_cell_line.sh
@@ -29,7 +29,7 @@ for cell in "${lines[@]}"; do
         continue
     fi
 
-    echo "==== Ensemble ${cell} ===="
+    echo "==== Ensemble ${cell} (test fold ${LD_TEST_FOLD}) ===="
     echo "  member library1-base FT:   ${w90}"
     echo "  member L1+ClinVar-base FT: ${w390}"
 
@@ -42,8 +42,8 @@ for cell in "${lines[@]}"; do
         --study pridict2 --dataset library-diverse
         --cell-line "${cell}" --pe-system "${PE_SYSTEM}"
         --split-strategy holdout_2
-        --train-pct 0.8 --test-pct 0.2
-        --no-use-original-fold
+        --use-original-fold
+        --original-fold-test-value "${LD_TEST_FOLD}"
         --split-random-state "${SPLIT_RANDOM_STATE}"
         --device "${DEVICE}"
         --sync

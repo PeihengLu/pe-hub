@@ -36,8 +36,8 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    git submodule update --init --recursive
    ```
 
-   Build datasets on ARC with `pedb init`. Pull shared reference genomes with
-   `dvc pull` — see [DVC on ARC](#dvc-selective-artifacts).
+   Build datasets on ARC with `pedb init`. Sync reference genomes and other
+   bulky artifacts with [rsync](#sync-artifacts-laptop-to-arc) from the laptop.
 2. On **htc-login**, start an interactive GPU shell and bootstrap:
 
    ```bash
@@ -61,49 +61,55 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
    `No module named 'pe_common'`. Do **not** rely on `conda init` in `.bashrc`
    for batch jobs.
 
-## DVC (selective artifacts)
+## Sync artifacts (laptop to ARC)
 
-`datasets/raw/` and vendor/plugin blobs under `services/pe-ensemble/weights/`
-stay in **git**. Use DVC only for bulky artifacts you deliberately choose to
-keep — not a bulk sync of every run.
-
-| In git already | Worth `dvc add` when… | Usually skip |
-|----------------|----------------------|--------------|
-| `datasets/raw/` | — | — |
-| Vendor / plugin weights | — | — |
-| `datasets/reference/` | always (already tracked: `datasets/reference.dvc`) | — |
-| Trained weights `*__*__*__*/` | final/best run you want to evaluate or compare | smoke, failed, superseded trials |
-| `training_presets_local/*.yaml` | HPO finished; want reproducible training | will re-tune anyway |
-| Benchmark results | run you care about (summary CSV, eval JSONL) | intermediate matrix cells |
-| `tuning_studies/*.db` | resuming Optuna on another machine | presets + weights are enough |
-| `scripts/experiments/*/state/` | — | tiny ID files; recreate from logs |
-| Standardized/formatted caches | — | regenerate with `pedb init` |
-
-Store path: **`/data/<ARC_PROJECT>/<USER>/dvc-store`** (same layout as
-`$DATA/pe-hub`). Run `setup_dvc_remote.sh` once per machine so gitignored
-`.dvc/config.local` points at your store (local path on ARC, SSH from laptop).
+Run these **on the laptop** (ARC cannot SSH back into WSL). They rsync every
+DVC-tracked folder (paths from repo `*.dvc` files) plus gitignored `env.sh`
+in **one** rsync, so you type the SSH password once. No git commits.
 
 ```bash
-conda activate pe-hub
-pip install 'dvc[ssh]'   # once; setup_interactive.sh does this on ARC
-ARC_USER=you ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
+# VPN, or ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config
+./scripts/cluster/oxford-arc/pull_from_arc.sh            # prompts for username
+./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973   # ARC → laptop
+./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973     # laptop → ARC
 
-# Shared reference genomes (already in repo):
-dvc pull datasets/reference.dvc
-
-# After a run you want to keep (example — one weight set):
-dvc add services/pe-ensemble/weights/pridict2/pridict2__custom__20260901__abc123
-dvc push
-git add services/pe-ensemble/weights/pridict2/pridict2__custom__20260901__abc123.dvc
-git commit -m 'Track pridict2 benchmark weights'
-git push
-
-# On the other machine:
-git pull && dvc pull
+DRY_RUN=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+LIST=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh     # show paths, no SSH
+SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973
+DELETE=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973   # dest extras removed
 ```
 
-Off-campus SSH: put `ProxyJump gateway.arc.ox.ac.uk` for `htc-login` in
-`~/.ssh/config` (key auth; DVC’s SSH client is picky about password/2FA jumps).
+`pull_env_from_arc.sh` still exists as `ONLY=env` (env.sh only).
+
+Off-campus: put `ProxyJump gateway.arc.ox.ac.uk` for `htc-login` in `~/.ssh/config`.
+
+Do not rsync the whole repo. Code stays on `git pull`. Regenerable caches
+(`datasets/exported/`, `standardized/`, `formatted/`, conda envs) stay on each
+machine.
+
+## DVC (optional pointers)
+
+`datasets/raw/` and vendor/plugin blobs under `services/pe-ensemble/weights/`
+stay in **git**. Existing `*.dvc` files are the rsync path list. You do **not**
+need `dvc add` / `dvc push` / pointer commits to copy those folders — use
+[rsync](#sync-artifacts-laptop-to-arc).
+
+| In git already | In rsync set today | Usually skip |
+|----------------|--------------------|--------------|
+| `datasets/raw/` | — | — |
+| Vendor / plugin weights | — | — |
+| `datasets/reference/` | yes (`datasets/reference.dvc`) | — |
+| `/results`, `/slurm_output` | yes (root `*.dvc`) | — |
+| `scripts/experiments/scratch-benchmark/results/` | yes | — |
+| Trained weights `*__*__*__*/` | add a `.dvc` (or rsync that path yourself) | smoke, failed trials |
+| `training_presets_local/*.yaml` | same | will re-tune anyway |
+| `tuning_studies/*.db` | same | presets + weights are enough |
+| Standardized/formatted caches | — | regenerate with `pedb init` |
+
+To add another folder to the rsync set, `dvc add` it once so a `*.dvc` pointer
+exists (you can leave the DVC store unused). Or pass `ONLY=` / extra rsync.
 
 ## Submit jobs
 
@@ -128,6 +134,13 @@ SMOKE=1 ARC_PARTITION=short ARC_TIME=01:00:00 \
 ```
 
 Other pridict2-reproduction stages use the same pattern (`02_…`, `04_…`, `05_…`, …).
+
+**Full reproduction with SLURM dependencies** (`afterok` chain: tune ∥ train → FT → ensemble):
+
+```bash
+./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
+# ARC_DEPENDENCY=afterok:JOBID ./scripts/cluster/oxford-arc/submit.sh 03_train_base_library1.sh
+```
 
 **Scratch benchmark** (DeepPrime / OPED / PRIDICT2 × 7 datasets × 3 seeds; 10 Optuna trials + final train + eval per short L40S job):
 
@@ -158,38 +171,35 @@ tail -f $PE_HUB_ROOT/slurm-<jobid>.out
 
 ## Artifacts
 
-Most outputs live under the repo on `$DATA` and are gitignored. Only version
-what you would regret losing — see [DVC table](#dvc-selective-artifacts) above.
+Most outputs live under the repo on `$DATA` and are gitignored. Copy them with
+[rsync](#sync-artifacts-laptop-to-arc); do not commit `.dvc` pointers for routine
+laptop ↔ ARC sync.
 
 | What | Where |
 |------|--------|
-| Reference genomes | `datasets/reference/` (`datasets/reference.dvc`) |
+| Reference genomes | `datasets/reference/` (rsync via `datasets/reference.dvc`) |
 | HPO presets | `services/pe-ensemble/config/training_presets_local/` |
 | Trained weights | `services/pe-ensemble/weights/*__*__*__*/` |
 | Benchmark results | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/` |
+| Slurm logs / eval dumps | `slurm_output/`, `results/` |
 | Shipped defaults | `services/pe-ensemble/config/training_presets/` (git) |
 
 Override roots with `WEIGHTS_ROOT`, `TUNING_STUDIES_ROOT`, `TRAINING_PRESETS_ROOT`.
 
 ## Bring results home
 
-Pick what to keep, then `dvc add` + `dvc push` on ARC and commit the `.dvc`
-pointers. On laptop: `git pull && dvc pull`.
+On the laptop:
 
 ```bash
-# example: one weight set + its preset YAML
-dvc add services/pe-ensemble/weights/deepprime/deepprime__custom__20260901__abc123
-dvc add services/pe-ensemble/config/training_presets_local/deepprime.yaml
-dvc push
-git add '*.dvc' && git commit -m 'deepprime library1 benchmark' && git push
-```
-
-Pull the gitignored cluster `env.sh` (partition, paths, modules) from ARC:
-
-```bash
-./scripts/cluster/oxford-arc/pull_env_from_arc.sh          # prompts for username
+./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+# env.sh only:
 ./scripts/cluster/oxford-arc/pull_env_from_arc.sh wolf6973
 ```
+
+That covers current DVC-tracked trees (`datasets/reference/`, `results/`,
+`slurm_output/`, scratch-benchmark `results/`) and cluster `env.sh`. For trained
+weights or `training_presets_local/` that are not yet in a `*.dvc` file, rsync
+those paths once or add a pointer so they join the set.
 
 Only if you deliberately publish a shared baseline:
 
@@ -218,7 +228,7 @@ Each scratch-benchmark GPU job is **one seed**: 10 Optuna trials plus `register_
 - [ ] Account can reach `htc-login` (VPN or gateway)
 - [ ] Checkout under `$DATA`; Anaconda module + env prefix under `$DATA/envs/`
 - [ ] `peen devices` shows CUDA on an interactive GPU allocation
-- [ ] `datasets/` prepared (`pedb init`; `dvc pull datasets/reference.dvc` for genomes)
+- [ ] `datasets/` prepared (`pedb init`; `pull_from_arc.sh` for genomes)
 - [ ] **Local smoke passed** (mini data, 1 trial): `SMOKE=1 ./scripts/experiments/pridict2-reproduction/01_tune_base_library1.sh`
 - [ ] **Local preflight** (optional full pipeline on mini data): `./scripts/cluster/oxford-arc/preflight.sh`
 - [ ] `env.sh` points at the checkout
