@@ -55,21 +55,42 @@ echo "RUN_ID: ${RUN_ID}"
 echo "protocol: ${PROTOCOL} × ${N_SEEDS} seeds × ${N_TRIALS} trials"
 echo ""
 
+# Build per-job env: always pin cell identity; forward SLURM overrides only when set
+# so we do not clobber env.sh defaults with empty strings.
+_matrix_submit() {
+    local -a env_prefix=(
+        _ARC_MATRIX_CELL=1
+        MODEL="${model}"
+        BENCHMARK="${bench}"
+        RUN_ID="${RUN_ID}"
+        SKIP_IF_DONE="${SKIP_IF_DONE:-0}"
+    )
+    if [[ -n "${INDEX:-}" ]]; then
+        env_prefix+=(INDEX="${INDEX}")
+    fi
+    local key
+    for key in ARC_CLUSTER ARC_PARTITION ARC_TIME ARC_GPUS ARC_GPU_CONSTRAINT ARC_CPUS ARC_MEM; do
+        if [[ -n "${!key:-}" ]]; then
+            env_prefix+=("${key}=${!key}")
+        fi
+    done
+    env "${env_prefix[@]}" "${ARC_SUBMIT}" "${STAGE}"
+}
+
 while IFS= read -r row; do
     IFS='|' read -r bench _study _dataset <<< "${row}"
     for model in "${MODELS_ARR[@]}"; do
         if [[ "${SUBMIT_SEEDS}" == "1" ]]; then
             for index in $(seq 0 $((N_SEEDS - 1))); do
                 echo "--- ${model} @ ${bench} seed_index=${index} ---"
-                _ARC_MATRIX_CELL=1 MODEL="${model}" BENCHMARK="${bench}" INDEX="${index}" RUN_ID="${RUN_ID}" \
-                    "${ARC_SUBMIT}" "${STAGE}"
+                INDEX="${index}" _matrix_submit
                 SUBMITTED=$((SUBMITTED + 1))
                 echo ""
             done
         else
             echo "--- ${model} @ ${bench} (all ${N_SEEDS} seeds) ---"
-            _ARC_MATRIX_CELL=1 MODEL="${model}" BENCHMARK="${bench}" RUN_ID="${RUN_ID}" \
-                "${ARC_SUBMIT}" "${STAGE}"
+            unset INDEX || true
+            _matrix_submit
             SUBMITTED=$((SUBMITTED + 1))
             echo ""
         fi

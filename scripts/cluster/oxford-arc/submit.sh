@@ -35,6 +35,22 @@
 set -euo pipefail
 
 ARC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Preserve caller SLURM/device overrides across env.sh. Some checkouts assign
+# ARC_PARTITION/ARC_TIME unconditionally (without ${VAR:-default}), which would
+# otherwise ignore prefix env on: ARC_TIME=24:00:00 ./submit.sh …
+_SAVE_ARC_KEYS=(
+    ARC_CLUSTER ARC_PARTITION ARC_TIME ARC_GPUS ARC_GPU_CONSTRAINT
+    ARC_CPUS ARC_MEM ARC_MAIL_USER DEVICE
+)
+for _k in "${_SAVE_ARC_KEYS[@]}"; do
+    if [[ -n "${!_k+x}" ]]; then
+        printf -v "_SAVE_${_k}" '%s' "${!_k}"
+    else
+        unset "_SAVE_${_k}" 2>/dev/null || true
+    fi
+done
+
 if [[ -f "${ARC_DIR}/env.sh" ]]; then
     # shellcheck source=./env.sh
     source "${ARC_DIR}/env.sh"
@@ -43,6 +59,18 @@ else
     # shellcheck source=./env.sh.example
     source "${ARC_DIR}/env.sh.example"
 fi
+
+for _k in "${_SAVE_ARC_KEYS[@]}"; do
+    _sk="_SAVE_${_k}"
+    if [[ -n "${!_sk+x}" ]]; then
+        export "${_k}=${!_sk}"
+    fi
+done
+unset _k _sk _SAVE_ARC_KEYS
+for _k in ARC_CLUSTER ARC_PARTITION ARC_TIME ARC_GPUS ARC_GPU_CONSTRAINT ARC_CPUS ARC_MEM ARC_MAIL_USER DEVICE; do
+    unset "_SAVE_${_k}" 2>/dev/null || true
+done
+unset _k
 
 STAGE_SCRIPT="${1:?Usage: $0 <stage_script.sh> [-- extra sbatch args]}"
 shift || true
