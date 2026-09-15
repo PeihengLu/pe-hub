@@ -70,8 +70,9 @@ for cell in "${lines[@]}"; do
         continue
     fi
 
-    set +o pipefail
+    set +e
     STUDY_NAME="pridict2__repro_ft_library_diverse_${cell}" \
+        PYTHONUNBUFFERED=1 \
         "${HP_DIR}/tune_hpo_cv5.sh" \
         --model "${MODEL}" \
         --dataset-name "${NAME_FT_PREFIX}-library-diverse-${cell}" \
@@ -79,22 +80,24 @@ for cell in "${lines[@]}"; do
         --cell-line "${cell}" --pe-system "${PE_SYSTEM}" \
         --use-original-fold \
         --pretrained-weights "${PRETRAINED_WEIGHTS}" \
-        2>&1 | tee "${logfile}"
-    tune_rc="${PIPESTATUS[0]}"
-    set -o pipefail
+        >"${logfile}" 2>&1
+    tune_rc=$?
+    set -e
 
     if [[ "${tune_rc}" -ne 0 ]]; then
         echo "Error: tune failed for ${cell}; see ${logfile}" >&2
+        tail -n 40 "${logfile}" >&2 || true
         exit 1
     fi
 
-    if ! extract_weights_id < "${logfile}" > "$(state_path "${state_key}.tmp")"; then
+    if ! extract_weights_id "${logfile}" > "$(state_path "${state_key}.tmp")"; then
         if grep -qE 'SKIP_IF_TUNED|already (tuned|exists)' "${logfile}"; then
             echo "Tune skipped (preset exists); no new weights_id to evaluate."
             echo ""
             continue
         fi
         echo "Error: no weights_id from tune for ${cell}; see ${logfile}" >&2
+        tail -n 40 "${logfile}" >&2 || true
         exit 1
     fi
     mv "$(state_path "${state_key}.tmp")" "$(state_path "${state_key}")"

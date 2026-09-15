@@ -109,13 +109,24 @@ read_state() {
     cat "${path}"
 }
 
-# Extract the last JSON object's weights_id from peen stdout.
+# Extract the last JSON object's weights_id from a peen log file.
+# Must take a file path: `python - <<EOF` would consume stdin as the program,
+# so a piped/redirected log is never read (always "no weights_id").
 extract_weights_id() {
+    local log_file="${1:?usage: extract_weights_id <logfile>}"
     local py
     py="$(command -v python 2>/dev/null || command -v python3)"
-    "${py}" - <<'PY'
+    if [[ -z "${py}" ]]; then
+        echo "Error: python not found for extract_weights_id" >&2
+        return 1
+    fi
+    if [[ ! -f "${log_file}" ]]; then
+        echo "Error: peen log not found: ${log_file}" >&2
+        return 1
+    fi
+    "${py}" -c '
 import json, sys
-text = sys.stdin.read()
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 decoder = json.JSONDecoder()
 last = None
 idx = 0
@@ -135,24 +146,80 @@ if not last:
     sys.stderr.write("Error: no weights_id found in peen output\n")
     sys.exit(1)
 print(last)
-PY
+' "${log_file}"
+}
+
+# Newest peen train job dir (for debugging empty capture logs).
+latest_train_job_dir() {
+    local root="${TRAINING_JOBS_ROOT:-}"
+    if [[ -z "${root}" ]]; then
+        root="${EXP_DIR}/../../../services/pe-ensemble/jobs"
+    fi
+    root="$(cd "${root}" 2>/dev/null && pwd || true)"
+    [[ -n "${root}" && -d "${root}" ]] || return 0
+    local newest=""
+    newest="$(ls -td "${root}"/*/manifest.json 2>/dev/null | head -1 || true)"
+    if [[ -n "${newest}" ]]; then
+        dirname "${newest}"
+    fi
 }
 
 run_peen_capture_weights() {
     # Usage: run_peen_capture_weights <state_key> peen args...
+    # Write peen output to the log file first (no pipe). Piping peen|tee|extract
+    # can SIGPIPE peen if extract fails, leaving an empty log and no job hint.
     local state_key="$1"
     shift
-    local logfile
+    local logfile rc
     logfile="$(state_path "${state_key}.log")"
     echo "+ peen $*"
     echo "  (log: ${logfile})"
-    if peen "$@" 2>&1 | tee "${logfile}" | extract_weights_id > "$(state_path "${state_key}.tmp")"; then
-        mv "$(state_path "${state_key}.tmp")" "$(state_path "${state_key}")"
-        echo "Wrote state ${state_key}=$(cat "$(state_path "${state_key}")")"
-    else
-        rm -f "$(state_path "${state_key}.tmp")"
-        echo "Error: peen failed; see ${logfile}" >&2
+
+    set +e
+    PYTHONUNBUFFERED=1 peen "$@" >"${logfile}" 2>&1
+    rc=$?
+    set -e
+
+    if [[ "${rc}" -ne 0 ]]; then
+        echo "Error: peen exited ${rc}; see ${logfile}" >&2
+        if [[ -s "${logfile}" ]]; then
+            echo "---- tail ${logfile} ----" >&2
+            tail -n 40 "${logfile}" >&2 || true
+        else
+            echo "  (log empty)" >&2
+        fi
+        _hint_train_job_logs >&2
         exit 1
+    fi
+
+    if ! extract_weights_id "${logfile}" > "$(state_path "${state_key}.tmp")"; then
+        echo "Error: peen finished but no weights_id in ${logfile}" >&2
+        if [[ -s "${logfile}" ]]; then
+            echo "---- tail ${logfile} ----" >&2
+            tail -n 40 "${logfile}" >&2 || true
+        fi
+        _hint_train_job_logs >&2
+        rm -f "$(state_path "${state_key}.tmp")"
+        exit 1
+    fi
+    mv "$(state_path "${state_key}.tmp")" "$(state_path "${state_key}")"
+    echo "Wrote state ${state_key}=$(cat "$(state_path "${state_key}")")"
+}
+
+_hint_train_job_logs() {
+    local job_dir root
+    root="${TRAINING_JOBS_ROOT:-${EXP_DIR}/../../../services/pe-ensemble/jobs}"
+    # Normalize .. in path for display
+    root="$(cd "${root}" 2>/dev/null && pwd || echo "${root}")"
+    job_dir="$(latest_train_job_dir || true)"
+    echo "  TRAINING_JOBS_ROOT: ${root}"
+    if [[ -n "${job_dir}" ]]; then
+        echo "  latest train job: ${job_dir}"
+        echo "  try: cat ${job_dir}/manifest.json"
+        echo "       tail -n 100 ${job_dir}/train.log"
+    else
+        echo "  no ${root}/*/manifest.json found"
+        echo "  (peen may have died before creating a train job)"
     fi
 }
 
