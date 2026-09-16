@@ -6,7 +6,7 @@
 #
 # Heavier than 01 (~338k rows) but one train/val per trial (not ×5 CV).
 # On ARC: medium partition recommended; Optuna study resumes if re-queued.
-#   ARC_PARTITION=medium ARC_TIME=24:00:00 \
+#   ARC_PARTITION=medium ARC_TIME=48:00:00 \
 #     ./scripts/cluster/oxford-arc/submit.sh 02_tune_base_l1_clinvar.sh
 #
 # Usage:
