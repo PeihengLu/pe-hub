@@ -12,10 +12,11 @@
 # PRIDICT1 folds were never published). Stage 01 HPO and stage 03 final train
 # share that protocol. Vendor PRIDICT2/OptiPrime training used the full
 # library1 sheet — every locus is training data for those checkpoints.
-# Library-diverse fine-tune (05/06) uses author **5-fold CV** (`testset_fold`
-# 0–4) with **no outer random holdout**, then evaluates on fold `LD_TEST_FOLD`
-# (default 4). The merged L1+ClinVar base (02/04) aligns to DeepPrime
-# `original_fold`.
+# L1+ClinVar base (02/04) also uses **holdout_3** (one train/val/test per trial,
+# not 5-fold CV), with DeepPrime `original_fold == -1` held out as test via
+# `--use-original-fold`. Library-diverse fine-tune (05/06) uses author **5-fold
+# CV** (`testset_fold` 0–4) with **no outer random holdout**, then evaluates on
+# fold `LD_TEST_FOLD` (default 4).
 #
 # **Loss:** PRIDICT2 is trained with a single edit-efficiency head (`MSEloss` on
 # `averageedited`, mapped from `editing_efficiency` in standardized data). All
@@ -57,9 +58,9 @@
 # |--------|------|
 # | `run_all.sh` | Orchestrator (tune → train → fine-tune → ensemble) |
 # | `01_tune_base_library1.sh` | HPO base on library1 (holdout_3) |
-# | `02_tune_base_l1_clinvar.sh` | HPO base on L1+ClinVar (DeepPrime folds) |
+# | `02_tune_base_l1_clinvar.sh` | HPO base on L1+ClinVar (holdout_3 + ClinVar fold −1 test) |
 # | `03_train_base_library1.sh` | Train + register library1 base weights |
-# | `04_train_base_l1_clinvar.sh` | Train + register L1+ClinVar base weights |
+# | `04_train_base_l1_clinvar.sh` | Train + register L1+ClinVar base (holdout_3) |
 # | `05_tune_finetune_library_diverse.sh` | HPO fine-tune (HEK + K562): author CV5, then eval fold 4 |
 # | `06_finetune_transfer.sh` | Four transfer fine-tunes (author CV5) + eval fold 4 |
 # | `07_ensemble_by_cell_line.sh` | Mean ensemble per cell line (eval on fold 4) |

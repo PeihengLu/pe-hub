@@ -18,7 +18,7 @@
 #
 # Per-stage walltime (override via env):
 #   ARC_TIME_01 / ARC_PARTITION_01 … ARC_TIME_07 / ARC_PARTITION_07
-# Defaults: 01/03/05/06/07 → short 12h; 02 → medium 48h; 04 → medium 24h.
+# Defaults: 01/02 → medium 24h; 03–07 → short 12h (02 is merged L1+ClinVar holdout_3).
 #
 # Requires: scripts/cluster/oxford-arc/env.sh (same as submit.sh).
 
@@ -114,14 +114,14 @@ submit_stage() {
     echo "${job_id}"
 }
 
-: "${ARC_PARTITION_01:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_01:=${ARC_TIME_SHORT:-12:00:00}}"
+: "${ARC_PARTITION_01:=${ARC_PARTITION_MEDIUM:-medium}}"
+: "${ARC_TIME_01:=${ARC_TIME_MEDIUM:-24:00:00}}"
 : "${ARC_PARTITION_02:=${ARC_PARTITION_MEDIUM:-medium}}"
-: "${ARC_TIME_02:=${ARC_TIME_MEDIUM:-48:00:00}}"
+: "${ARC_TIME_02:=${ARC_TIME_MEDIUM:-24:00:00}}"
 : "${ARC_PARTITION_03:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_03:=${ARC_TIME_SHORT:-12:00:00}}"
-: "${ARC_PARTITION_04:=${ARC_PARTITION_MEDIUM:-medium}}"
-: "${ARC_TIME_04:=${ARC_TIME_MEDIUM:-24:00:00}}"
+: "${ARC_PARTITION_04:=${ARC_PARTITION_SHORT:-short}}"
+: "${ARC_TIME_04:=${ARC_TIME_SHORT:-12:00:00}}"
 : "${ARC_PARTITION_05:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_05:=${ARC_TIME_SHORT:-12:00:00}}"
 : "${ARC_PARTITION_06:=${ARC_PARTITION_SHORT:-short}}"

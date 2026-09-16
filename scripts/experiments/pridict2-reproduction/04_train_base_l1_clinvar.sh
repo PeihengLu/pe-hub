@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Stage 04 — Train PRIDICT2 base on library1 + DeepPrime ClinVar.
+# holdout_3 + DeepPrime author fold -1 as test (same split family as stage 02).
 # Writes state key: base_l1_clinvar
 #
 # Usage:
@@ -13,7 +14,7 @@ source "${SCRIPT_DIR}/_common.sh"
 require_peen
 
 STATE_KEY="base_l1_clinvar"
-print_repro_banner "04 Train base: library1 + DeepPrime ClinVar"
+print_repro_banner "04 Train base: library1 + DeepPrime ClinVar (holdout_3)"
 maybe_skip_if_state "${STATE_KEY}"
 
 HP_JSON="${HYPERPARAMETERS_JSON:-}"
@@ -35,13 +36,12 @@ TRAIN_ARGS=(
     --merge
     --use-original-fold
     --original-fold-test-value=-1
-    --split-strategy cv
-    --cv-folds "${CV_FOLDS}"
-    --test-pct "${TEST_PCT}"
+    --split-strategy holdout_3
+    --train-pct 0.7 --val-pct 0.15 --test-pct 0.15
     --split-random-state "${SPLIT_RANDOM_STATE}"
     --device "${DEVICE}"
     --hyperparameters-json "${HP_JSON}"
-    --notes "pridict2-reproduction: base train on L1+ClinVar; MSEloss"
+    --notes "pridict2-reproduction: base train on L1+ClinVar; holdout_3; MSEloss"
 )
 
 run_peen_capture_weights "${STATE_KEY}" "${TRAIN_ARGS[@]}"
