@@ -3,26 +3,24 @@
 #
 # DAG (01∥02, then trains, then fold-matched FT → ensemble):
 #
-#   01 tune L1 ──────────────► 03 train L1 ──► 05_{cell}_f{fold} (10 short jobs) ──┐
-#                                                                                    ├─► 07 ensemble
-#   02 tune L1+ClinVar ──────► 04 train L1C ─► 06_{cell}_f{fold} (10 short jobs) ──┘
+#   01 tune L1 ──────────────► 03 train L1 ──► 05_{cell}_f{fold} ──┐
+#                                                               ├─► 07_{cell}_f{fold}
+#   02 tune L1+ClinVar ──────► 04 train L1C ─► 06_{cell}_f{fold} ──┘
 #
-# Stages 05/06: one short job per (cell × fold); default 3h walltime.
-#
-# Mid-flight resume from live job IDs:
-#   ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline_from_jobs.sh
+# Stages 05/06/07: one short job per (cell × fold).
+# Defaults: 05–06 walltime 3h; 07 walltime 1h.
 #
 # Usage (on htc-login, from repo root):
 #   ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
 #
 #   SKIP=01,02 ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
 #   ONLY=01,03 ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
-#   ONLY=05,06,07 …   # all cell×fold jobs for 05 and 06
+#   ONLY=05,06,07 …   # all cell×fold jobs for 05–07
 #
 # Per-stage walltime (override via env):
 #   ARC_TIME_01 / ARC_PARTITION_01 … ARC_TIME_07 / ARC_PARTITION_07
-# Defaults: 01 → medium 24h; 02 → medium 48h; 03–04/07 → short 12h;
-#           05–06 fold FT → short 3h.
+# Defaults: 01 → medium 24h; 02 → medium 48h; 03–04 → short 12h;
+#           05–06 fold FT → short 3h; 07 ensemble → short 1h.
 #
 # Requires: scripts/cluster/oxford-arc/env.sh (same as submit.sh).
 
@@ -141,7 +139,7 @@ submit_stage() {
 : "${ARC_PARTITION_06:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_06:=03:00:00}"
 : "${ARC_PARTITION_07:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_07:=${ARC_TIME_SHORT:-06:00:00}}"
+: "${ARC_TIME_07:=01:00:00}"
 
 # shellcheck disable=SC2206
 _cells=(${FT_CELL_LINES})
@@ -153,7 +151,8 @@ echo "PRIDICT2 reproduction — ARC dependency pipeline"
 echo "======================================"
 echo "SKIP_IF_TUNED=${SKIP_IF_TUNED}  SKIP_IF_DONE=${SKIP_IF_DONE}"
 echo "ONLY=${ONLY:-*}  SKIP=${SKIP:-(none)}"
-echo "05/06: one short/${ARC_TIME_05} job per cell × fold (${#_cells[@]} cells × ${#_folds[@]} folds)"
+echo "05/06/07: one job per cell × fold (${#_cells[@]}×${#_folds[@]})"
+echo "  05/06 walltime ${ARC_TIME_05} / ${ARC_TIME_06}; 07 walltime ${ARC_TIME_07}"
 echo ""
 
 JOB01="$(submit_stage 01 01_tune_base_library1.sh "" "${ARC_PARTITION_01}" "${ARC_TIME_01}")"
@@ -166,6 +165,7 @@ JOB04="$(submit_stage 04 04_train_base_l1_clinvar.sh \
 
 JOB05_IDS=()
 JOB06_IDS=()
+JOB07_IDS=()
 for cell in "${_cells[@]}"; do
     for fold in "${_folds[@]}"; do
         j05="$(submit_stage 05 05_tune_finetune_library_diverse.sh \
@@ -177,12 +177,15 @@ for cell in "${_cells[@]}"; do
             "$(afterok_deps "${JOB04}")" "${ARC_PARTITION_06}" "${ARC_TIME_06}" \
             "${cell}" "${fold}")"
         [[ -n "${j06}" ]] && JOB06_IDS+=("${j06}")
+
+        # Ensemble for this cell×fold waits only on the matching A/B FT jobs.
+        j07="$(submit_stage 07 07_ensemble_by_cell_line.sh \
+            "$(afterok_deps "${j05}" "${j06}")" \
+            "${ARC_PARTITION_07}" "${ARC_TIME_07}" \
+            "${cell}" "${fold}")"
+        [[ -n "${j07}" ]] && JOB07_IDS+=("${j07}")
     done
 done
-
-JOB07="$(submit_stage 07 07_ensemble_by_cell_line.sh \
-    "$(afterok_deps "${JOB05_IDS[@]}" "${JOB06_IDS[@]}")" \
-    "${ARC_PARTITION_07}" "${ARC_TIME_07}")"
 
 echo ""
 echo "======================================"
@@ -200,10 +203,13 @@ echo "  06 Model B fold FTs:  ${#JOB06_IDS[@]} jobs  (afterok:04)"
 for _id in "${JOB06_IDS[@]+"${JOB06_IDS[@]}"}"; do
     echo "      ${_id}"
 done
-echo "  07 ensemble:          ${JOB07:-—}  (afterok: all 05+06)"
+echo "  07 ensemble fold:     ${#JOB07_IDS[@]} jobs  (afterok: matching 05+06)"
+for _id in "${JOB07_IDS[@]+"${JOB07_IDS[@]}"}"; do
+    echo "      ${_id}"
+done
 echo ""
 echo "Monitor: squeue -u \$USER"
-_cancel_ids=("${JOB01}" "${JOB02}" "${JOB03}" "${JOB04}" "${JOB05_IDS[@]+"${JOB05_IDS[@]}"}" "${JOB06_IDS[@]+"${JOB06_IDS[@]}"}" "${JOB07}")
+_cancel_ids=("${JOB01}" "${JOB02}" "${JOB03}" "${JOB04}" "${JOB05_IDS[@]+"${JOB05_IDS[@]}"}" "${JOB06_IDS[@]+"${JOB06_IDS[@]}"}" "${JOB07_IDS[@]+"${JOB07_IDS[@]}"}")
 _cancel_list=""
 for _id in "${_cancel_ids[@]}"; do
     [[ -n "${_id}" ]] || continue

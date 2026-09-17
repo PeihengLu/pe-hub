@@ -66,8 +66,7 @@
 # | `06_finetune_transfer.sh` | Model B FT: L1+ClinVar base → library-diverse (`CELL_LINE=` / `FOLD=`) |
 # | `07_ensemble_by_cell_line.sh` | Mean ensemble A_x + B_x per cell × fold; eval on fold x |
 # | `_common.sh` | Shared env, state helpers |
-# | `submit_arc_pipeline.sh` | ARC: submit 01–07; 05/06 = one short job per cell × fold |
-# | `submit_arc_pipeline_from_jobs.sh` | ARC: resume from live job IDs; cancel obsolete 05–07; submit fold jobs |
+# | `submit_arc_pipeline.sh` | ARC: submit 01–07; 05/06/07 = one short job per cell × fold |
 #
 ## State
 #
@@ -85,22 +84,15 @@
 # GPU jobs go on **htc**. Submit wrappers + setup notes:
 # [`../../cluster/oxford-arc/`](../../cluster/oxford-arc/README.md).
 #
-# Full pipeline with SLURM dependencies. Stages **05** and **06** submit
-# **one short job per (cell × fold)** (10 each); default walltime **3h**.
-# Stage **07** is one job after all fold trains.
+# Full pipeline with SLURM dependencies. Stages **05**, **06**, and **07** each
+# submit **one short job per (cell × fold)** (10 each). Defaults: FT **3h**,
+# ensemble **1h**.
 #
 # ```bash
 # source scripts/cluster/oxford-arc/env.sh
 # ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
 # # or: SKIP=01,02 ./.../submit_arc_pipeline.sh   # presets already done
-# ```
-#
-# Resume mid-flight (keep running 02/04; cancel obsolete CV+final 05–07;
-# submit fold-matched 05/06 + 07):
-#
-# ```bash
-# ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline_from_jobs.sh
-# # DRY_RUN=1 …   # plan only
+# #      ONLY=05,06,07 …                           # fold FT + ensemble only
 # ```
 #
 # Single stage (optional dependency):

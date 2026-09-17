@@ -271,7 +271,8 @@ finetune_fold_model() {
     if [[ "${SMOKE:-0}" == "1" && -z "${hp_json}" ]]; then
         hp_json="$(smoke_fixed_hp_json)"
     elif [[ -z "${hp_json}" ]]; then
-        hp_json="{}"
+        # Lightning backstop (early stopping still applies).
+        hp_json='{"num_epochs":100}'
     fi
     hp_json="$(force_mse_loss_json "${hp_json}")"
 
