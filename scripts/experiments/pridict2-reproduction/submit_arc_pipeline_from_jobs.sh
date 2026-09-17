@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Resume PRIDICT2 reproduction from an already-queued ARC chain, submitting
-# fold-matched 05/06 (one short job per cell × fold) then 07.
+# fold-matched 05/06 (one short/3h job per cell × fold) then 07.
 #
 # Snapshot defaults (htc, 2026-09-17 — override via env):
 #
@@ -49,9 +49,9 @@ FT_CELL_LINES="${FT_CELL_LINES:-hek k562}"
 FOLDS="${FOLDS:-0 1 2 3 4}"
 
 : "${ARC_PARTITION_05:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_05:=${ARC_TIME_SHORT:-12:00:00}}"
+: "${ARC_TIME_05:=03:00:00}"
 : "${ARC_PARTITION_06:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_06:=${ARC_TIME_SHORT:-12:00:00}}"
+: "${ARC_TIME_06:=03:00:00}"
 : "${ARC_PARTITION_07:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_07:=${ARC_TIME_SHORT:-06:00:00}}"
 

@@ -7,7 +7,7 @@
 #                                                                                    ├─► 07 ensemble
 #   02 tune L1+ClinVar ──────► 04 train L1C ─► 06_{cell}_f{fold} (10 short jobs) ──┘
 #
-# Stages 05/06: one short job per (cell × fold). Short/12h ≈ one fold fit.
+# Stages 05/06: one short job per (cell × fold); default 3h walltime.
 #
 # Mid-flight resume from live job IDs:
 #   ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline_from_jobs.sh
@@ -21,7 +21,8 @@
 #
 # Per-stage walltime (override via env):
 #   ARC_TIME_01 / ARC_PARTITION_01 … ARC_TIME_07 / ARC_PARTITION_07
-# Defaults: 01 → medium 24h; 02 → medium 48h; 03–07 → short 12h.
+# Defaults: 01 → medium 24h; 02 → medium 48h; 03–04/07 → short 12h;
+#           05–06 fold FT → short 3h.
 #
 # Requires: scripts/cluster/oxford-arc/env.sh (same as submit.sh).
 
@@ -136,9 +137,9 @@ submit_stage() {
 : "${ARC_PARTITION_04:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_04:=${ARC_TIME_SHORT:-12:00:00}}"
 : "${ARC_PARTITION_05:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_05:=${ARC_TIME_SHORT:-12:00:00}}"
+: "${ARC_TIME_05:=03:00:00}"
 : "${ARC_PARTITION_06:=${ARC_PARTITION_SHORT:-short}}"
-: "${ARC_TIME_06:=${ARC_TIME_SHORT:-12:00:00}}"
+: "${ARC_TIME_06:=03:00:00}"
 : "${ARC_PARTITION_07:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_07:=${ARC_TIME_SHORT:-06:00:00}}"
 
@@ -152,7 +153,7 @@ echo "PRIDICT2 reproduction — ARC dependency pipeline"
 echo "======================================"
 echo "SKIP_IF_TUNED=${SKIP_IF_TUNED}  SKIP_IF_DONE=${SKIP_IF_DONE}"
 echo "ONLY=${ONLY:-*}  SKIP=${SKIP:-(none)}"
-echo "05/06: one short job per cell × fold (${#_cells[@]} cells × ${#_folds[@]} folds)"
+echo "05/06: one short/${ARC_TIME_05} job per cell × fold (${#_cells[@]} cells × ${#_folds[@]} folds)"
 echo ""
 
 JOB01="$(submit_stage 01 01_tune_base_library1.sh "" "${ARC_PARTITION_01}" "${ARC_TIME_01}")"

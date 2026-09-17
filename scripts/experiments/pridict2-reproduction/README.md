@@ -86,8 +86,8 @@
 # [`../../cluster/oxford-arc/`](../../cluster/oxford-arc/README.md).
 #
 # Full pipeline with SLURM dependencies. Stages **05** and **06** submit
-# **one short job per (cell × fold)** (10 each); short/12h fits one fold fit
-# at full 100 epochs. Stage **07** is one job after all fold trains.
+# **one short job per (cell × fold)** (10 each); default walltime **3h**.
+# Stage **07** is one job after all fold trains.
 #
 # ```bash
 # source scripts/cluster/oxford-arc/env.sh
