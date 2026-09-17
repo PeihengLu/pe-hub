@@ -48,6 +48,12 @@ STUDY_REGISTRY: tuple[StudyRecord, ...] = (
         publication_date=date(2026, 8, 12),
         authors="Hsu et al.",
     ),
+    StudyRecord(
+        key="anzalone",
+        display_name="Anzalone 2019",
+        publication_date=date(2019, 10, 21),
+        authors="Anzalone et al.",
+    ),
 )
 
 _DEEPPE_HT_DESCRIPTION = (
@@ -380,6 +386,22 @@ DATASET_REGISTRY: tuple[DatasetRecord, ...] = (
         ),
         pegRNA_delivery_method="lentiviral",
         pe_delivery_method="piggybac",
+        edit_scope="on_target",
+        experimental_method="in_vitro",
+        target_context="endogenous",
+        standardizable=True,
+    ),
+    DatasetRecord(
+        study_key="anzalone",
+        name="anzalone-endo",
+        description=(
+            "Arrayed endogenous pegRNA validation from Anzalone et al. 2019, reformatted "
+            "by Li et al. (Easy-Prime): PE2 (n=199) and PE3 (n=278) in HEK293T. "
+            "Exported as DeepPrime 74 bp wide targets from Easy-Prime amplicons."
+            "Frequently used as an external validation set for published predictors."
+        ),
+        pegRNA_delivery_method="plasmid_transfection",
+        pe_delivery_method="plasmid_transfection",
         edit_scope="on_target",
         experimental_method="in_vitro",
         target_context="endogenous",

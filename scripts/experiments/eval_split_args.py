@@ -64,6 +64,10 @@ def evaluation_split_cli_args(
             str(int(cv_run)),
         ]
 
+    if study_key == "anzalone":
+        # Easy-Prime reformatted validation set: score every remaining row.
+        return ["--no-use-original-fold", "--split-strategy", "none"]
+
     return ["--no-use-original-fold"]
 
 

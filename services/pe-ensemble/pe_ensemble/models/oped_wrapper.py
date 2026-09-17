@@ -252,13 +252,25 @@ class OPEDModelWrapper(BasePEModel):
             encoded.extend([0] * (padded_len - len(encoded)))
         return encoded
 
-    # 47bp OPED window: 4 bp upstream + 20 bp spacer + 3 bp PAM + 20 bp down.
-    # The nick sits between spacer and PAM (0-based index 21). Genomic PBS is
-    # Target[21 - len(PBS) : 21], matching DeepPE Library 1 / PE-DB format=oped.
+    # Cas9 nick is 3 bp before the PAM (spacer index 17). DeepPE HT uses
+    # 4 bp upstream → nick 21; longer endogenous targets keep the same
+    # spacer-relative nick. Prefer substring match over a fixed index so
+    # variable-length targets (full WT context) orient correctly.
     _OPED_NICK_INDEX = 21
     # Bump when tokenisation / orientation changes so ``use_cache`` pickles
     # from an older encoder are not reused.
-    _ENCODING_REVISION = 2
+    _ENCODING_REVISION = 5
+
+    @staticmethod
+    def _oped_nick_index(target_len: int) -> int:
+        """Fallback nick index when PBS is not found as a target substring."""
+        length = int(target_len)
+        if length >= 350:
+            return 165 + 17
+        if length >= 200:
+            # Shared endo PE-core window: spacer at offset 90 → nick 107.
+            return 90 + 17
+        return 4 + 17
 
     @staticmethod
     def _orient_pbs_rt_to_genomic(target: str, pbs: str, rt: str) -> Tuple[str, str]:
@@ -266,21 +278,42 @@ class OPEDModelWrapper(BasePEModel):
 
         The merged order-3 decoder was trained on DeepPE Library 1, where the
         column named ``3' extension sequence of pegRNA`` is already genomic
-        (PBS equals ``Target[nick-len:nick]``) and is encoded without RC.
+        (PBS equals the nick window on Target) and is encoded without RC.
 
         PE-DB ``format=oped`` follows that convention. Vendor ClinVar / Perl
         outputs store pegRNA-sense PBS/RT (RC of the nick window); those are
-        flipped here so inference matches training. PBS nick geometry is the
-        orientation signal for both PBS and RT.
+        flipped here so inference matches training.
+
+        Prefer the nick-window match (avoids false hits on repetitive flanks),
+        then an exact Target substring match. When both orientations appear,
+        keep the match whose end is closest to the expected nick.
         """
-        nick = OPEDModelWrapper._OPED_NICK_INDEX
-        if pbs and len(target) >= nick:
+        if not pbs or not target:
+            return pbs, rt
+        rc_pbs = reverse_complement(pbs)
+        nick = OPEDModelWrapper._oped_nick_index(len(target))
+        if len(target) >= nick and len(pbs) > 0:
             start = max(0, nick - len(pbs))
             genomic_pbs = target[start:nick]
             if genomic_pbs == pbs:
                 return pbs, rt
-            if genomic_pbs == reverse_complement(pbs):
-                return reverse_complement(pbs), reverse_complement(rt)
+            if rc_pbs and genomic_pbs == rc_pbs:
+                return rc_pbs, reverse_complement(rt)
+
+        pbs_end = target.find(pbs) + len(pbs) if pbs in target else None
+        rc_end = (
+            target.find(rc_pbs) + len(rc_pbs)
+            if rc_pbs and rc_pbs in target
+            else None
+        )
+        if pbs_end is not None and rc_end is None:
+            return pbs, rt
+        if rc_end is not None and pbs_end is None:
+            return rc_pbs, reverse_complement(rt)
+        if pbs_end is not None and rc_end is not None:
+            if abs(rc_end - nick) < abs(pbs_end - nick):
+                return rc_pbs, reverse_complement(rt)
+            return pbs, rt
         return pbs, rt
 
     @staticmethod

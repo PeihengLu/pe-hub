@@ -120,8 +120,9 @@ def test_converters_crop_200bp_endogenous_row():
     assert deepprime["WT74_On"].str.len().eq(74).all()
     assert deepprime["WT74_On"].iloc[0][4:24] == spacer
     oped = standardized_to_oped_dataframe(df)
-    assert oped["Target(47bp)"].str.len().eq(47).all()
-    assert oped["Target(47bp)"].iloc[0][4:24] == spacer
+    # OPED gets the full endogenous WT, not a 47 bp crop.
+    assert oped["Target(47bp)"].str.len().eq(ENDO_CONTEXT_BP).all()
+    assert oped["Target(47bp)"].iloc[0][ENDO_SPACER_OFFSET : ENDO_SPACER_OFFSET + 20] == spacer
     pridict = standardized_to_pridict_dataframe(df)
     left = int(pridict["protospacerlocation_only_initial"].iloc[0].split("[")[1].split(",")[0])
     assert left == 10

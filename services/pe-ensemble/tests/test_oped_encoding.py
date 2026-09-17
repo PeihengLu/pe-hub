@@ -43,6 +43,26 @@ def test_orient_rc_pegrna_sense_vendor_clinvar():
     assert pbs == _CLINVAR_TARGET[21 - len(pbs) : 21]
 
 
+def test_orient_uses_substring_match_on_long_targets():
+    # Variable flank: genomic PBS is found as a Target substring (not nick=21).
+    spacer = "G" * 20
+    upstream = "A" * 100
+    pam_down = "GGG" + ("C" * 80)
+    target = upstream + spacer + pam_down
+    nick = 100 + 17
+    pbs = target[nick - 7 : nick]
+    rt = "T" * 10
+    out_pbs, out_rt = OPEDModelWrapper._orient_pbs_rt_to_genomic(target, pbs, rt)
+    assert out_pbs == pbs
+    assert out_rt == rt
+    pegrna_pbs = reverse_complement(pbs)
+    flipped_pbs, flipped_rt = OPEDModelWrapper._orient_pbs_rt_to_genomic(
+        target, pegrna_pbs, reverse_complement(rt)
+    )
+    assert flipped_pbs == pbs
+    assert flipped_rt == rt
+
+
 def test_encode_genomic_pbs_without_reverse_complement():
     df = pd.DataFrame(
         {

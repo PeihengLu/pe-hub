@@ -302,8 +302,13 @@ def _deeppe_endo_coordinates(wt_sequences: pd.Series) -> pd.DataFrame:
 
 # DeepPE (Kim et al. 2021) uses 47 bp wide-target reporters with X-masked
 # prime-edited sequences (library 1) or pegRNA 3' extensions (libraries 2 / endo).
+# Anzalone Easy-Prime exports use the DeepPrime 74 bp window instead.
 _DEEPPE_WIDE_COLUMNS = (
     "wt_sequence",
+    (
+        "Wide target sequence (Total 74 bps = 4 bp neighboring sequence + 20 bp "
+        "protospacer + 3 bp NGG PAM+ 47 bp neighboring sequence)"
+    ),
     (
         "Wide target sequence (Total 47 bps = 4 bp neighboring sequence + 20 bp "
         "protospacer + 3 bp NGG PAM+ 20 bp neighboring sequence)"

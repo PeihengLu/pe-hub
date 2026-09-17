@@ -15,19 +15,29 @@ from .common import (
     _safe_int_series,
 )
 
+
 def standardized_to_oped_dataframe(
     df: pd.DataFrame,
     *,
-    target_len: int = 47,
-    protospacer_upstream_bases: int = 4,
+    target_len: Optional[int] = None,
+    protospacer_upstream_bases: Optional[int] = None,  # noqa: ARG001 — kept for API compat
     progress_callback: Optional[ProgressCallback] = None,
 ) -> pd.DataFrame:
     """Convert standardized schema into OPED sequence dataframe.
 
     ``Target(47bp)`` is the unedited reporter window (WT with insertion-alignment
     pads dropped). Filling those pads from Mut would splice the insert into the
-    WT 47-mer and frameshift Kim Wide-target. PBS is sliced from WT; the RT
-    template is sliced from Mut.
+    WT and frameshift Kim Wide-target. PBS is sliced from WT; the RT template is
+    sliced from Mut.
+
+    By default the full unpadded WT is passed through — whatever context the
+    standardized row already has (DeepPE 47, endo ~200, Anzalone 350, …). No
+    fixed crop and no invented A/N flanks. Optional ``target_len`` still crops
+    a spacer-centered window for debugging (upstream = 4 for ≤74, else half the
+    residual flank), but does not pad short sequences up to that length.
+
+    The column name stays ``Target(47bp)`` for vendor compatibility even when
+    the string is longer than 47.
     """
     efficiency = _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
     wt_series = _col_as_series(df, "wt_sequence", "").astype(str).str.upper().to_numpy()
@@ -47,18 +57,23 @@ def standardized_to_oped_dataframe(
         # Unedited reporter: drop WT insertion pads rather than filling them
         # from Mut (that put the edit into Target and disagreed with Wide target).
         ref_seq = sanitize_dna_sequence(wt, drop=True)
-        spacer_l = unpadded_coordinate(wt, int(prot_l_i))
-        pad_left = max(0, int(protospacer_upstream_bases) - spacer_l)
-        if pad_left:
-            # OPED sanitize drops N; A is placeholder genomic context so the
-            # 20-nt spacer stays at offset 4. Do not slide the window left when
-            # the target is shorter than 47 bp — that frameshifts the spacer.
-            ref_seq = ("A" * pad_left) + ref_seq
-            spacer_l += pad_left
-        target_start = spacer_l - int(protospacer_upstream_bases)
-        target_end = target_start + target_len
+        if target_len is not None:
+            crop_len = int(target_len)
+            spacer_l = unpadded_coordinate(wt, int(prot_l_i))
+            # Prefer DeepPE-style 4 bp upstream when the crop is the classic
+            # reporter size; otherwise keep the spacer as centered as the
+            # available flanks allow (no invented bases).
+            if crop_len <= 74:
+                upstream = min(4, spacer_l)
+            else:
+                downstream_avail = max(0, len(ref_seq) - spacer_l - 20)
+                upstream = min(spacer_l, max(0, crop_len - 20 - downstream_avail))
+            target_start = max(0, spacer_l - upstream)
+            target_end = min(len(ref_seq), target_start + crop_len)
+            target = sanitize_dna_sequence(ref_seq[target_start:target_end])
+        else:
+            target = ref_seq
 
-        target = sanitize_dna_sequence(ref_seq[target_start:target_end])
         # PBS anneals to WT; the RT template is the edited (Mut) sequence.
         # Drop alignment pads rather than replacing them with A.
         pbs_l_i = max(0, int(pbs_l_i))
@@ -67,8 +82,6 @@ def standardized_to_oped_dataframe(
         rtt_r_i = min(len(mut), int(rtt_r_i))
         pbs_seq = sanitize_dna_sequence(wt[pbs_l_i:pbs_r_i], drop=True)
         rt_seq = sanitize_dna_sequence(mut[rtt_l_i:rtt_r_i], drop=True)
-        if len(target) < target_len:
-            target = target + ("A" * (target_len - len(target)))
 
         records.append(
             {

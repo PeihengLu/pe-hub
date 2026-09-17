@@ -586,7 +586,10 @@ def test_oped_schema_and_target_length():
     df = _standardized_df("edit_len")
     out = standardized_to_oped_dataframe(df)
     assert OPED_REQUIRED.issubset(out.columns)
-    assert out["Target(47bp)"].str.len().eq(47).all()
+    # Default: pass through full unpadded WT (no invented crop/pad).
+    assert out["Target(47bp)"].str.len().tolist() == [120, 120]
+    cropped = standardized_to_oped_dataframe(df, target_len=47)
+    assert cropped["Target(47bp)"].str.len().eq(47).all()
 
 
 def test_oped_pbs_from_wt_and_rt_from_mut():
@@ -826,7 +829,7 @@ def test_deepprime_left_pads_when_spacer_starts_at_zero():
     assert out["WT74_On"][4:24] == spacer
 
 
-def test_oped_left_pads_instead_of_recentering_short_targets():
+def test_oped_uses_full_wt_without_inventing_flanks():
     spacer = "GTCATCTTAGTCATTACCTG"
     wt = spacer + "AGG" + ("T" * 16)
     mut = spacer + "AGG" + ("C" * 16)
@@ -851,9 +854,8 @@ def test_oped_left_pads_instead_of_recentering_short_targets():
         }
     )
     out = standardized_to_oped_dataframe(df)
-    assert out["Target(47bp)"].str.len().eq(47).all()
-    assert out["Target(47bp)"].str.startswith("AAAA").all()
-    assert out["Target(47bp)"].str.slice(4, 24).eq(spacer).all()
+    assert out["Target(47bp)"].iloc[0] == wt
+    assert not out["Target(47bp)"].str.startswith("AAAA").any()
 
 
 # --- Unmeasured efficiency labels -------------------------------------------

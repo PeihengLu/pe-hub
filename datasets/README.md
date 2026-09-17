@@ -99,6 +99,8 @@ Registered in `services/pe-db/pe_db/catalog/studies.py`:
 | `pridict2` | `raw/pridict2/` | PRIDICT2 libraries and TRIP analysis |
 | `minsepie` | `raw/minsepie/` | MinsePIE insert libraries |
 | `deeppe` | `raw/deeppe/` | DeepPE benchmark sets |
+| `optiprime` | `raw/optiprime/` | OptiPrime Lib-MMR / Lib-CV |
+| `anzalone` | `raw/anzalone/` | Anzalone 2019 endo PE2/PE3 (Easy-Prime reformatted) |
 
 Some datasets are **partially standardizable** (metadata-only conversion). Set
 `partial=True` on the `DatasetRecord` in `services/pe-db/pe_db/catalog/studies.py`.

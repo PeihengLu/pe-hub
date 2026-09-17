@@ -189,39 +189,6 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "fill_on_leak": True,
     },
     {
-        "id": "optiprime-lib-mmr-hek",
-        "model": "optiprime",
-        "benchmark": "optiprime-lib-mmr__hek293t",
-        "cell_line": "hek293t",
-        "pe_system": "pe2",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": (
-            "Mean r=0.723 / ρ=0.775 over the four held-out conditions "
-            "(HEK293T/HeLa × PE2/PE4; Lib-MMR and Lib-CV pooled). "
-            "Hsu does not report HEK-only or per-library numbers"
-        ),
-        "protocol_match": "approximate",
-        "fill_on_leak": True,
-    },
-    {
-        "id": "optiprime-lib-mmr-hek-pe4",
-        "model": "optiprime",
-        "benchmark": "optiprime-lib-mmr__hek293t",
-        "cell_line": "hek293t",
-        "pe_system": "pe4",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": (
-            "Same four-condition mean as PE2. HEK PE4 is in Supplementary Fig. 4; "
-            "the main text quotes only the four-condition mean"
-        ),
-        "protocol_match": "approximate",
-        "fill_on_leak": True,
-    },
-    {
         "id": "optiprime-lib-mmr-hela",
         "model": "optiprime",
         "benchmark": "optiprime-lib-mmr__hela",
@@ -249,37 +216,6 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "protocol": (
             "Fig. 4c HeLa PE4 test-set scatter r=0.8034, ρ=0.8098 "
             "(Lib-MMR and Lib-CV pooled)"
-        ),
-        "protocol_match": "approximate",
-        "fill_on_leak": True,
-    },
-    {
-        "id": "optiprime-lib-cv-hek",
-        "model": "optiprime",
-        "benchmark": "optiprime-lib-cv__hek293t",
-        "cell_line": "hek293t",
-        "pe_system": "pe2",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": (
-            "Mean r=0.723 / ρ=0.775 over the four held-out conditions "
-            "(HEK293T/HeLa × PE2/PE4; Lib-MMR and Lib-CV pooled)"
-        ),
-        "protocol_match": "approximate",
-        "fill_on_leak": True,
-    },
-    {
-        "id": "optiprime-lib-cv-hek-pe4",
-        "model": "optiprime",
-        "benchmark": "optiprime-lib-cv__hek293t",
-        "cell_line": "hek293t",
-        "pe_system": "pe4",
-        "pearson": 0.723,
-        "spearman": 0.775,
-        "citation": "Hsu et al. Nat. Biotechnol. 2026 Fig. 4b,c",
-        "protocol": (
-            "Same four-condition mean as PE2. HEK PE4 is in Supplementary Fig. 4"
         ),
         "protocol_match": "approximate",
         "fill_on_leak": True,
@@ -353,14 +289,31 @@ PAPER_METRICS: list[dict[str, Any]] = [
         "fill_on_leak": False,
     },
     {
-        "id": "deepprime-anazalone-endo",
-        "model": "deepprime",
-        "benchmark": "anazalone-endo",
+        "id": "oped-anzalone-endo-pe2",
+        "model": "oped",
+        "benchmark": "anzalone-endo",
         "cell_line": "hek293t",
+        "pe_system": "pe2",
+        "pearson": 0.469,
+        "spearman": 0.510,
+        "citation": "Liu et al. Nat. Mach. Intell. 2023 Fig. 2i",
+        "protocol": (
+            "PE2 n=199 Easy-Prime Anzalone sites; BLAT spacer→hg38 350 bp "
+            "target (165+20+165) + genomic PBS/RTT. MAE=6.30%, RMSE=7.50%"
+        ),
+        "protocol_match": "close",
+        "fill_on_leak": False,
+    },
+    {
+        "id": "deepprime-anzalone-endo",
+        "model": "deepprime",
+        "benchmark": "anzalone-endo",
+        "cell_line": "hek293t",
+        "pe_system": "pe2",
         "pearson": 0.74,
         "spearman": 0.74,
         "citation": "Yu et al. Cell 2023 Fig. 3H",
-        "protocol": "DeepPrime on Anzalone et al. PE2 endogenous sites; not a heatmap cell",
+        "protocol": "DeepPrime on Anzalone et al. PE2 endogenous sites (Easy-Prime reformatted)",
         "protocol_match": "close",
         "fill_on_leak": False,
     },

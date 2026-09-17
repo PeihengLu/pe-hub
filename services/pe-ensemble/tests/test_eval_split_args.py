@@ -78,6 +78,16 @@ def test_pridict2_library_diverse_without_run_stays_random():
     assert args == ["--no-use-original-fold"]
 
 
+def test_anzalone_scores_the_full_sheet():
+    args = evaluation_split_cli_args(
+        model="deepprime",
+        study="anzalone",
+        datasets="anzalone-endo",
+        cv_run=None,
+    )
+    assert args == ["--no-use-original-fold", "--split-strategy", "none"]
+
+
 def test_other_models_on_library_diverse_stay_random():
     args = evaluation_split_cli_args(
         model="optiprime",

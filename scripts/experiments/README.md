@@ -158,8 +158,9 @@ Latest completed run id is also written to
   with `no_original_test_split` even when the sheet has another paper's
   `original_fold` (library-diverse, ClinVar). Full overlap (e.g. OptiPrime ×
   lib-mmr/lib-cv, or PRIDICT2/OptiPrime × library1) still aborts as `data_leak`
-  unless `--allow-data-leak`. Hsu's in-domain Pearson 0.723 is filled only on
-  lib-mmr / lib-cv leak cells; library-diverse and ClinVar stay `leak_unfilled`.
+  unless `--allow-data-leak`. Hsu's HeLa PE2/PE4 test-set Pearson values
+  (Fig. 4b,c) fill only those lib-mmr / lib-cv HeLa leak cells; HEK and
+  library-diverse / ClinVar stay `leak_unfilled`.
 - OptiPrime needs the JAX stack (`jax`, `flax`, `chex`, …). Installed automatically by `./scripts/install-clis.sh` on Python 3.11.
 
 Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh`

@@ -11,7 +11,8 @@
 #
 # Benchmarks (dataset lists; multi-cell-line datasets are expanded per cell):
 #   minsepie-insert-pooled, deeppe-pooled, deepprime-clinvar,
-#   pridict1-library1, pridict2-library-diverse, optiprime-lib-mmr, optiprime-lib-cv
+#   pridict1-library1, pridict2-library-diverse, anzalone-endo,
+#   optiprime-lib-mmr, optiprime-lib-cv
 #
 # Splits:
 #   - DeepPrime ClinVar / DeepPE: author original_fold=-1 test
@@ -19,6 +20,7 @@
 #   - PRIDICT library1 has no author split: vendor training used every locus
 #   - OptiPrime has_original_test_split=false: in-domain ClinVar / library-diverse
 #     / lib-* / library1 abort (Hsu pooled protospacer CV, not Yu/Mathis holdouts)
+#   - Anzalone 2019: score every remaining row (--split-strategy none)
 #   - everything else: random group holdout
 #
 # Note: peen ensemble unions member train_target_loci from weight provenance
@@ -39,6 +41,7 @@
 #                     Leaving MODELS unset runs the three vendor models plus ensembles.
 #   BENCHMARKS        comma/space list of benchmark names. Extra (not in the
 #                     default heatmap matrix): deeppe-ht-test (Liu Fig. 2a HT-only).
+#                     anzalone-endo is on the first heatmap panel (full sheet).
 #   CELL_LINES        comma/space list of expanded cell-line names to keep
 #                     (e.g. hek293t,k562). Empty keeps every expanded cell.
 #   ALLOW_DATA_LEAK=1 pass --allow-data-leak (keep train-overlapping test loci
@@ -143,6 +146,7 @@ BENCHMARKS=(
   "deepprime-clinvar|deepprime|deepprime-clinvar"
   "pridict1-library1|pridict1|library1"
   "pridict2-library-diverse|pridict2|library-diverse"
+  "anzalone-endo|anzalone|anzalone-endo"
   "optiprime-lib-mmr|optiprime|lib-mmr"
   "optiprime-lib-cv|optiprime|lib-cv"
 )
@@ -712,5 +716,9 @@ print(f"Compacted {path} to {len(records)} unique cells")
 PY
 echo "Summarizing..."
 python "${SCRIPT_DIR}/summarize_eval_results.py" "${RESULTS_JSONL}"
-printf '%s\n' "${RUN_ID}" > "${OUT_ROOT}/LATEST_RUN_ID"
+if [[ -z "${DESIGN_RULESET}" ]]; then
+  printf '%s\n' "${RUN_ID}" > "${OUT_ROOT}/LATEST_RUN_ID"
+else
+  printf '%s\n' "${RUN_ID}" > "${OUT_ROOT}/DESIGN_$(echo "${DESIGN_RULESET}" | tr '[:lower:]' '[:upper:]')_RUN_ID"
+fi
 echo "Done. Results under ${OUT_DIR}"

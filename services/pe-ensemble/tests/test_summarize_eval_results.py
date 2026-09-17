@@ -180,56 +180,56 @@ def test_repair_cli_failure_from_optiprime_stdout(tmp_path: Path):
     assert "error_type" not in records[0]
 
 
-def test_optiprime_lib_mmr_leak_is_author_fill():
+def test_optiprime_lib_mmr_hek_leak_is_unfilled():
+    """Hsu quotes only a four-condition mean for HEK; do not fill HEK cells with it."""
+    for pe_system, n in (("pe2", 3658), ("pe4", 3658)):
+        row = annotate_row_with_paper(
+            flatten_row(
+                {
+                    "model": "optiprime",
+                    "weights": "base",
+                    "benchmark_name": f"optiprime-lib-mmr__hek293t__{pe_system}",
+                    "study": "optiprime",
+                    "datasets": ["lib-mmr"],
+                    "cell_line": "hek293t",
+                    "pe_system": pe_system,
+                    "status": "error",
+                    "error_type": "data_leak",
+                    "leak_reason": "no_original_test_split",
+                    "n_samples": n,
+                    "metrics": None,
+                }
+            )
+        )
+        assert row["value_source"] == "leak_unfilled"
+        assert row["pearson_plot"] is None
+        assert row["paper_id"] is None
+        assert row["status"] == "error"
+        assert row["leak_reason"] == "no_original_test_split"
+
+
+def test_optiprime_lib_cv_hek_leak_is_unfilled():
     row = annotate_row_with_paper(
         flatten_row(
             {
                 "model": "optiprime",
                 "weights": "base",
-                "benchmark_name": "optiprime-lib-mmr__hek293t__pe2",
+                "benchmark_name": "optiprime-lib-cv__hek293t__pe2",
                 "study": "optiprime",
-                "datasets": ["lib-mmr"],
+                "datasets": ["lib-cv"],
                 "cell_line": "hek293t",
                 "pe_system": "pe2",
                 "status": "error",
                 "error_type": "data_leak",
                 "leak_reason": "no_original_test_split",
-                "n_samples": 3658,
+                "n_samples": 2100,
                 "metrics": None,
             }
         )
     )
-    assert row["value_source"] == "author_fill"
-    assert row["plot_hatch"] == "///"
-    assert row["pearson_plot"] == 0.723
-    assert row["pearson_measured"] is None
-    assert row["status"] == "error"
-    assert row["leak_reason"] == "no_original_test_split"
-
-
-def test_optiprime_lib_mmr_pe4_leak_is_author_fill():
-    row = annotate_row_with_paper(
-        flatten_row(
-            {
-                "model": "optiprime",
-                "weights": "base",
-                "benchmark_name": "optiprime-lib-mmr__hek293t__pe4",
-                "study": "optiprime",
-                "datasets": ["lib-mmr"],
-                "cell_line": "hek293t",
-                "pe_system": "pe4",
-                "status": "error",
-                "error_type": "data_leak",
-                "leak_reason": "no_original_test_split",
-                "n_samples": 3658,
-                "metrics": None,
-            }
-        )
-    )
-    assert row["value_source"] == "author_fill"
-    assert row["plot_hatch"] == "///"
-    assert row["pearson_plot"] == 0.723
-    assert row["paper_id"] == "optiprime-lib-mmr-hek-pe4"
+    assert row["value_source"] == "leak_unfilled"
+    assert row["pearson_plot"] is None
+    assert row["paper_id"] is None
 
 
 def test_optiprime_lib_mmr_hela_pe2_uses_fig4b():
@@ -533,7 +533,7 @@ def test_bar_fill_kind_distinguishes_measured_author_and_missing():
         == FILL_MEASURED
     )
     assert (
-        cell_fill_kind({"plot_marker": "author_fill", "value_source": "author_fill", "pearson_plot": 0.723})
+        cell_fill_kind({"plot_marker": "author_fill", "value_source": "author_fill", "pearson_plot": 0.760})
         == FILL_AUTHOR
     )
     assert (
@@ -549,4 +549,9 @@ def test_bar_fill_kind_distinguishes_measured_author_and_missing():
     assert "deeppe-pooled__mda_mb_231" not in panel_keys
     first_row = [key for key, _label, _study in HEATMAP_PANELS[0]]
     assert "minsepie-insert-pooled__hek293t__pe2" in first_row
+    assert "anzalone-endo__pe2" in first_row
+    assert "anzalone-endo__pe3" in first_row
+    assert first_row.index("anzalone-endo__pe2") > first_row.index(
+        "minsepie-insert-pooled__hek293t__pe2"
+    )
 

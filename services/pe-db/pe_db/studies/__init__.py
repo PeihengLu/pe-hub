@@ -8,6 +8,14 @@ def load_studies() -> None:
     global _LOADED
     if _LOADED:
         return
-    from . import deeppe, deepprime, minsepie, optiprime, pridict1, pridict2  # noqa: F401
+    from . import (  # noqa: F401
+        anzalone,
+        deeppe,
+        deepprime,
+        minsepie,
+        optiprime,
+        pridict1,
+        pridict2,
+    )
 
     _LOADED = True
