@@ -2,7 +2,7 @@
 # Submit scratch-benchmark as separate 1-GPU SLURM jobs (one per seed).
 #
 # peen trains on a single GPU per job (Lightning devices=1). Default fan-out:
-#   7 datasets × 3 models × N_SEEDS (3) = 63 jobs
+#   15 datasheets × 3 models × N_SEEDS (3) = 135 jobs
 # Each job: 10 Optuna trials + 1 final train + eval for that seed.
 #
 # Usage (from repo root, on htc-login):

@@ -1,7 +1,7 @@
 # Scratch benchmark (from-scratch model comparison)
 
 Cross-model experiment for **DeepPrime**, **OPED**, and **PRIDICT2** on the same
-pooled benchmarks as `evaluate_base_model_benchmarks.sh`. Each cell uses the
+PE-DB panels as `evaluate_base_model_benchmarks.sh`. Each cell uses the
 [`datasheet-benchmark`](../datasheet-benchmark/README.md) runner:
 
 - **holdout_3** (70/15/15), **3 random split + init seeds**
@@ -13,19 +13,40 @@ The **OptiPrime model** is excluded (no scratch HPO search space); **lib-mmr** /
 
 ## Matrix
 
-| Benchmark | Study / dataset(s) | ~Rows | Split |
-|-----------|-------------------|------:|-------|
-| `pridict1-library1` | pridict1 / library1 | 92k | holdout_3 × 3 seeds |
-| `pridict2-library-diverse` | pridict2 / library-diverse | 66k | holdout_3 × 3 seeds |
-| `deeppe-pooled` | deeppe / ht + type + position + endo | 49k | holdout_3 × 3 seeds |
-| `minsepie-insert-pooled` | minsepie / set12 + 18nt + codon-variant + codon-hek3 | 27k | holdout_3 × 3 seeds |
-| `optiprime-lib-mmr` | optiprime / lib-mmr | 36k | holdout_3 × 3 seeds |
-| `optiprime-lib-cv` | optiprime / lib-cv | 37k | holdout_3 × 3 seeds |
-| `deepprime-clinvar` | deepprime / deepprime-clinvar | 289k | holdout_3 × 3 seeds |
+Multi-condition sheets are **one datasheet per cell** (same split as vendor eval).
+Do **not** pool Library-Diverse across HEK / K562 / K562-MLH1dn, or Lib-MMR /
+Lib-CV across HEK293T / HeLa × PE2 / PE4.
+
+| Benchmark | Study / dataset(s) | Cell / PE | Split |
+|-----------|-------------------|-----------|-------|
+| `pridict1-library1` | pridict1 / library1 | HEK293T PE2 | holdout_3 × 3 seeds |
+| `pridict2-library-diverse__hek293t` | pridict2 / library-diverse | HEK PE2 | holdout_3 × 3 seeds |
+| `pridict2-library-diverse__k562` | pridict2 / library-diverse | K562 PE2 | holdout_3 × 3 seeds |
+| `pridict2-library-diverse__k562mlh1dn` | pridict2 / library-diverse | K562-MLH1dn PE2 | holdout_3 × 3 seeds |
+| `deepprime-clinvar` | deepprime / deepprime-clinvar | HEK293T PE2 | holdout_3 × 3 seeds |
+| `deeppe-pooled` | deeppe / ht + type + position + endo | HEK293T PE2 | holdout_3 × 3 seeds |
+| `minsepie-insert-pooled` | minsepie / set12 + 18nt + codon-variant + codon-hek3 | HEK293T PE2 | holdout_3 × 3 seeds |
+| `optiprime-lib-mmr__{hek293t,hela}__{pe2,pe4}` | optiprime / lib-mmr | 4 conditions | holdout_3 × 3 seeds |
+| `optiprime-lib-cv__{hek293t,hela}__{pe2,pe4}` | optiprime / lib-cv | 4 conditions | holdout_3 × 3 seeds |
 
 All cells use `--protocol holdout_3` (no author folds). Base seed 42 → seeds 42, 43, 44.
 
-Models × benchmarks × seeds = **63 jobs** (7 × 3 × 3). Each job: 10 HPO trials + 1 final train + eval.
+Models × benchmarks × seeds = **135 jobs** (15 × 3 × 3). Each job: 10 HPO trials + 1 final train + eval.
+
+### Re-run only the unpooled conditions
+
+If an older run pooled Library-Diverse / Lib-MMR / Lib-CV, re-submit just those
+benches (keeps library1 / ClinVar / DeepPE / MinSePIE artifacts if desired under a
+new `RUN_ID`):
+
+```bash
+BENCHMARKS="pridict2-library-diverse__hek293t pridict2-library-diverse__k562 pridict2-library-diverse__k562mlh1dn \
+optiprime-lib-mmr__hek293t__pe2 optiprime-lib-mmr__hek293t__pe4 optiprime-lib-mmr__hela__pe2 optiprime-lib-mmr__hela__pe4 \
+optiprime-lib-cv__hek293t__pe2 optiprime-lib-cv__hek293t__pe4 optiprime-lib-cv__hela__pe2 optiprime-lib-cv__hela__pe4" \
+  ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
+```
+
+That is **99** seed jobs (11 × 3 × 3).
 
 ## Local usage
 
@@ -85,7 +106,7 @@ source scripts/cluster/oxford-arc/env.sh
 # Dry-run scheduler validation
 DRY_RUN=1 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
-# 63 jobs (7 × 3 × 3 seeds), short L40S
+# 135 jobs (15 × 3 × 3 seeds), short L40S
 ./scripts/cluster/oxford-arc/submit.sh 01_tune_matrix.sh
 
 # One model × dataset → 3 seed jobs
@@ -113,7 +134,7 @@ SUBMIT_SEEDS=0 ARC_PARTITION=medium ARC_TIME=2-00:00:00 \
 **Single training/tuning job:** one GPU only. Lightning is configured with `devices=1` in
 `pe_common.training`; extra GPUs on the same SLURM allocation stay idle.
 
-**Parallel throughput:** 63 jobs × 1 L40S (`submit.sh 01_tune_matrix.sh`).
+**Parallel throughput:** 135 jobs × 1 L40S (`submit.sh 01_tune_matrix.sh`).
 Keep `ARC_GPUS=1` and `DEVICE=cuda:0`. Pack seeds with `SUBMIT_SEEDS=0` only if
 you want fewer, longer jobs.
 
@@ -156,3 +177,4 @@ Smoke overrides (`SMOKE=1`): 1 trial, 2 seeds, mini data locally; on ARC use `SM
 - Each seed has its own Optuna study and registered weights; test metrics are mean±std across seeds.
 - PRIDICT2 uses `MSEloss` on `averageedited` (same as probe/reproduction).
 - ClinVar (~289k rows) is the cell most likely to need a second short job.
+- Library-Diverse and Hsu Lib-MMR / Lib-CV match the vendor heatmap’s per-condition columns.

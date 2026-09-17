@@ -55,15 +55,26 @@ MAX_EPOCHS_OPED="${MAX_EPOCHS_OPED:-50}"
 MAX_EPOCHS_PRIDICT2="${MAX_EPOCHS_PRIDICT2:-50}"
 BATCH_SIZE="${BATCH_SIZE:-128}"
 
-# bench_name|study|datasets_csv  (comma-separated when pooled under one study)
+# bench_name|study|datasets_csv|cell_line|pe_system
+# Empty cell/PE = all matching datasheets (intentional multi-sheet pools only).
+# Library-Diverse and Lib-MMR / Lib-CV are one datasheet per condition — never pool
+# HEK/K562/MLH1dn or HEK/HeLa × PE2/PE4 (same split as vendor base-model eval).
 MATRIX_ALL=(
-    "pridict1-library1|pridict1|library1"
-    "pridict2-library-diverse|pridict2|library-diverse"
-    "deepprime-clinvar|deepprime|deepprime-clinvar"
-    "deeppe-pooled|deeppe|deeppe-ht,deeppe-type,deeppe-position,deeppe-endo"
-    "minsepie-insert-pooled|minsepie|library-insert-set12,library-insert-18nt,library-insert-codon-variant,library-insert-codon-hek3"
-    "optiprime-lib-mmr|optiprime|lib-mmr"
-    "optiprime-lib-cv|optiprime|lib-cv"
+    "pridict1-library1|pridict1|library1|hek293t|pe2"
+    "pridict2-library-diverse__hek293t|pridict2|library-diverse|hek293t|pe2"
+    "pridict2-library-diverse__k562|pridict2|library-diverse|k562|pe2"
+    "pridict2-library-diverse__k562mlh1dn|pridict2|library-diverse|k562mlh1dn|pe2"
+    "deepprime-clinvar|deepprime|deepprime-clinvar|hek293t|pe2"
+    "deeppe-pooled|deeppe|deeppe-ht,deeppe-type,deeppe-position,deeppe-endo|hek293t|pe2"
+    "minsepie-insert-pooled|minsepie|library-insert-set12,library-insert-18nt,library-insert-codon-variant,library-insert-codon-hek3|hek293t|pe2"
+    "optiprime-lib-mmr__hek293t__pe2|optiprime|lib-mmr|hek293t|pe2"
+    "optiprime-lib-mmr__hek293t__pe4|optiprime|lib-mmr|hek293t|pe4"
+    "optiprime-lib-mmr__hela__pe2|optiprime|lib-mmr|hela|pe2"
+    "optiprime-lib-mmr__hela__pe4|optiprime|lib-mmr|hela|pe4"
+    "optiprime-lib-cv__hek293t__pe2|optiprime|lib-cv|hek293t|pe2"
+    "optiprime-lib-cv__hek293t__pe4|optiprime|lib-cv|hek293t|pe4"
+    "optiprime-lib-cv__hela__pe2|optiprime|lib-cv|hela|pe2"
+    "optiprime-lib-cv__hela__pe4|optiprime|lib-cv|hela|pe4"
 )
 
 MODELS_ALL=(deepprime oped pridict2)
@@ -155,6 +166,12 @@ run_datasheet_benchmark_cell() {
         --no-write-preset
     )
     append_study_dataset_args args "${MATRIX_STUDY}" "${MATRIX_DATASETS}"
+    if [[ -n "${MATRIX_CELL:-}" ]]; then
+        args+=(--cell-line "${MATRIX_CELL}")
+    fi
+    if [[ -n "${MATRIX_PE:-}" ]]; then
+        args+=(--pe-system "${MATRIX_PE}")
+    fi
 
     if [[ -n "${INDEX:-}" ]]; then
         args+=(--index "${INDEX}")
@@ -184,10 +201,14 @@ cell_key() {
 
 parse_matrix_row() {
     local row="$1"
-    IFS='|' read -r MATRIX_BENCH MATRIX_STUDY MATRIX_DATASETS <<< "${row}"
+    MATRIX_CELL=""
+    MATRIX_PE=""
+    IFS='|' read -r MATRIX_BENCH MATRIX_STUDY MATRIX_DATASETS MATRIX_CELL MATRIX_PE <<< "${row}"
     : "${MATRIX_BENCH:?invalid matrix row: ${row}}"
     : "${MATRIX_STUDY:?invalid matrix row: ${row}}"
     : "${MATRIX_DATASETS:?invalid matrix row: ${row}}"
+    MATRIX_CELL="${MATRIX_CELL:-}"
+    MATRIX_PE="${MATRIX_PE:-}"
 }
 
 append_study_dataset_args() {
@@ -272,7 +293,11 @@ print_benchmark_banner() {
     local row
     while IFS= read -r row; do
         parse_matrix_row "${row}"
-        echo "  ${MATRIX_BENCH} (${MATRIX_STUDY}: $(datasets_display_for_row "${MATRIX_DATASETS}") )"
+        local cond=""
+        if [[ -n "${MATRIX_CELL}" || -n "${MATRIX_PE}" ]]; then
+            cond=" [${MATRIX_CELL:-*} / ${MATRIX_PE:-*}]"
+        fi
+        echo "  ${MATRIX_BENCH} (${MATRIX_STUDY}: $(datasets_display_for_row "${MATRIX_DATASETS}")${cond})"
     done < <(selected_matrix_rows)
     if [[ "${SMOKE:-0}" == "1" ]]; then
         echo "SMOKE:       1 (n_trials=${N_TRIALS} n_seeds=${N_SEEDS}; mini data unless SMOKE_FULL_DATA=1)"
