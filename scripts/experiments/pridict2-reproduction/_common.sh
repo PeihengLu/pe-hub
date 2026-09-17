@@ -4,8 +4,9 @@
 # Pipeline (Mathis et al. via PE Ensemble / PE-DB):
 #   1. Base train on PRIDICT library1
 #   2. Base train on library1 + DeepPrime ClinVar (DeepPrime folds on overlaps)
-#   3. Fine-tune both bases on library-diverse HEK and K562 → 4 models
-#   4. Mean-ensemble per cell line
+#   3. Fine-tune each base on library-diverse: one holdout_3 model per author
+#      fold (0–4) × cell (hek / k562) — vendor-style run_x, no CV+final
+#   4. Mean-ensemble Model A_x + Model B_x per cell × fold; eval on fold x
 
 set -euo pipefail
 
@@ -32,10 +33,8 @@ MODEL="${MODEL:-pridict2}"
 PE_SYSTEM="${PE_SYSTEM:-pe2}"
 BASE_CELL_LINE="${BASE_CELL_LINE:-hek293t}"
 FT_CELL_LINES="${FT_CELL_LINES:-hek k562}"
-
-# library-diverse author folds are 0..4. After pure CV training, peen’s final
-# export holds out the last fold for early stopping — evaluate on that fold.
-LD_TEST_FOLD="${LD_TEST_FOLD:-4}"
+# Author library-diverse folds (vendor run_0..run_4).
+FOLDS="${FOLDS:-0 1 2 3 4}"
 
 # Stable dataset-name labels (also used as state keys).
 NAME_BASE_L1="${NAME_BASE_L1:-pridict2-repro-base-library1}"
@@ -223,43 +222,73 @@ _hint_train_job_logs() {
     fi
 }
 
-# Author CV5 on library-diverse (folds 0–4); no outer random test holdout.
-append_library_diverse_cv_args() {
+# Resolve cell-line list: CELL_LINE= one cell, else FT_CELL_LINES.
+ft_cell_lines() {
+    if [[ -n "${CELL_LINE:-}" ]]; then
+        echo "${CELL_LINE}"
+    else
+        echo "${FT_CELL_LINES}"
+    fi
+}
+
+# Resolve fold list: FOLD= one fold, else FOLDS.
+ft_folds() {
+    if [[ -n "${FOLD:-}" ]]; then
+        echo "${FOLD}"
+    else
+        echo "${FOLDS}"
+    fi
+}
+
+# Vendor-style run_x: hold out author fold x as test; remainder → train/val.
+append_fold_holdout_args() {
     local -n _args="$1"
+    local fold="$2"
     _args+=(
-        --split-strategy cv
-        --cv-folds "${CV_FOLDS}"
+        --split-strategy holdout_3
+        --train-pct 0.7 --val-pct 0.15 --test-pct 0.15
         --use-original-fold
+        --original-fold-test-value "${fold}"
         --split-random-state "${SPLIT_RANDOM_STATE}"
     )
 }
 
-# Evaluate registered FT weights on the held-out author fold (default: 4).
-evaluate_library_diverse_test_fold() {
-    local weights_id="$1"
-    local cell="$2"
-    local fold="${3:-${LD_TEST_FOLD}}"
-    local tag="${4:-eval}"
-    local logfile
-    logfile="$(state_path "${tag}_${cell}_fold${fold}.log")"
+# Fine-tune one (base × cell × fold) and write state.
+# Args: base_key pretrained cell fold
+finetune_fold_model() {
+    local base_key="$1"
+    local pretrained="$2"
+    local cell="$3"
+    local fold="$4"
+    local state_key="ft_${base_key}_${cell}_fold${fold}"
+
+    if [[ "${SKIP_IF_DONE:-0}" == "1" && -f "$(state_path "${state_key}")" ]]; then
+        echo "SKIP_IF_DONE=1: ${state_key}=$(cat "$(state_path "${state_key}")")"
+        return 0
+    fi
+
+    local hp_json="${HYPERPARAMETERS_JSON:-}"
+    if [[ "${SMOKE:-0}" == "1" && -z "${hp_json}" ]]; then
+        hp_json="$(smoke_fixed_hp_json)"
+    elif [[ -z "${hp_json}" ]]; then
+        hp_json="{}"
+    fi
+    hp_json="$(force_mse_loss_json "${hp_json}")"
 
     local args=(
-        evaluate
+        train
         --model "${MODEL}"
-        --weights "${weights_id}"
-        --benchmark-name "${NAME_FT_PREFIX}-${tag}-${cell}-fold${fold}"
-        --custom-benchmark
+        --dataset-name "${NAME_FT_PREFIX}-${base_key}-${cell}-fold${fold}"
         --study pridict2 --dataset library-diverse
         --cell-line "${cell}" --pe-system "${PE_SYSTEM}"
-        --split-strategy holdout_2
-        --use-original-fold
-        --original-fold-test-value "${fold}"
         --device "${DEVICE}"
-        --sync
+        --pretrained-weights "${pretrained}"
+        --hyperparameters-json "${hp_json}"
+        --notes "pridict2-reproduction: FT ${base_key} → library-diverse ${cell} holdout fold ${fold}; MSEloss"
     )
-    echo "+ peen ${args[*]}"
-    echo "  (log: ${logfile})"
-    peen "${args[@]}" 2>&1 | tee "${logfile}"
+    append_fold_holdout_args args "${fold}"
+
+    run_peen_capture_weights "${state_key}" "${args[@]}"
 }
 
 maybe_skip_if_state() {

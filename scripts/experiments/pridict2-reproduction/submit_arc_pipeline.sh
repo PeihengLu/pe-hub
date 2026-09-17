@@ -1,24 +1,27 @@
 #!/usr/bin/env bash
 # Submit PRIDICT2 reproduction stages to ARC with SLURM --dependency=afterok.
 #
-# DAG (01∥02, then trains, then FT tune → transfer → ensemble):
+# DAG (01∥02, then trains, then fold-matched FT → ensemble):
 #
-#   01 tune L1 ──────────────► 03 train L1 ──┐
-#                                             ├─► 05 tune FT ──► 06 FT ×4 ──► 07 ensemble
-#   02 tune L1+ClinVar ──────► 04 train L1C ─┘
-#                              (06 also waits on 04)
+#   01 tune L1 ──────────────► 03 train L1 ──► 05_{cell}_f{fold} (10 short jobs) ──┐
+#                                                                                    ├─► 07 ensemble
+#   02 tune L1+ClinVar ──────► 04 train L1C ─► 06_{cell}_f{fold} (10 short jobs) ──┘
+#
+# Stages 05/06: one short job per (cell × fold). Short/12h ≈ one fold fit.
+#
+# Mid-flight resume from live job IDs:
+#   ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline_from_jobs.sh
 #
 # Usage (on htc-login, from repo root):
 #   ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
 #
-#   # Skip HPO if presets already exist; only chain train → FT
 #   SKIP=01,02 ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
-#
 #   ONLY=01,03 ./scripts/experiments/pridict2-reproduction/submit_arc_pipeline.sh
+#   ONLY=05,06,07 …   # all cell×fold jobs for 05 and 06
 #
 # Per-stage walltime (override via env):
 #   ARC_TIME_01 / ARC_PARTITION_01 … ARC_TIME_07 / ARC_PARTITION_07
-# Defaults: 01 → medium 24h; 02 → medium 48h (merged L1+ClinVar holdout_3); 03–07 → short 12h.
+# Defaults: 01 → medium 24h; 02 → medium 48h; 03–07 → short 12h.
 #
 # Requires: scripts/cluster/oxford-arc/env.sh (same as submit.sh).
 
@@ -35,6 +38,8 @@ fi
 
 ONLY="${ONLY:-}"
 SKIP="${SKIP:-}"
+FT_CELL_LINES="${FT_CELL_LINES:-hek k562}"
+FOLDS="${FOLDS:-0 1 2 3 4}"
 
 export SKIP_IF_TUNED="${SKIP_IF_TUNED:-1}"
 export SKIP_IF_DONE="${SKIP_IF_DONE:-1}"
@@ -65,7 +70,7 @@ afterok_deps() {
     echo "afterok:${joined}"
 }
 
-# Args: stage_num script [dependency] [partition] [time]
+# Args: stage_num script [dependency] [partition] [time] [CELL_LINE] [FOLD]
 # Prints job id on stdout (empty if skipped).
 submit_stage() {
     local stage="$1"
@@ -73,9 +78,11 @@ submit_stage() {
     local dep="${3:-}"
     local partition="${4:-}"
     local walltime="${5:-}"
+    local cell="${6:-}"
+    local fold="${7:-}"
 
     if ! should_run "${stage}"; then
-        echo "---- skip stage ${stage} (${script}) ----" >&2
+        echo "---- skip stage ${stage} (${script}${cell:+ CELL_LINE=${cell}}${fold:+ FOLD=${fold}}) ----" >&2
         echo ""
         return 0
     fi
@@ -84,9 +91,15 @@ submit_stage() {
     [[ -n "${partition}" ]] && env_args+=("ARC_PARTITION=${partition}")
     [[ -n "${walltime}" ]] && env_args+=("ARC_TIME=${walltime}")
     [[ -n "${dep}" ]] && env_args+=("ARC_DEPENDENCY=${dep}")
+    [[ -n "${cell}" ]] && env_args+=("CELL_LINE=${cell}")
+    [[ -n "${fold}" ]] && env_args+=("FOLD=${fold}")
+
+    local label="${stage}"
+    [[ -n "${cell}" ]] && label="${label}_${cell}"
+    [[ -n "${fold}" ]] && label="${label}_f${fold}"
 
     echo "" >&2
-    echo "######## STAGE ${stage}: ${script} ########" >&2
+    echo "######## STAGE ${label}: ${script} ########" >&2
     if [[ -n "${dep}" ]]; then
         echo "dependency: ${dep}" >&2
     fi
@@ -129,11 +142,17 @@ submit_stage() {
 : "${ARC_PARTITION_07:=${ARC_PARTITION_SHORT:-short}}"
 : "${ARC_TIME_07:=${ARC_TIME_SHORT:-06:00:00}}"
 
+# shellcheck disable=SC2206
+_cells=(${FT_CELL_LINES})
+# shellcheck disable=SC2206
+_folds=(${FOLDS})
+
 echo "======================================"
 echo "PRIDICT2 reproduction — ARC dependency pipeline"
 echo "======================================"
 echo "SKIP_IF_TUNED=${SKIP_IF_TUNED}  SKIP_IF_DONE=${SKIP_IF_DONE}"
 echo "ONLY=${ONLY:-*}  SKIP=${SKIP:-(none)}"
+echo "05/06: one short job per cell × fold (${#_cells[@]} cells × ${#_folds[@]} folds)"
 echo ""
 
 JOB01="$(submit_stage 01 01_tune_base_library1.sh "" "${ARC_PARTITION_01}" "${ARC_TIME_01}")"
@@ -144,14 +163,25 @@ JOB03="$(submit_stage 03 03_train_base_library1.sh \
 JOB04="$(submit_stage 04 04_train_base_l1_clinvar.sh \
     "$(afterok_deps "${JOB02}")" "${ARC_PARTITION_04}" "${ARC_TIME_04}")"
 
-JOB05="$(submit_stage 05 05_tune_finetune_library_diverse.sh \
-    "$(afterok_deps "${JOB03}")" "${ARC_PARTITION_05}" "${ARC_TIME_05}")"
+JOB05_IDS=()
+JOB06_IDS=()
+for cell in "${_cells[@]}"; do
+    for fold in "${_folds[@]}"; do
+        j05="$(submit_stage 05 05_tune_finetune_library_diverse.sh \
+            "$(afterok_deps "${JOB03}")" "${ARC_PARTITION_05}" "${ARC_TIME_05}" \
+            "${cell}" "${fold}")"
+        [[ -n "${j05}" ]] && JOB05_IDS+=("${j05}")
 
-JOB06="$(submit_stage 06 06_finetune_transfer.sh \
-    "$(afterok_deps "${JOB03}" "${JOB04}" "${JOB05}")" "${ARC_PARTITION_06}" "${ARC_TIME_06}")"
+        j06="$(submit_stage 06 06_finetune_transfer.sh \
+            "$(afterok_deps "${JOB04}")" "${ARC_PARTITION_06}" "${ARC_TIME_06}" \
+            "${cell}" "${fold}")"
+        [[ -n "${j06}" ]] && JOB06_IDS+=("${j06}")
+    done
+done
 
 JOB07="$(submit_stage 07 07_ensemble_by_cell_line.sh \
-    "$(afterok_deps "${JOB06}")" "${ARC_PARTITION_07}" "${ARC_TIME_07}")"
+    "$(afterok_deps "${JOB05_IDS[@]}" "${JOB06_IDS[@]}")" \
+    "${ARC_PARTITION_07}" "${ARC_TIME_07}")"
 
 echo ""
 echo "======================================"
@@ -161,12 +191,18 @@ echo "  01 tune L1:           ${JOB01:-—}"
 echo "  02 tune L1+ClinVar:   ${JOB02:-—}"
 echo "  03 train L1:          ${JOB03:-—}  (afterok:01)"
 echo "  04 train L1+ClinVar:  ${JOB04:-—}  (afterok:02)"
-echo "  05 tune FT:           ${JOB05:-—}  (afterok:03)"
-echo "  06 fine-tune ×4:      ${JOB06:-—}  (afterok:03,04,05)"
-echo "  07 ensemble:          ${JOB07:-—}  (afterok:06)"
+echo "  05 Model A fold FTs:  ${#JOB05_IDS[@]} jobs  (afterok:03)"
+for _id in "${JOB05_IDS[@]+"${JOB05_IDS[@]}"}"; do
+    echo "      ${_id}"
+done
+echo "  06 Model B fold FTs:  ${#JOB06_IDS[@]} jobs  (afterok:04)"
+for _id in "${JOB06_IDS[@]+"${JOB06_IDS[@]}"}"; do
+    echo "      ${_id}"
+done
+echo "  07 ensemble:          ${JOB07:-—}  (afterok: all 05+06)"
 echo ""
 echo "Monitor: squeue -u \$USER"
-_cancel_ids=("${JOB01}" "${JOB02}" "${JOB03}" "${JOB04}" "${JOB05}" "${JOB06}" "${JOB07}")
+_cancel_ids=("${JOB01}" "${JOB02}" "${JOB03}" "${JOB04}" "${JOB05_IDS[@]+"${JOB05_IDS[@]}"}" "${JOB06_IDS[@]+"${JOB06_IDS[@]}"}" "${JOB07}")
 _cancel_list=""
 for _id in "${_cancel_ids[@]}"; do
     [[ -n "${_id}" ]] || continue

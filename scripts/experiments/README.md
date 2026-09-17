@@ -54,7 +54,7 @@ Smoke: `SMOKE=1 DEVICE=mps ./scripts/experiments/<script>.sh`
 
 ## PRIDICT 2.0 reproduction (transfer + ensemble)
 
-Full pipeline (tune → base train → fine-tune → mean ensemble):
+Full pipeline (tune → base train → fold-matched fine-tune → mean ensemble per fold):
 
 ```bash
 ./scripts/experiments/pridict2-reproduction/run_all.sh

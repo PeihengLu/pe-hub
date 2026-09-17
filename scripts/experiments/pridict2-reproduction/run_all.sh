@@ -6,19 +6,21 @@
 #   02 tune base library1 + DeepPrime ClinVar
 #   03 train base library1
 #   04 train base L1+ClinVar
-#   05 tune fine-tune (library-diverse HEK / K562)
-#   06 fine-tune 4 transfer models
-#   07 mean-ensemble per cell line
+#   05 fine-tune Model A (library1 base): 5 folds × cells
+#   06 fine-tune Model B (L1+ClinVar base): 5 folds × cells
+#   07 mean-ensemble A_x + B_x per cell × fold; eval on fold x
 #
 # Usage:
 #   ./scripts/experiments/pridict2-reproduction/run_all.sh
 #   SMOKE=1 DEVICE=mps SKIP_IF_TUNED=1 SKIP_IF_DONE=1 ./.../run_all.sh
 #   ONLY=06,07 ./.../run_all.sh          # resume from fine-tune + ensemble
-#   SKIP=01,02,05 ./.../run_all.sh       # skip HPO (use existing presets)
+#   SKIP=01,02 ./.../run_all.sh          # skip base HPO (use existing presets)
 #
 # Env (also see _common.sh / scripts/hyperparameter/_common.sh):
 #   DEVICE, N_TRIALS, SMOKE, SKIP_IF_TUNED, SKIP_IF_DONE, STATE_DIR
 #   FT_CELL_LINES   default "hek k562"
+#   FOLDS           default "0 1 2 3 4"
+#   CELL_LINE / FOLD  restrict to one cell / fold
 #   ONLY / SKIP     comma-separated stage numbers (01..07)
 
 set -euo pipefail
