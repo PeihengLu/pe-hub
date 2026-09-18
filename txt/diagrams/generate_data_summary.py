@@ -484,7 +484,7 @@ fig.legend(
     title="Study",
     loc="upper center",
     bbox_to_anchor=(0.5, 0.975),
-    ncol=min(len(study_order), 6),
+    ncol=min(len(study_order), 7),
     frameon=True,
     fancybox=True,
     shadow=False,
