@@ -1,0 +1,38 @@
+# Repo-relative paths for the PRIDICT2.0 reproduction supplementary bundle.
+# Used by: ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh
+# and by pack_supplementary_weights.sh
+#
+# 2 bases + 20 fold-matched fine-tunes (Model A/B × hek/k562 × folds 0–4).
+# Ensemble definitions are mean(A,B) only — no separate weight blobs.
+
+scripts/experiments/pridict2-reproduction/state
+scripts/experiments/pridict2-reproduction/weights_id_map.tsv
+services/pe-ensemble/weights/local_registry.json
+
+# Bases
+services/pe-ensemble/weights/pridict2/pridict2__hek293t-pe2__20260917__7b513c
+services/pe-ensemble/weights/pridict2/pridict2__hek293t-pe2__20260918__715433
+
+# Model A (library1 base → library-diverse)
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260917__feab38
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260917__956565
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260917__677a7c
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260917__45f737
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260917__014ee9
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260917__a6cde5
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260917__7feb8e
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260917__f645cf
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260917__71ebda
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260917__bd45cf
+
+# Model B (L1+ClinVar base → library-diverse)
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260918__5a43c9
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260918__82b799
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260918__fcc60f
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260918__3d5cc7
+services/pe-ensemble/weights/pridict2/pridict2__hek-pe2__20260918__c797c5
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260918__4bf050
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260918__978d0f
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260918__8c123e
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260918__f00e22
+services/pe-ensemble/weights/pridict2/pridict2__k562-pe2__20260918__817778

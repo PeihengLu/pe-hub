@@ -102,6 +102,17 @@
 # CELL_LINE=hek FOLD=0 ./scripts/cluster/oxford-arc/submit.sh 05_tune_finetune_library_diverse.sh
 # ```
 #
+## Pull trained weights (laptop) + supplementary zip
+#
+# Weight IDs are listed in `weights_id_map.tsv`. Paths to rsync/zip are in
+# `supplementary_artifacts.txt` (2 bases + 20 fine-tunes ≈ 22 × ~1 MB).
+#
+# ```bash
+# ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+# ./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh
+# # → txt/supplementary/pridict2-reproduction-weights.zip
+# ```
+#
 ## Shared HPO helpers
 #
 # Optuna helpers (base stages 01/02) live in

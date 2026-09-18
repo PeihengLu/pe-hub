@@ -15,7 +15,9 @@
 #   DRY_RUN=1    rsync --dry-run
 #   DELETE=1     rsync --delete (dest extras removed)
 #   LIST=1       print paths and exit
-#   ONLY=a,b     only these relative paths (alias: env → env.sh)
+#   ONLY=a,b     only these relative paths (alias: env → env.sh;
+#                bundle: pridict2-repro → reproduction weights + state)
+#   EXTRA=a,b    append these paths (or bundles) to the DVC set
 #   SKIP=a,b     skip these relative paths
 
 set -euo pipefail
@@ -28,6 +30,7 @@ fi
 _RSYNC_ARC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${_RSYNC_ARC_DIR}/../../.." && pwd)"
 ENV_REL="scripts/cluster/oxford-arc/env.sh"
+_PRIDICT2_REPRO_MANIFEST="scripts/experiments/pridict2-reproduction/supplementary_artifacts.txt"
 
 _arc_rsync_usage() {
     local cmd="$1"
@@ -39,7 +42,9 @@ Run on the laptop. One rsync (one SSH password) of DVC-tracked folders plus ${EN
   DRY_RUN=1     show what would transfer
   LIST=1        print relative paths and exit
   DELETE=1      remove dest files that are not on the source
-  ONLY=path,..  only these repo-relative paths (ONLY=env for env.sh)
+  ONLY=path,..  only these repo-relative paths (ONLY=env for env.sh;
+                ONLY=pridict2-repro for reproduction weights + state)
+  EXTRA=path,.. append paths/bundles to the default DVC set
   SKIP=path,..  skip these repo-relative paths
   ARC_HOST      default htc-login.arc.ox.ac.uk
   ARC_PROJECT   default coml-deepcmb
@@ -58,19 +63,67 @@ _arc_normalize_item() {
     esac
 }
 
-_arc_in_csv() {
-    local rel="$1" csv="$2"
-    [[ -z "${csv}" ]] && return 1
+# Expand CSV tokens; known bundles become many repo-relative paths.
+# Prints one relative path per line (no kinds).
+_arc_expand_csv_paths() {
+    local csv="$1"
+    [[ -z "${csv}" ]] && return 0
     local -a items
-    local item
+    local item line
     IFS=',' read -ra items <<< "${csv}"
     for item in "${items[@]}"; do
         item="$(_arc_normalize_item "${item}")"
         [[ -z "${item}" ]] && continue
+        case "${item}" in
+            pridict2-repro|pridict2_repro|pridict2-reproduction)
+                if [[ ! -f "${REPO_ROOT}/${_PRIDICT2_REPRO_MANIFEST}" ]]; then
+                    echo "Error: missing ${_PRIDICT2_REPRO_MANIFEST}" >&2
+                    return 1
+                fi
+                while IFS= read -r line || [[ -n "${line}" ]]; do
+                    [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+                    # first whitespace-separated field
+                    echo "${line%%[[:space:]]*}"
+                done < "${REPO_ROOT}/${_PRIDICT2_REPRO_MANIFEST}"
+                ;;
+            *)
+                echo "${item}"
+                ;;
+        esac
+    done
+}
+
+_arc_csv_has_bundle_only() {
+    # True if EVERY token in ONLY is a known bundle (no plain paths mixed in
+    # that would still need the DVC inventory). Used to skip DVC listing.
+    local csv="${1:-}"
+    [[ -z "${csv}" ]] && return 1
+    local -a items
+    local item
+    local any=0
+    IFS=',' read -ra items <<< "${csv}"
+    for item in "${items[@]}"; do
+        item="$(_arc_normalize_item "${item}")"
+        [[ -z "${item}" ]] && continue
+        any=1
+        case "${item}" in
+            pridict2-repro|pridict2_repro|pridict2-reproduction) ;;
+            *) return 1 ;;
+        esac
+    done
+    [[ "${any}" -eq 1 ]]
+}
+
+_arc_in_csv() {
+    local rel="$1" csv="$2"
+    [[ -z "${csv}" ]] && return 1
+    local item
+    while IFS= read -r item; do
+        [[ -z "${item}" ]] && continue
         if [[ "${rel}" == "${item}" ]]; then
             return 0
         fi
-    done
+    done < <(_arc_expand_csv_paths "${csv}")
     return 1
 }
 
@@ -85,10 +138,31 @@ _arc_should_sync() {
     return 0
 }
 
-# Prints "file|dir<TAB>relative/path" for each DVC out, then env.sh.
+_arc_guess_kind() {
+    local rel="$1"
+    if [[ "${rel}" == *.json || "${rel}" == *.tsv || "${rel}" == *.txt || "${rel}" == *.yaml || "${rel}" == *.yml || "${rel}" == *.sh ]]; then
+        echo file
+    else
+        echo dir
+    fi
+}
+
+# Prints "file|dir<TAB>relative/path" for each DVC out, then env.sh,
+# then EXTRA=/bundle expansions.
 _arc_list_sync_entries() {
     local py
     py="$(command -v python3 2>/dev/null || command -v python)"
+
+    # Bundle-only ONLY=: skip DVC inventory; emit expanded paths only.
+    if _arc_csv_has_bundle_only "${ONLY:-}"; then
+        local rel
+        while IFS= read -r rel; do
+            [[ -z "${rel}" ]] && continue
+            printf '%s\t%s\n' "$(_arc_guess_kind "${rel}")" "${rel}"
+        done < <(_arc_expand_csv_paths "${ONLY}")
+        return 0
+    fi
+
     "${py}" - "${REPO_ROOT}" <<'PY'
 from pathlib import Path
 import os
@@ -146,6 +220,14 @@ for dvc in sorted(dvc_files):
         print(f"{kind}\t{rel}")
 PY
     printf 'file\t%s\n' "${ENV_REL}"
+
+    if [[ -n "${EXTRA:-}" ]]; then
+        local rel
+        while IFS= read -r rel; do
+            [[ -z "${rel}" ]] && continue
+            printf '%s\t%s\n' "$(_arc_guess_kind "${rel}")" "${rel}"
+        done < <(_arc_expand_csv_paths "${EXTRA}")
+    fi
 }
 
 arc_rsync_main() {

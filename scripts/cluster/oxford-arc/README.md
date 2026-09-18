@@ -78,8 +78,16 @@ LIST=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh     # show paths, no SSH
 SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
 ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
 ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973
+ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
 DELETE=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973   # dest extras removed
 ```
+
+`ONLY=pridict2-repro` pulls the PRIDICT2 reproduction weight dirs, `local_registry.json`,
+and `scripts/experiments/pridict2-reproduction/state/` (see
+`scripts/experiments/pridict2-reproduction/supplementary_artifacts.txt`). Then zip for
+supplementary files with
+`./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh`.
 
 `pull_env_from_arc.sh` still exists as `ONLY=env` (env.sh only).
 
@@ -197,9 +205,17 @@ On the laptop:
 ```
 
 That covers current DVC-tracked trees (`datasets/reference/`, `results/`,
-`slurm_output/`, scratch-benchmark `results/`) and cluster `env.sh`. For trained
-weights or `training_presets_local/` that are not yet in a `*.dvc` file, rsync
-those paths once or add a pointer so they join the set.
+`slurm_output/`, scratch-benchmark `results/`) and cluster `env.sh`. For the
+PRIDICT2 reproduction trained weights:
+
+```bash
+ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh
+```
+
+For other trained weights or `training_presets_local/` that are not yet in a
+`*.dvc` file, rsync those paths once, pass `EXTRA=…`, or add a pointer so they
+join the default set.
 
 Only if you deliberately publish a shared baseline:
 
