@@ -206,7 +206,14 @@ def execute_tuning(
             job_id=job_id,
         )
         if n_remaining > 0:
-            study.optimize(objective, n_trials=n_remaining)
+            # Do not abort the whole study when a single trial crashes (e.g. a
+            # transient BatchNorm/batch-size edge case). Failed trials stay in
+            # the DB as FAIL and Optuna continues sampling.
+            study.optimize(
+                objective,
+                n_trials=n_remaining,
+                catch=(Exception,),
+            )
 
         best = study.best_trial
         # Optuna best.params omits SearchSpaceSpec.fixed and pre-remap aliases

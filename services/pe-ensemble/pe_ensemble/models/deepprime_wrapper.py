@@ -270,13 +270,17 @@ class DeepPrimeModelWrapper(BasePEModel):
             num_workers=hyperparameters.get("num_workers"),
             pin_memory=self.device.type == "cuda",
         )
+        train_dataset = _DeepPrimeTensorDataset(
+            train_inputs["g"], train_inputs["x"], self._to_model_space(y_train)
+        )
+        # BatchNorm in the DeepPrime head rejects batch size 1 (common when
+        # len(train) % batch_size == 1). Drop the incomplete last train batch
+        # whenever at least one full batch remains.
         train_loader = DataLoader(
-            _DeepPrimeTensorDataset(
-                train_inputs["g"], train_inputs["x"], self._to_model_space(y_train)
-            ),
+            train_dataset,
             batch_size=batch_size,
             shuffle=reshuffle_each_epoch,
-            drop_last=False,
+            drop_last=len(train_dataset) > batch_size,
             **loader_kwargs,
         )
         val_loader = DataLoader(
