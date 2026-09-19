@@ -67,13 +67,31 @@ def convert_standardized(
     target_format: str,
     *,
     progress_callback: Optional[ProgressCallback] = None,
+    study: Optional[str] = None,
+    dataset: Optional[str] = None,
+    cell_line: Optional[str] = None,
+    pe_system: Optional[str] = None,
 ) -> pd.DataFrame:
     """Convert a standardized dataframe to a registered model format."""
     key = validate_output_format(target_format)
     if key == "std":
         return df.copy()
     converter = get_format_converter(key)
-    return converter(df, progress_callback=progress_callback)
+    # OptiPrime (and future context-aware formats) take study/assay kwargs;
+    # other converters ignore unexpected keywords via **kwargs or signature.
+    try:
+        return converter(
+            df,
+            progress_callback=progress_callback,
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
+        )
+    except TypeError as exc:
+        if "unexpected keyword" not in str(exc):
+            raise
+        return converter(df, progress_callback=progress_callback)
 
 
 def _register_builtin_formats() -> None:

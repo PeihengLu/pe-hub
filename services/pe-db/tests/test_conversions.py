@@ -776,7 +776,84 @@ def test_optiprime_conversion_drops_pads_from_pbs_rtt():
     out = standardized_to_optiprime_dataframe(df).iloc[0]
     assert "N" not in out["pbs"]
     assert "N" not in out["rtt"]
-    assert "N" not in out["full_unedited"]
+    # Lib-MMR-style pl=0 windows get a 4 bp A-pad so OptiPrime's PS20 frame holds.
+    assert out["full_unedited"].startswith("AAAA")
+    assert out["full_unedited"][4:24] == spacer
+    assert "N" not in out["full_unedited"][4:]
+    assert out["scaffold_name"] == "SpCas9_OG"
+    assert out["group"] == "Liu_HEK293T"
+
+
+def test_optiprime_assay_defaults_follow_study_context():
+    spacer = "GTCATCTTAGTCATTACCTG"
+    wt = "ACGT" + spacer + "AGGTGTTCGTTG"
+    mut = "ACGT" + spacer[:10] + "G" + spacer[11:] + "AGGTGTTCGTTG"
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [11],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [34],
+            "editing_efficiency": [0.2],
+        }
+    )
+    deeppe = standardized_to_optiprime_dataframe(
+        df, study="deeppe", dataset="deeppe_ht", cell_line="hek293t", pe_system="pe2"
+    ).iloc[0]
+    assert deeppe["group"] == "Liu_HEK293T"
+    assert deeppe["cas9_type"] == "PE2-Cas9"
+    assert deeppe["motif"] == "none"
+    assert deeppe["scaffold_name"] == "SpCas9_OG"
+    assert deeppe["full_unedited"].startswith("ACGT")
+
+    hsu = standardized_to_optiprime_dataframe(
+        df, study="optiprime", dataset="lib_mmr", cell_line="hela", pe_system="pe4"
+    ).iloc[0]
+    assert hsu["group"] == "Liu_HeLa"
+    assert hsu["cas9_type"] == "PEmax-Cas9"
+    assert hsu["motif"] == "tevoPreQ1"
+    assert hsu["scaffold_name"] == "BlpI_F+E"
+    assert hsu["pe_type"] == "PE4"
+    assert hsu["time"] == 5.0
+
+    mda = standardized_to_optiprime_dataframe(
+        df, study="deeppe", dataset="deeppe_endo", cell_line="mda_mb_231", pe_system="pe2"
+    ).iloc[0]
+    assert mda["group"] == "Kim_MDA-MB-231"
+
+
+def test_optiprime_synthetic_g21_is_lowercase():
+    genomic = "ATCCCTTCTGCAGCACCAGG"  # starts with A, not G
+    wt = "TTTT" + genomic + "ATCG"
+    mut = wt
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [10],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [28],
+            "editing_efficiency": [0.1],
+        }
+    )
+    out = standardized_to_optiprime_dataframe(df, study="deeppe").iloc[0]
+    assert out["spacer"].startswith("g")
+    assert len(out["spacer"]) == 21
 
 
 def test_optiprime_5g_spacer_uses_genomic_20mer_with_upstream():

@@ -66,7 +66,6 @@ class DataConverter:
         *,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> pd.DataFrame:
-        del study, dataset, cell_line, pe_system
         if isinstance(source, Path):
             if not source.exists():
                 raise FileNotFoundError(f"Standardized data file not found: {source}")
@@ -81,6 +80,10 @@ class DataConverter:
             df,
             target_format,
             progress_callback=progress_callback,
+            study=study,
+            dataset=dataset,
+            cell_line=cell_line,
+            pe_system=pe_system,
         )
 
         if output_file is not None:

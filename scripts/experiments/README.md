@@ -104,11 +104,12 @@ DEVICE=mps ./scripts/experiments/evaluate_base_model_benchmarks.sh
 # Script invokes ``python -m pe_ensemble.cli`` (more reliable than the peen entrypoint).
 python scripts/experiments/summarize_eval_results.py \
   scripts/experiments/base-model-eval/results/<RUN_ID>/results.jsonl
-python scripts/experiments/plot_base_model_eval.py \
-  scripts/experiments/base-model-eval/results/<RUN_ID>/paper_comparison.csv
-# Writes txt/diagrams/eval_pearson_heatmap.pdf (and .png). Study-group
-# borders use the Tableau palette from data_composition.png; cell fills
-# are the Pearson navy ramp.
+python txt/diagrams/plot_base_model_eval.py
+# Default: unfiltered + design-rule stack from HEATMAP_RUN_ID /
+# DESIGN_*_RUN_ID. Writes eval_pearson_heatmap.pdf and
+# eval_pearson_heatmap_design_rules.pdf (+ .png). Design only:
+#   python txt/diagrams/plot_base_model_eval.py --design
+# Explicit path still works.
 
 # Partial rerun: reuse RUN_ID so new cells replace matching rows, then summary.csv
 # is rewritten. Skip DeepPrime (already good); OptiPrime lib-* data_leak rows stay.
@@ -248,7 +249,7 @@ finished run:
 | Script | Purpose |
 | --- | --- |
 | `summarize_eval_results.py` | `results.jsonl` → `summary.csv`; `--repair-from-logs` recovers mislabelled `cli_failure` rows |
-| `plot_base_model_eval.py` | Pearson heatmap into `txt/diagrams/` |
+| `txt/diagrams/plot_base_model_eval.py` | Pearson heatmap (defaults to `HEATMAP_RUN_ID`; `--design` for stacked rules) |
 | `expand_eval_cell_lines.py` | Expands a benchmark into its per-cell-line, per-PE-system cells |
 | `eval_split_args.py` | Chooses author-fold versus random-holdout split flags per benchmark |
 | `paper_reported_metrics.py` | Published reference metrics for the comparison table |

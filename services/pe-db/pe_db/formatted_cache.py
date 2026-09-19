@@ -23,7 +23,7 @@ FORMATTED_CACHE_REVISIONS: dict[str, int] = {
     "pridict": 8,  # overhang left: insert-start vs already-after-insert rha_l
     "pridict2": 8,
     "oped": 8,  # full unpadded WT target; no fixed 47/350 crop or A-pad flanks
-    "optiprime": 4,  # 5G genomic 20-mer locate; RTT from homology_arm
+    "optiprime": 5,  # study-aware assay/group; PS20 pad; lowercase g21
 }
 
 
