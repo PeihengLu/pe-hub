@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./scripts/cluster/oxford-arc/push_to_arc.sh
-#   ./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973
+#   ./scripts/cluster/oxford-arc/push_to_arc.sh YOUR_ARC_USER
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/push_to_arc.sh
 #   ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh
 

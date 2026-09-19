@@ -4,12 +4,12 @@
 #
 # Usage:
 #   ./scripts/cluster/oxford-arc/pull_from_arc.sh
-#   ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+#   ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 #   DRY_RUN=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh
 #   SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh
 #   ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh
-#   ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
-#   EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+#   ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+#   EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 
 set -euo pipefail
 

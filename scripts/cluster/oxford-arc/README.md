@@ -1,5 +1,10 @@
 # Oxford ARC — submit pe-hub tuning / training
 
+> **Canonical toolkit:** shared, reusable copies of these scripts live in the
+> sibling repo `oxford-arc` (`~/development/oxford-arc`). Prefer that checkout
+> for new work and sharing. This directory remains for existing pe-hub
+> workflows. Keep local `env.sh` gitignored — never commit usernames or emails.
+
 # Official docs: [ARC User Guide](https://arc-user-guide.readthedocs.io/en/latest/)
 
 # GPUs live only on the **htc** cluster.
@@ -70,17 +75,17 @@ in **one** rsync, so you type the SSH password once. No git commits.
 ```bash
 # VPN, or ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config
 ./scripts/cluster/oxford-arc/pull_from_arc.sh            # prompts for username
-./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973   # ARC → laptop
-./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973     # laptop → ARC
+./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER   # ARC → laptop
+./scripts/cluster/oxford-arc/push_to_arc.sh YOUR_ARC_USER     # laptop → ARC
 
-DRY_RUN=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+DRY_RUN=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 LIST=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh     # show paths, no SSH
-SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
-ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
-ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh wolf6973
-ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
-EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
-DELETE=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973   # dest extras removed
+SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh YOUR_ARC_USER
+ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+DELETE=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER   # dest extras removed
 ```
 
 `ONLY=pridict2-repro` pulls the PRIDICT2 reproduction weight dirs, `local_registry.json`,
@@ -199,9 +204,9 @@ Override roots with `WEIGHTS_ROOT`, `TUNING_STUDIES_ROOT`, `TRAINING_PRESETS_ROO
 On the laptop:
 
 ```bash
-./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 # env.sh only:
-./scripts/cluster/oxford-arc/pull_env_from_arc.sh wolf6973
+./scripts/cluster/oxford-arc/pull_env_from_arc.sh YOUR_ARC_USER
 ```
 
 That covers current DVC-tracked trees (`datasets/reference/`, `results/`,
@@ -209,7 +214,7 @@ That covers current DVC-tracked trees (`datasets/reference/`, `results/`,
 PRIDICT2 reproduction trained weights:
 
 ```bash
-ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 ./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh
 ```
 

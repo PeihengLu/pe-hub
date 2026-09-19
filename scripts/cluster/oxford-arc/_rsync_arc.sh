@@ -9,7 +9,7 @@
 #
 # Optional env:
 #   ARC_HOST     default htc-login.arc.ox.ac.uk
-#   ARC_PROJECT  default coml-deepcmb
+#   ARC_PROJECT  ARC share name (required; set in env.sh)
 #   ARC_REMOTE   if set, used as-is (user@host:/abs/path/to/pe-hub)
 #   ARC_USER     else first arg, else prompt
 #   DRY_RUN=1    rsync --dry-run
@@ -47,7 +47,7 @@ Run on the laptop. One rsync (one SSH password) of DVC-tracked folders plus ${EN
   EXTRA=path,.. append paths/bundles to the default DVC set
   SKIP=path,..  skip these repo-relative paths
   ARC_HOST      default htc-login.arc.ox.ac.uk
-  ARC_PROJECT   default coml-deepcmb
+  ARC_PROJECT   ARC share name (required; set in env.sh)
   ARC_REMOTE    override user@host:/data/<project>/<user>/pe-hub
 
 Off-campus: ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config.
@@ -242,7 +242,7 @@ arc_rsync_main() {
     fi
 
     ARC_HOST="${ARC_HOST:-htc-login.arc.ox.ac.uk}"
-    ARC_PROJECT="${ARC_PROJECT:-coml-deepcmb}"
+    : "${ARC_PROJECT:?Set ARC_PROJECT in env.sh to your ARC share name under /data/}"
 
     if [[ -n "${1:-}" ]]; then
         ARC_USER="$1"

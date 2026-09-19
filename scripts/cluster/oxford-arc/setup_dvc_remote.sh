@@ -8,8 +8,8 @@
 #
 # Usage:
 #   ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
-#   ARC_USER=wolf6973 ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
-#   ARC_PROJECT=coml-deepcmb ARC_USER=wolf6973 ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
+#   ARC_USER=YOUR_ARC_USER ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
+#   ARC_PROJECT=YOUR_ARC_PROJECT ARC_USER=YOUR_ARC_USER ./scripts/cluster/oxford-arc/setup_dvc_remote.sh
 
 set -euo pipefail
 
@@ -22,8 +22,13 @@ if [[ -f "${ARC_DIR}/env.sh" ]]; then
     source "${ARC_DIR}/env.sh"
 fi
 
-ARC_PROJECT="${ARC_PROJECT:-coml-deepcmb}"
+ARC_PROJECT="${ARC_PROJECT:-YOUR_ARC_PROJECT}"
 ARC_HOST="${ARC_HOST:-htc-login.arc.ox.ac.uk}"
+
+if [[ "${ARC_PROJECT}" == "YOUR_ARC_PROJECT" ]]; then
+    echo "Error: set ARC_PROJECT in env.sh to your ARC share name under /data/" >&2
+    exit 1
+fi
 
 if [[ -z "${ARC_USER:-}" ]]; then
     ARC_USER="${USER:?Set ARC_USER to your ARC username}"

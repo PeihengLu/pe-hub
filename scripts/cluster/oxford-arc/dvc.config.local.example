@@ -9,10 +9,10 @@
 
 # --- On a laptop (VPN / Uni net) ---
 # ['remote "arc"']
-#     url = ssh://USER@htc-login.arc.ox.ac.uk/data/coml-deepcmb/USER/dvc-store
+#     url = ssh://USER@htc-login.arc.ox.ac.uk/data/YOUR_ARC_PROJECT/USER/dvc-store
 #     user = USER
 
 # --- On ARC ($DATA is already /data/<project>/<user>) ---
 # ['remote "arc"']
-#     url = /data/coml-deepcmb/USER/dvc-store
+#     url = /data/YOUR_ARC_PROJECT/USER/dvc-store
 #     # or simply: url = $DATA/dvc-store
