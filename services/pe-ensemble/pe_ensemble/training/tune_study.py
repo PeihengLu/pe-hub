@@ -107,6 +107,47 @@ def _log(message: str, *, job_id: Optional[str]) -> None:
         append_log(job_id, message)
 
 
+def _fail_orphan_running_trials(study: Any, *, job_id: Optional[str]) -> int:
+    """Mark walltime/kill orphans as FAIL so they do not block resume forever.
+
+    Slurm SIGKILL leaves the in-flight trial in ``RUNNING``. Those slots still
+    count toward the attempt budget after this cleanup.
+    """
+    from optuna.trial import TrialState
+
+    fixed = 0
+    for trial in study.get_trials(deepcopy=False):
+        if trial.state != TrialState.RUNNING:
+            continue
+        study.tell(trial.number, state=TrialState.FAIL)
+        fixed += 1
+        _log(
+            f"Marked orphan RUNNING trial {trial.number} as FAIL (resume after kill)",
+            job_id=job_id,
+        )
+    return fixed
+
+
+def _trial_state_counts(study: Any) -> Dict[str, int]:
+    from optuna.trial import TrialState
+
+    counts = {"complete": 0, "fail": 0, "running": 0, "pruned": 0, "waiting": 0, "other": 0}
+    for trial in study.get_trials(deepcopy=False):
+        if trial.state == TrialState.COMPLETE:
+            counts["complete"] += 1
+        elif trial.state == TrialState.FAIL:
+            counts["fail"] += 1
+        elif trial.state == TrialState.RUNNING:
+            counts["running"] += 1
+        elif trial.state == TrialState.PRUNED:
+            counts["pruned"] += 1
+        elif trial.state == TrialState.WAITING:
+            counts["waiting"] += 1
+        else:
+            counts["other"] += 1
+    return counts
+
+
 def execute_tuning(
     request: TuningRequest,
     *,
@@ -180,6 +221,8 @@ def execute_tuning(
             if not stored_split:
                 study.set_user_attr("split_fingerprint", split_fp)
 
+        running_fixed = _fail_orphan_running_trials(study, job_id=job_id)
+
         def objective(trial: "optuna.Trial") -> float:
             if job_id and is_cancel_requested("tune", job_id):
                 raise JobCancelledError(f"Tuning job {job_id} cancelled")
@@ -198,11 +241,16 @@ def execute_tuning(
             return result.metric
 
         n_target = int(request.n_trials)
+        # Attempt budget: every trial row (COMPLETE/FAIL/PRUNED) counts. Orphan
+        # RUNNING slots were converted to FAIL above so they do not stick forever.
         n_existing = len(study.get_trials(deepcopy=False))
         n_remaining = max(0, n_target - n_existing)
+        counts = _trial_state_counts(study)
         _log(
-            f"Study {study_name!r} has {n_existing} trial(s); "
-            f"running {n_remaining} more (target {n_target})",
+            f"Study {study_name!r} has complete={counts['complete']} "
+            f"fail={counts['fail']} pruned={counts['pruned']} "
+            f"running_fixed={running_fixed} → remaining={n_remaining} "
+            f"(target {n_target})",
             job_id=job_id,
         )
         if n_remaining > 0:
@@ -215,6 +263,19 @@ def execute_tuning(
                 catch=(Exception,),
             )
 
+        from optuna.trial import TrialState
+
+        complete = [
+            t
+            for t in study.get_trials(deepcopy=False)
+            if t.state == TrialState.COMPLETE
+        ]
+        if not complete:
+            raise TrainingError(
+                f"Study {study_name!r} finished with no COMPLETE trials "
+                f"(target {n_target}, existing attempts {len(study.get_trials(deepcopy=False))}). "
+                "Re-run with a higher --n-trials or inspect failed trials in the Optuna DB."
+            )
         best = study.best_trial
         # Optuna best.params omits SearchSpaceSpec.fixed and pre-remap aliases
         # (e.g. OPED ffn_dim). Materialize so presets/final train match trials.

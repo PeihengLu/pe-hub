@@ -76,8 +76,9 @@ INDEX=0 MODEL=pridict2 BENCHMARK=pridict1-library1 \
 
 ### Resume / skip completed seeds
 
-Optuna studies resume remaining trials (not 10 extra). Re-run 01 with the same
-`RUN_ID` / `INDEX` after a walltime kill:
+Optuna studies **resume** remaining trials from the SQLite DB under
+`TUNING_STUDIES_ROOT` (default `services/pe-ensemble/tuning_studies/`). Re-run
+01 with the same `RUN_ID` / `INDEX` after a walltime kill:
 
 ```bash
 SKIP_IF_DONE=1 RUN_ID=<id> INDEX=0 MODEL=oped BENCHMARK=deepprime-clinvar \
@@ -86,7 +87,24 @@ SKIP_IF_DONE=1 RUN_ID=<id> INDEX=0 MODEL=oped BENCHMARK=deepprime-clinvar \
 
 `02_train_matrix.sh` is a thin alias for that resume (`SKIP_IF_DONE=1`).
 
-State files: `scripts/experiments/scratch-benchmark/state/` (or under `/tmp/pe-hub-smoke-*` when `SMOKE=1`).
+**What gets reused**
+
+| Kill during | On requeue |
+|-------------|------------|
+| Mid-Optuna trial | Orphan `RUNNING` → `FAIL`; remaining attempt budget continues |
+| After HPO, during final train | State `hpo_done` → skip Optuna, only `register_best_weights` + eval |
+| After final train, during eval | State `tuned` → eval only |
+| Fully done | State `ok` → skip |
+
+Look for a log line like
+`complete=C fail=F … → remaining=K (target 10)` — `remaining=0` means HPO is done.
+
+**Do not wipe** `tuning_studies/*.db` between requeues. A search-space change
+(`__sp_…` suffix) or a different datasheet/split identity starts a **new** study
+(no silent resume).
+
+State files: per-cell under `results/<RUN_ID>/<model>__<bench>/state/` (or under
+`/tmp/pe-hub-smoke-*` when `SMOKE=1`).
 
 ## ARC submission
 
@@ -97,7 +115,8 @@ Each short job is **one seed**: 10 Optuna trials + `register_best_weights` +
 eval. That is 11 full holdout_3 trains, not a separate tune stage then train
 stage. Smaller sheets (MinSePIE, DeepPE, lib-*, library-diverse, library1)
 should fit 12h on L40S. ClinVar (~289k) may hit the wall; re-queue the same
-`INDEX` with the same `RUN_ID` (Optuna continues, then final train + eval).
+`INDEX` with the same `RUN_ID` and `SKIP_IF_DONE=1` (Optuna continues from
+`tuning_studies/*.db`, or skips to final train if state is already `hpo_done`).
 
 ```bash
 cd $DATA/pe-hub
@@ -151,10 +170,10 @@ cat scripts/experiments/scratch-benchmark/results/LATEST_RUN_ID
 
 | Artifact | Location |
 |----------|----------|
-| Optuna DB | `services/pe-ensemble/tuning_studies/*.db` |
+| Optuna DB | `services/pe-ensemble/tuning_studies/*.db` (`TUNING_STUDIES_ROOT`) |
 | Dataset presets | `services/pe-ensemble/config/training_presets_local/` |
 | Trained weights | `services/pe-ensemble/weights/*__custom__*` (one set per seed) |
-| Pipeline state | `scripts/experiments/scratch-benchmark/state/` |
+| Per-seed checkpoint | `results/<RUN_ID>/<model>__<bench>/state/{repeat_id}.json` (`hpo_done` / `tuned` / `ok`) |
 | Per-cell JSONL | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/<model>__<bench>/` |
 | Matrix summary | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/summary.csv` |
 

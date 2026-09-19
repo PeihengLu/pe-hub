@@ -320,7 +320,15 @@ def run_tune_and_eval(
     no_write_preset: bool,
     extra_hyperparameters: Optional[dict[str, Any]] = None,
     skip_eval: bool = False,
+    state_path: Optional[Path] = None,
+    plan: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    """Run Optuna, checkpoint ``hpo_done``, final-train, then optional eval.
+
+    When ``state_path`` is set, writes ``status=hpo_done`` after Optuna (before
+    final train) so a walltime kill can resume with ``--skip-existing`` without
+    re-running HPO.
+    """
     from pe_ensemble.training.tuning_schemas import TuningRequest
     from pe_ensemble.library import execute_tuning
 
@@ -343,7 +351,7 @@ def run_tune_and_eval(
         study_name=study_name,
         dataset_preset_key=dataset_preset_key,
         no_write_preset=no_write_preset,
-        register_best_weights=True,
+        register_best_weights=False,
     )
     print(
         f"  tune {repeat_id}: {n_trials} trials, seed={seed}, "
@@ -351,30 +359,106 @@ def run_tune_and_eval(
         flush=True,
     )
     tune_summary = execute_tuning(tune_request, device_id=device)
-    final_training = tune_summary.get("final_training") or {}
-    weights_id = final_training.get("weights_id")
+    best_hps = tune_summary.get("best_hyperparameters") or {}
+    hpo_record = {
+        **(plan or {}),
+        "repeat_id": repeat_id,
+        "seed": seed,
+        "weights_id": None,
+        "study_name": tune_summary.get("study_name"),
+        "study_storage": tune_summary.get("study_storage"),
+        "best_trial": tune_summary.get("best_trial"),
+        "best_value": tune_summary.get("best_value"),
+        "best_hyperparameters": best_hps,
+        "preset_path": tune_summary.get("preset_path"),
+        "n_samples": None,
+        "test_spearman": None,
+        "test_pearson": None,
+        "test_mse": None,
+        "status": "hpo_done",
+        "eval": None,
+        "split_counts": split_counts(assigned),
+    }
+    if state_path is not None:
+        state_path.write_text(json.dumps(hpo_record, default=str), encoding="utf-8")
+        print(f"  checkpoint hpo_done → {state_path}", flush=True)
+
+    return _register_best_and_maybe_eval(
+        model=model,
+        dataset_name=dataset_name,
+        filter_kwargs=filter_kwargs,
+        assigned=assigned,
+        device=device,
+        seed=seed,
+        repeat_id=repeat_id,
+        notes=notes,
+        extra_hyperparameters=extra_hyperparameters,
+        skip_eval=skip_eval,
+        state_path=state_path,
+        plan=plan,
+        hpo_record=hpo_record,
+    )
+
+
+def _register_best_and_maybe_eval(
+    *,
+    model: str,
+    dataset_name: str,
+    filter_kwargs: dict[str, Any],
+    assigned: pd.DataFrame,
+    device: str,
+    seed: int,
+    repeat_id: str,
+    notes: str,
+    extra_hyperparameters: Optional[dict[str, Any]],
+    skip_eval: bool,
+    state_path: Optional[Path],
+    plan: Optional[dict[str, Any]],
+    hpo_record: dict[str, Any],
+) -> dict[str, Any]:
+    """Final train from ``best_hyperparameters`` then optional test eval."""
+    from pe_ensemble.training.runner import execute_training
+
+    best_hps = dict(hpo_record.get("best_hyperparameters") or {})
+    if not best_hps:
+        raise ProtocolError(
+            f"Cannot register best weights for {repeat_id}: missing best_hyperparameters"
+        )
+
+    seed_all(seed)
+    records = dataframe_to_records(assigned)
+    training = _training_request(
+        model=model,
+        dataset_name=f"{dataset_name}__{repeat_id}",
+        filter_kwargs=filter_kwargs,
+        records=records,
+        hyperparameters=best_hps,
+        device=device,
+        notes=notes or "optuna best trial",
+    )
+    print(f"  final-train {repeat_id}: register_best_weights", flush=True)
+    final_payload = execute_training(
+        training,
+        device_id=device,
+        register_weights=True,
+    )
+    weights_id = (final_payload or {}).get("weights_id")
     if not weights_id:
         raise ProtocolError(f"Tuning {repeat_id} finished without registered weights_id")
 
+    tuned_record = {
+        **(plan or {}),
+        **hpo_record,
+        "weights_id": weights_id,
+        "status": "tuned",
+        "eval": None,
+    }
+    if state_path is not None:
+        state_path.write_text(json.dumps(tuned_record, default=str), encoding="utf-8")
+
     if skip_eval:
         print(f"  skip-eval {repeat_id}: weights={weights_id}", flush=True)
-        return {
-            "repeat_id": repeat_id,
-            "seed": seed,
-            "weights_id": weights_id,
-            "study_name": tune_summary.get("study_name"),
-            "best_trial": tune_summary.get("best_trial"),
-            "best_value": tune_summary.get("best_value"),
-            "best_hyperparameters": tune_summary.get("best_hyperparameters"),
-            "preset_path": tune_summary.get("preset_path"),
-            "n_samples": None,
-            "test_spearman": None,
-            "test_pearson": None,
-            "test_mse": None,
-            "status": "tuned",
-            "eval": None,
-            "split_counts": split_counts(assigned),
-        }
+        return tuned_record
 
     eval_block = evaluate_assigned(
         model=model,
@@ -384,18 +468,71 @@ def run_tune_and_eval(
         assigned=assigned,
         device=device,
     )
-    return {
-        "repeat_id": repeat_id,
-        "seed": seed,
-        "weights_id": weights_id,
-        "study_name": tune_summary.get("study_name"),
-        "best_trial": tune_summary.get("best_trial"),
-        "best_value": tune_summary.get("best_value"),
-        "best_hyperparameters": tune_summary.get("best_hyperparameters"),
-        "preset_path": tune_summary.get("preset_path"),
-        "split_counts": split_counts(assigned),
-        **eval_block,
-    }
+    done = {**tuned_record, **eval_block}
+    if state_path is not None:
+        state_path.write_text(json.dumps(done, default=str), encoding="utf-8")
+    return done
+
+
+def resume_from_state(
+    *,
+    existing: dict[str, Any],
+    model: str,
+    dataset_name: str,
+    filter_kwargs: dict[str, Any],
+    assigned: pd.DataFrame,
+    device: str,
+    seed: int,
+    repeat_id: str,
+    notes: str,
+    extra_hyperparameters: Optional[dict[str, Any]],
+    skip_eval: bool,
+    state_path: Path,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    """Continue from a checkpointed state (``hpo_done`` / ``tuned`` / done)."""
+    status = existing.get("status")
+    if status == "hpo_done" and existing.get("best_hyperparameters"):
+        print(
+            f"Resume final-train {repeat_id} "
+            f"(best_trial={existing.get('best_trial')})",
+            flush=True,
+        )
+        return _register_best_and_maybe_eval(
+            model=model,
+            dataset_name=dataset_name,
+            filter_kwargs=filter_kwargs,
+            assigned=assigned,
+            device=device,
+            seed=seed,
+            repeat_id=repeat_id,
+            notes=notes,
+            extra_hyperparameters=extra_hyperparameters,
+            skip_eval=skip_eval,
+            state_path=state_path,
+            plan=plan,
+            hpo_record=existing,
+        )
+    if (
+        not skip_eval
+        and existing.get("weights_id")
+        and status in {"tuned", None}
+        and existing.get("eval") is None
+    ):
+        print(f"Resume eval {repeat_id} (weights={existing.get('weights_id')})")
+        eval_block = evaluate_assigned(
+            model=model,
+            dataset_name=dataset_name,
+            repeat_id=repeat_id,
+            weights_id=str(existing["weights_id"]),
+            assigned=assigned,
+            device=device,
+        )
+        existing.update(eval_block)
+        state_path.write_text(json.dumps(existing, default=str), encoding="utf-8")
+        return existing
+    print(f"SKIP existing {repeat_id} ({state_path})")
+    return existing
 
 
 def load_state_rows(state_dir: Path) -> list[dict[str, Any]]:
@@ -751,29 +888,26 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     for repeat_id, seed, assigned in repeats:
         state_path = state_dir / f"{repeat_id}.json"
+        notes = f"datasheet-benchmark {protocol} {repeat_id} seed={seed}"
+        study_name = f"datasheet-bench__{model}__{label}__{repeat_id}"
         if args.skip_existing and state_path.is_file():
             existing = json.loads(state_path.read_text(encoding="utf-8"))
-            needs_eval = (
-                not args.skip_eval
-                and existing.get("weights_id")
-                and existing.get("status") in {"tuned", None}
-                and existing.get("eval") is None
+            resumed = resume_from_state(
+                existing=existing,
+                model=model,
+                dataset_name=label,
+                filter_kwargs=filter_kwargs,
+                assigned=assigned,
+                device=args.device,
+                seed=seed,
+                repeat_id=repeat_id,
+                notes=notes,
+                extra_hyperparameters=extra_hp,
+                skip_eval=args.skip_eval,
+                state_path=state_path,
+                plan=plan,
             )
-            if needs_eval:
-                print(f"Resume eval {repeat_id} (weights={existing.get('weights_id')})")
-                eval_block = evaluate_assigned(
-                    model=model,
-                    dataset_name=label,
-                    repeat_id=repeat_id,
-                    weights_id=str(existing["weights_id"]),
-                    assigned=assigned,
-                    device=args.device,
-                )
-                existing.update(eval_block)
-                state_path.write_text(json.dumps(existing, default=str), encoding="utf-8")
-            else:
-                print(f"SKIP existing {repeat_id} ({state_path})")
-            rows.append(existing)
+            rows.append(resumed)
             continue
         print("======================================")
         print(f"{protocol} repeat {repeat_id} (seed={seed})")
@@ -787,27 +921,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             device=args.device,
             seed=seed,
             repeat_id=repeat_id,
-            study_name=f"datasheet-bench__{model}__{label}__{repeat_id}",
+            study_name=study_name,
             dataset_preset_key=f"{base_preset}/{repeat_id}",
-            notes=f"datasheet-benchmark {protocol} {repeat_id} seed={seed}",
+            notes=notes,
             no_write_preset=args.no_write_preset,
             extra_hyperparameters=extra_hp,
-            skip_eval=True,
+            skip_eval=args.skip_eval,
+            state_path=state_path,
+            plan=plan,
         )
-        record = {**plan, **result}
-        state_path.write_text(json.dumps(record, default=str), encoding="utf-8")
-        if not args.skip_eval:
-            eval_block = evaluate_assigned(
-                model=model,
-                dataset_name=label,
-                repeat_id=repeat_id,
-                weights_id=str(result["weights_id"]),
-                assigned=assigned,
-                device=args.device,
-            )
-            record.update(eval_block)
-            state_path.write_text(json.dumps(record, default=str), encoding="utf-8")
-        rows.append(record)
+        rows.append(result)
 
     write_outputs(
         out_dir=out_dir,

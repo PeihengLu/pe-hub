@@ -237,7 +237,7 @@ git push
 | Single train / fine-tune                           | `short`–`medium`                               |
 | Multi-day HPO                                      | `long` with explicit `--time` (e.g. `7-00:00:00`) |
 
-Each scratch-benchmark GPU job is **one seed**: 10 Optuna trials plus `register_best_weights` (11 trains) and eval. There is no separate train stage. Optuna resumes remaining trials if you re-submit after a 12h kill.
+Each scratch-benchmark GPU job is **one seed**: 10 Optuna trials plus `register_best_weights` (11 trains) and eval. There is no separate train stage. After a 12h kill, re-submit the same `RUN_ID` + `INDEX` with `SKIP_IF_DONE=1`: Optuna resumes from `TUNING_STUDIES_ROOT` (orphan `RUNNING` trials are marked `FAIL`), and a finished HPO checkpoint (`hpo_done`) skips straight to final train/eval. Keep the shared `$DATA` checkout’s `tuning_studies/*.db` intact; a search-space fingerprint change starts a new study.
 
 ## Checklist before first real submit
 

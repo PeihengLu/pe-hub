@@ -87,6 +87,75 @@ def test_execute_tuning_resumes_remaining_trials_only(
     assert third["study_name"] == second["study_name"]
 
 
+def test_execute_tuning_fails_orphan_running_and_resumes(
+    tuning_env, monkeypatch: pytest.MonkeyPatch
+):
+    """Slurm kill leaves RUNNING; resume marks it FAIL and continues the budget."""
+    import optuna
+    from optuna.trial import TrialState
+
+    calls: list[dict] = []
+
+    def fake_trial(request, *, suggested, register_weights=False):
+        calls.append(dict(suggested))
+        from pe_ensemble.training.tune_runner import TrialResult
+
+        return TrialResult(
+            metric=float(suggested.get("epochs", 0)),
+            hyperparameters=dict(suggested),
+            train_result={},
+        )
+
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", fake_trial)
+    monkeypatch.setattr(
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
+        lambda model_name, trial: {"epochs": trial.number + 1},
+    )
+
+    study_name = "orphan-running"
+    execute_tuning(_request(n_trials=1, study_name=study_name))
+    assert len(calls) == 1
+
+    # Resolve the same storage path execute_tuning would use (includes __sp_ suffix).
+    from pe_ensemble.training.search_spaces import resolve_study_name
+    from pe_ensemble.training.config import tuning_studies_root
+
+    bound = resolve_study_name(study_name, "deepprime")
+    db = tuning_studies_root() / f"{bound}.db"
+    assert db.is_file()
+    study = optuna.load_study(study_name=bound, storage=f"sqlite:///{db}")
+    orphan = study.ask()
+    assert study.get_trials(deepcopy=False)[-1].state == TrialState.RUNNING
+
+    # Budget 3: 1 COMPLETE + 1 FAIL(orphan) → 1 remaining trial.
+    execute_tuning(_request(n_trials=3, study_name=study_name))
+    assert len(calls) == 2
+
+    study = optuna.load_study(study_name=bound, storage=f"sqlite:///{db}")
+    states = [t.state for t in study.get_trials(deepcopy=False)]
+    assert TrialState.RUNNING not in states
+    assert states.count(TrialState.FAIL) == 1
+    assert states.count(TrialState.COMPLETE) == 2
+    assert orphan.number in {t.number for t in study.trials if t.state == TrialState.FAIL}
+
+
+def test_execute_tuning_errors_when_no_complete_trials(
+    tuning_env, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        "pe_ensemble.training.tune_study.suggest_trial_hyperparameters",
+        lambda model_name, trial: {"epochs": 1},
+    )
+
+    def boom(request, *, suggested, register_weights=False):
+        raise RuntimeError("trial crashed")
+
+    monkeypatch.setattr("pe_ensemble.training.tune_study.run_tuning_trial", boom)
+
+    with pytest.raises(TrainingError, match="no COMPLETE trials"):
+        execute_tuning(_request(n_trials=2, study_name="all-fail"))
+
+
 def test_execute_tuning_requires_dataset_key(tuning_env, monkeypatch: pytest.MonkeyPatch):
     from pe_ensemble.training.tune_runner import TrialResult
 
