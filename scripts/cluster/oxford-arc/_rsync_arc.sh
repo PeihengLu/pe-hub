@@ -161,6 +161,25 @@ _arc_guess_kind() {
     fi
 }
 
+# macOS ships openrsync (advertised as 2.6.9-compatible). It has no
+# --info=progress2, --protect-args, or --ignore-missing-args. Prefer a
+# Homebrew GNU rsync when present (brew install rsync).
+_arc_find_rsync() {
+    local c
+    for c in /opt/homebrew/bin/rsync /usr/local/bin/rsync "$(command -v rsync 2>/dev/null)"; do
+        [[ -n "${c}" && -x "${c}" ]] || continue
+        if "${c}" --help 2>&1 | grep -q -- '--info'; then
+            printf '%s\n' "${c}"
+            return 0
+        fi
+    done
+    command -v rsync
+}
+
+_arc_rsync_help_has() {
+    grep -q -- "$1" <<< "${_ARC_RSYNC_HELP}"
+}
+
 # Prints "file|dir<TAB>relative/path" for each DVC out, then env.sh,
 # then EXTRA=/bundle expansions.
 _arc_list_sync_entries() {
@@ -271,14 +290,29 @@ arc_rsync_main() {
         ARC_REMOTE="${ARC_USER}@${ARC_HOST}:/data/${ARC_PROJECT}/${ARC_USER}/pe-hub"
     fi
 
+    local rsync_bin
+    rsync_bin="$(_arc_find_rsync)"
+    _ARC_RSYNC_HELP="$("${rsync_bin}" --help 2>&1 || true)"
+
     # --relative + /./ keeps repo-relative layout in one SSH session.
-    RSYNC_FLAGS=(-avh --info=progress2 --partial --relative --protect-args
-                 --no-owner --no-group --exclude '.DS_Store' --exclude '__pycache__/')
+    RSYNC_FLAGS=(-avh --partial --relative --no-owner --no-group
+                 --exclude '.DS_Store' --exclude '__pycache__/')
+    if _arc_rsync_help_has '--info'; then
+        RSYNC_FLAGS+=(--info=progress2)
+    else
+        RSYNC_FLAGS+=(--progress)
+    fi
+    if _arc_rsync_help_has '--protect-args'; then
+        RSYNC_FLAGS+=(--protect-args)
+    fi
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
         RSYNC_FLAGS+=(--dry-run)
     fi
     if [[ "${DELETE:-0}" == "1" ]]; then
         RSYNC_FLAGS+=(--delete)
+    fi
+    if _arc_rsync_help_has '--ignore-missing-args'; then
+        RSYNC_FLAGS+=(--ignore-missing-args)
     fi
 
     local kinds=() rels=() line kind rel
@@ -345,7 +379,11 @@ arc_rsync_main() {
 
     echo ""
     echo "One rsync, one SSH password prompt."
-    rsync "${RSYNC_FLAGS[@]}" --ignore-missing-args "${src_args[@]}" "${dest}"
+    if ! _arc_rsync_help_has '--info'; then
+        echo "Using ${rsync_bin} (macOS openrsync). Per-file --progress instead of GNU --info=progress2."
+        echo "Optional: brew install rsync  # GNU rsync 3.x, overall progress bar"
+    fi
+    "${rsync_bin}" "${RSYNC_FLAGS[@]}" "${src_args[@]}" "${dest}"
 
     echo ""
     echo "Done (${direction})."
