@@ -51,12 +51,12 @@ _DEFAULT_DESIGN_TITLES = (
 
 # Heatmap typography (pt). Edit these, then re-run the script.
 FS_CELL = 10.0          # value annotations inside cells
-FS_DATASET = 10.0       # coloured study / dataset header labels
-FS_XTICK = 10.0         # x-axis tick labels (column names)
-FS_YTICK = 10.0         # y-axis tick labels (model names)
-FS_LEGEND = 11.0        # Not scored / author-fill legend
+FS_DATASET = 11.0       # coloured study / dataset header labels
+FS_XTICK = 11.0         # x-axis tick labels (column names)
+FS_YTICK = 11.0         # y-axis tick labels (model names)
+FS_LEGEND = 12.0        # Not scored / author-fill legend
 FS_CBAR_LABEL = 12.0    # colourbar axis label
-FS_CBAR_TICK = 11.0     # colourbar tick labels
+FS_CBAR_TICK = 12.0     # colourbar tick labels
 FS_TITLE = 12.0         # stacked panel titles, e.g. "(a) Hsu / …"
 
 
