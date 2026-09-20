@@ -7,8 +7,8 @@
 #   python3 scripts/experiments/scratch-benchmark/publish_preferred_weights.py
 #   ./scripts/experiments/scratch-benchmark/pack_release_weights.sh
 #
-# Upload the zip to a GitHub Release:
-#   gh release upload <TAG> txt/supplementary/scratch-benchmark-weights.zip
+# Upload the zip to the shared experiment-weights release:
+#   gh release upload experiment-weights-v1 txt/supplementary/scratch-benchmark-weights.zip
 #
 # Install on another machine:
 #   ./scripts/experiments/scratch-benchmark/install_release_weights.sh \
@@ -41,4 +41,4 @@ rm -f "${OUT}"
 
 echo "Wrote ${OUT}"
 du -h "${OUT}"
-echo "Upload: gh release upload <TAG> ${OUT}"
+echo "Upload: gh release upload experiment-weights-v1 ${OUT}"

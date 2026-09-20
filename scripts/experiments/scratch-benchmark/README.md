@@ -188,20 +188,26 @@ python3 scripts/experiments/scratch-benchmark/publish_preferred_weights.py
 
 ### Distributable package (GitHub Release)
 
-Weight blobs are **not** tracked in git. Ship them as a release asset:
+Weight blobs are **not** tracked in git. They ship on the shared release tag
+`experiment-weights-v1` together with the PRIDICT2 reproduction zip:
 
 ```bash
 # Stage + zip (~1.8 GB uncompressed payload)
 ./scripts/experiments/scratch-benchmark/pack_release_weights.sh
 # → txt/supplementary/scratch-benchmark-weights.zip  (gitignored)
 
-gh release upload <TAG> txt/supplementary/scratch-benchmark-weights.zip
+# Combined release (both experiment zips):
+gh release create experiment-weights-v1 \
+  txt/supplementary/scratch-benchmark-weights.zip \
+  txt/supplementary/pridict2-reproduction-weights.zip \
+  --title "Experiment weights (scratch + PRIDICT2 repro)" \
+  --notes "See README Installation → Experiment weights."
 ```
 
 Install on another checkout (also documented in the root [`README.md`](../../../README.md)):
 
 ```bash
-gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
+gh release download experiment-weights-v1 -p scratch-benchmark-weights.zip -D /tmp
 ./scripts/experiments/scratch-benchmark/install_release_weights.sh \
   /tmp/scratch-benchmark-weights.zip
 ```

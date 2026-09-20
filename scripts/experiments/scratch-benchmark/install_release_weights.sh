@@ -6,7 +6,7 @@
 #     /path/to/scratch-benchmark-weights.zip
 #
 #   # Or download then install:
-#   gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
+#   gh release download experiment-weights-v1 -p scratch-benchmark-weights.zip -D /tmp
 #   ./scripts/experiments/scratch-benchmark/install_release_weights.sh \\
 #     /tmp/scratch-benchmark-weights.zip
 #

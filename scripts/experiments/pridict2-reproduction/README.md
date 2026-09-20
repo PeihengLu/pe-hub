@@ -105,23 +105,26 @@
 ## Pull trained weights (laptop) + GitHub Release (transparency)
 #
 # Weight IDs: `weights_id_map.tsv`. Paths: `supplementary_artifacts.txt`
-# (2 bases + 20 fine-tunes). Blobs are **not** git-tracked — ship as a release
-# asset for transparency (no local registry install).
+# (2 bases + 20 fine-tunes). Blobs are **not** git-tracked — ship on the shared
+# `experiment-weights-v1` release (with scratch-benchmark weights) for
+# transparency; no local registry install.
 #
 # ```bash
 # ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh "$USER"
 # ./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh
 # # → txt/supplementary/pridict2-reproduction-weights.zip (~114 MB, gitignored)
 #
-# gh release create pridict2-repro-v1 \
+# # Combined release (both zips); create once from repo root:
+# gh release create experiment-weights-v1 \
+#   txt/supplementary/scratch-benchmark-weights.zip \
 #   txt/supplementary/pridict2-reproduction-weights.zip \
-#   --title "PRIDICT2 reproduction weights" \
-#   --notes "2 bases + 20 fold FTs (Model A/B × hek/k562 × folds 0–4). See weights_id_map.tsv."
+#   --title "Experiment weights (scratch + PRIDICT2 repro)" \
+#   --notes "See README Installation → Experiment weights."
 # ```
 #
 # Download only:
 # ```bash
-# gh release download pridict2-repro-v1 -p pridict2-reproduction-weights.zip -D /tmp
+# gh release download experiment-weights-v1 -p pridict2-reproduction-weights.zip -D /tmp
 # ```
 #
 ## Shared HPO helpers

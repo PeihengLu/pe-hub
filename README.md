@@ -119,50 +119,54 @@ In new terminal sessions, activate the env before using the CLIs or starting ser
 conda activate pe-hub
 ```
 
-### Scratch-benchmark preferred weights (release asset)
+### Experiment weights (combined GitHub Release)
 
-From-scratch holdout₃ checkpoints (DeepPrime / OPED / PRIDICT2, 135 seed runs)
-are **not** stored in git. Download the `scratch-benchmark-weights.zip` asset from
-a [GitHub Release](https://github.com/PeihengLu/pe-hub/releases), then install into
-the pe-ensemble weight registry:
+Trained experiment checkpoints are **not** stored in git. Both zip assets live on the
+same release tag [`experiment-weights-v1`](https://github.com/PeihengLu/pe-hub/releases/tag/experiment-weights-v1):
+
+| Asset | Purpose |
+|-------|---------|
+| `scratch-benchmark-weights.zip` (~1.6 GB) | Preferred from-scratch holdout₃ checkpoints (135 seeds); install into the pe-ensemble registry |
+| `pridict2-reproduction-weights.zip` (~114 MB) | End-to-end PRIDICT2 transfer + ensemble checkpoints; transparency / thesis only (no install) |
+
+**Scratch-benchmark** (install into local registry):
 
 ```bash
-# Replace <TAG> with the release that includes the asset (e.g. scratch-benchmark-v1)
-gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
+gh release download experiment-weights-v1 -p scratch-benchmark-weights.zip -D /tmp
 ./scripts/experiments/scratch-benchmark/install_release_weights.sh \
   /tmp/scratch-benchmark-weights.zip
 ```
 
-Or with `curl` (same tag / asset name):
+Or with `curl`:
 
 ```bash
 curl -fsSL -o /tmp/scratch-benchmark-weights.zip \
-  "https://github.com/PeihengLu/pe-hub/releases/download/<TAG>/scratch-benchmark-weights.zip"
+  "https://github.com/PeihengLu/pe-hub/releases/download/experiment-weights-v1/scratch-benchmark-weights.zip"
 ./scripts/experiments/scratch-benchmark/install_release_weights.sh \
   /tmp/scratch-benchmark-weights.zip
 ```
 
-That copies weight dirs under `services/pe-ensemble/weights/` and labels them for
-`peen weights`. Maintainers build the zip with
-`./scripts/experiments/scratch-benchmark/pack_release_weights.sh` (see
-[`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md)).
-
-### PRIDICT2 reproduction weights (release asset, transparency only)
-
-End-to-end PRIDICT2.0 transfer + ensemble checkpoints (2 bases + 20 fold fine-tunes)
-are likewise **not** in git. They ship as `pridict2-reproduction-weights.zip` on a
-[GitHub Release](https://github.com/PeihengLu/pe-hub/releases) for inspection /
-thesis supplementary use — there is **no** install step into the local registry.
+**PRIDICT2 reproduction** (download only):
 
 ```bash
-gh release download pridict2-repro-v1 -p pridict2-reproduction-weights.zip -D /tmp
-# or: curl -fsSL -o /tmp/pridict2-reproduction-weights.zip \
-#   "https://github.com/PeihengLu/pe-hub/releases/download/pridict2-repro-v1/pridict2-reproduction-weights.zip"
+gh release download experiment-weights-v1 -p pridict2-reproduction-weights.zip -D /tmp
 ```
 
-ID map (git-tracked): [`scripts/experiments/pridict2-reproduction/weights_id_map.tsv`](scripts/experiments/pridict2-reproduction/weights_id_map.tsv).
-Maintainers rebuild the zip with
-`./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh`.
+ID maps (git-tracked):
+[`scratch-benchmark/weights_id_map.tsv`](scripts/experiments/scratch-benchmark/weights_id_map.tsv),
+[`pridict2-reproduction/weights_id_map.tsv`](scripts/experiments/pridict2-reproduction/weights_id_map.tsv).
+
+Maintainers rebuild zips with
+`./scripts/experiments/scratch-benchmark/pack_release_weights.sh` and
+`./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh`, then:
+
+```bash
+gh release create experiment-weights-v1 \
+  txt/supplementary/scratch-benchmark-weights.zip \
+  txt/supplementary/pridict2-reproduction-weights.zip \
+  --title "Experiment weights (scratch + PRIDICT2 repro)" \
+  --notes "See README Installation → Experiment weights."
+```
 
 ### Setup scripts
 
