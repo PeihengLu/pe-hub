@@ -119,6 +119,34 @@ In new terminal sessions, activate the env before using the CLIs or starting ser
 conda activate pe-hub
 ```
 
+### Scratch-benchmark preferred weights (release asset)
+
+From-scratch holdout₃ checkpoints (DeepPrime / OPED / PRIDICT2, 135 seed runs)
+are **not** stored in git. Download the `scratch-benchmark-weights.zip` asset from
+a [GitHub Release](https://github.com/PeihengLu/pe-hub/releases), then install into
+the pe-ensemble weight registry:
+
+```bash
+# Replace <TAG> with the release that includes the asset (e.g. v0.x.y)
+gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
+./scripts/experiments/scratch-benchmark/install_release_weights.sh \
+  /tmp/scratch-benchmark-weights.zip
+```
+
+Or with `curl` (same tag / asset name):
+
+```bash
+curl -fsSL -o /tmp/scratch-benchmark-weights.zip \
+  "https://github.com/PeihengLu/pe-hub/releases/download/<TAG>/scratch-benchmark-weights.zip"
+./scripts/experiments/scratch-benchmark/install_release_weights.sh \
+  /tmp/scratch-benchmark-weights.zip
+```
+
+That copies weight dirs under `services/pe-ensemble/weights/` and labels them for
+`peen weights`. Maintainers build the zip with
+`./scripts/experiments/scratch-benchmark/pack_release_weights.sh` (see
+[`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md)).
+
 ### Setup scripts
 
 | Script                                      | What it does                                                        |

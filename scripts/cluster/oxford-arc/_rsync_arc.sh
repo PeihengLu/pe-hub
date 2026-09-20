@@ -16,7 +16,8 @@
 #   DELETE=1     rsync --delete (dest extras removed)
 #   LIST=1       print paths and exit
 #   ONLY=a,b     only these relative paths (alias: env → env.sh;
-#                bundle: pridict2-repro → reproduction weights + state)
+#                bundles: pridict2-repro → reproduction weights + state;
+#                scratch-weights → preferred scratch-benchmark weight dirs)
 #   EXTRA=a,b    append these paths (or bundles) to the DVC set
 #   SKIP=a,b     skip these relative paths
 
@@ -31,6 +32,7 @@ _RSYNC_ARC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${_RSYNC_ARC_DIR}/../../.." && pwd)"
 ENV_REL="scripts/cluster/oxford-arc/env.sh"
 _PRIDICT2_REPRO_MANIFEST="scripts/experiments/pridict2-reproduction/supplementary_artifacts.txt"
+_SCRATCH_WEIGHTS_MANIFEST="scripts/experiments/scratch-benchmark/weight_artifacts.txt"
 
 _arc_rsync_usage() {
     local cmd="$1"
@@ -43,7 +45,7 @@ Run on the laptop. One rsync (one SSH password) of DVC-tracked folders plus ${EN
   LIST=1        print relative paths and exit
   DELETE=1      remove dest files that are not on the source
   ONLY=path,..  only these repo-relative paths (ONLY=env for env.sh;
-                ONLY=pridict2-repro for reproduction weights + state)
+                ONLY=pridict2-repro / ONLY=scratch-weights for weight bundles)
   EXTRA=path,.. append paths/bundles to the default DVC set
   SKIP=path,..  skip these repo-relative paths
   ARC_HOST      default htc-login.arc.ox.ac.uk
@@ -86,6 +88,17 @@ _arc_expand_csv_paths() {
                     echo "${line%%[[:space:]]*}"
                 done < "${REPO_ROOT}/${_PRIDICT2_REPRO_MANIFEST}"
                 ;;
+            scratch-weights|scratch_weights|scratch-benchmark-weights)
+                if [[ ! -f "${REPO_ROOT}/${_SCRATCH_WEIGHTS_MANIFEST}" ]]; then
+                    echo "Error: missing ${_SCRATCH_WEIGHTS_MANIFEST}" >&2
+                    echo "  Run: python3 scripts/experiments/scratch-benchmark/publish_preferred_weights.py" >&2
+                    return 1
+                fi
+                while IFS= read -r line || [[ -n "${line}" ]]; do
+                    [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+                    echo "${line%%[[:space:]]*}"
+                done < "${REPO_ROOT}/${_SCRATCH_WEIGHTS_MANIFEST}"
+                ;;
             *)
                 echo "${item}"
                 ;;
@@ -108,6 +121,7 @@ _arc_csv_has_bundle_only() {
         any=1
         case "${item}" in
             pridict2-repro|pridict2_repro|pridict2-reproduction) ;;
+            scratch-weights|scratch_weights|scratch-benchmark-weights) ;;
             *) return 1 ;;
         esac
     done

@@ -94,6 +94,9 @@ and `scripts/experiments/pridict2-reproduction/state/` (see
 supplementary files with
 `./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh`.
 
+`ONLY=scratch-weights` pulls the preferred scratch-benchmark weight dirs (see
+[`scripts/experiments/scratch-benchmark/README.md`](../../experiments/scratch-benchmark/README.md#preferred-trained-weights-pe-ensemble)).
+
 `pull_env_from_arc.sh` still exists as `ONLY=env` (env.sh only).
 
 Off-campus: put `ProxyJump gateway.arc.ox.ac.uk` for `htc-login` in `~/.ssh/config`.

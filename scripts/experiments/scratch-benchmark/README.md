@@ -166,13 +166,59 @@ Copy run artifacts with rsync on the laptop (see
 cat scripts/experiments/scratch-benchmark/results/LATEST_RUN_ID
 ```
 
+## Preferred trained weights (pe-ensemble)
+
+After the matrix finishes, publish the **later correct** runs into a reusable
+index (same selection as the Results heatmaps):
+
+| Model | Run |
+|-------|-----|
+| OPED (all 15 cells) | `20260917T222613Z` |
+| DeepPrime / PRIDICT2 unpooled Lib-Diverse + Lib-MMR/CV | `20260917T153347Z` |
+| DeepPrime / PRIDICT2 single-condition (Library1, ClinVar, DeepPE, MinSePIE) | `20260911T065340Z` |
+
+```bash
+# Label local_registry + write weights_id_map.tsv
+python3 scripts/experiments/scratch-benchmark/publish_preferred_weights.py
+
+# Optional: pull blobs from ARC if not already local
+ONLY=scratch-weights ./scripts/cluster/oxford-arc/pull_from_arc.sh "$USER"
+python3 scripts/experiments/scratch-benchmark/publish_preferred_weights.py
+```
+
+### Distributable package (GitHub Release)
+
+Weight blobs are **not** tracked in git. Ship them as a release asset:
+
+```bash
+# Stage + zip (~1.8 GB uncompressed payload)
+./scripts/experiments/scratch-benchmark/pack_release_weights.sh
+# → txt/supplementary/scratch-benchmark-weights.zip  (gitignored)
+
+gh release upload <TAG> txt/supplementary/scratch-benchmark-weights.zip
+```
+
+Install on another checkout (also documented in the root [`README.md`](../../../README.md)):
+
+```bash
+gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
+./scripts/experiments/scratch-benchmark/install_release_weights.sh \
+  /tmp/scratch-benchmark-weights.zip
+```
+
+Lookup table (git-tracked, small): [`weights_id_map.tsv`](weights_id_map.tsv).
+Labels look like `Scratch holdout3 | OPED | deeppe-pooled | seed_42, r=0.76` in
+`peen weights --model oped`.
+
 ## Outputs
 
 | Artifact | Location |
 |----------|----------|
 | Optuna DB | `services/pe-ensemble/tuning_studies/*.db` (`TUNING_STUDIES_ROOT`) |
 | Dataset presets | `services/pe-ensemble/config/training_presets_local/` |
-| Trained weights | `services/pe-ensemble/weights/*__custom__*` (one set per seed) |
+| Preferred weight map | `scripts/experiments/scratch-benchmark/weights_id_map.tsv` |
+| Release zip (not in git) | `txt/supplementary/scratch-benchmark-weights.zip` |
+| Trained weights (runtime) | `services/pe-ensemble/weights/<model>/<weights_id>/` |
 | Per-seed checkpoint | `results/<RUN_ID>/<model>__<bench>/state/{repeat_id}.json` (`hpo_done` / `tuned` / `ok`) |
 | Per-cell JSONL | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/<model>__<bench>/` |
 | Matrix summary | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/summary.csv` |
