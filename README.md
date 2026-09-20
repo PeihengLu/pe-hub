@@ -127,7 +127,7 @@ a [GitHub Release](https://github.com/PeihengLu/pe-hub/releases), then install i
 the pe-ensemble weight registry:
 
 ```bash
-# Replace <TAG> with the release that includes the asset (e.g. v0.x.y)
+# Replace <TAG> with the release that includes the asset (e.g. scratch-benchmark-v1)
 gh release download <TAG> -p scratch-benchmark-weights.zip -D /tmp
 ./scripts/experiments/scratch-benchmark/install_release_weights.sh \
   /tmp/scratch-benchmark-weights.zip
@@ -146,6 +146,23 @@ That copies weight dirs under `services/pe-ensemble/weights/` and labels them fo
 `peen weights`. Maintainers build the zip with
 `./scripts/experiments/scratch-benchmark/pack_release_weights.sh` (see
 [`scripts/experiments/scratch-benchmark/README.md`](scripts/experiments/scratch-benchmark/README.md)).
+
+### PRIDICT2 reproduction weights (release asset, transparency only)
+
+End-to-end PRIDICT2.0 transfer + ensemble checkpoints (2 bases + 20 fold fine-tunes)
+are likewise **not** in git. They ship as `pridict2-reproduction-weights.zip` on a
+[GitHub Release](https://github.com/PeihengLu/pe-hub/releases) for inspection /
+thesis supplementary use — there is **no** install step into the local registry.
+
+```bash
+gh release download pridict2-repro-v1 -p pridict2-reproduction-weights.zip -D /tmp
+# or: curl -fsSL -o /tmp/pridict2-reproduction-weights.zip \
+#   "https://github.com/PeihengLu/pe-hub/releases/download/pridict2-repro-v1/pridict2-reproduction-weights.zip"
+```
+
+ID map (git-tracked): [`scripts/experiments/pridict2-reproduction/weights_id_map.tsv`](scripts/experiments/pridict2-reproduction/weights_id_map.tsv).
+Maintainers rebuild the zip with
+`./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh`.
 
 ### Setup scripts
 

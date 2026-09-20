@@ -102,15 +102,26 @@
 # CELL_LINE=hek FOLD=0 ./scripts/cluster/oxford-arc/submit.sh 05_tune_finetune_library_diverse.sh
 # ```
 #
-## Pull trained weights (laptop) + supplementary zip
+## Pull trained weights (laptop) + GitHub Release (transparency)
 #
-# Weight IDs are listed in `weights_id_map.tsv`. Paths to rsync/zip are in
-# `supplementary_artifacts.txt` (2 bases + 20 fine-tunes ≈ 22 × ~1 MB).
+# Weight IDs: `weights_id_map.tsv`. Paths: `supplementary_artifacts.txt`
+# (2 bases + 20 fine-tunes). Blobs are **not** git-tracked — ship as a release
+# asset for transparency (no local registry install).
 #
 # ```bash
-# ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh wolf6973
+# ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh "$USER"
 # ./scripts/experiments/pridict2-reproduction/pack_supplementary_weights.sh
-# # → txt/supplementary/pridict2-reproduction-weights.zip
+# # → txt/supplementary/pridict2-reproduction-weights.zip (~114 MB, gitignored)
+#
+# gh release create pridict2-repro-v1 \
+#   txt/supplementary/pridict2-reproduction-weights.zip \
+#   --title "PRIDICT2 reproduction weights" \
+#   --notes "2 bases + 20 fold FTs (Model A/B × hek/k562 × folds 0–4). See weights_id_map.tsv."
+# ```
+#
+# Download only:
+# ```bash
+# gh release download pridict2-repro-v1 -p pridict2-reproduction-weights.zip -D /tmp
 # ```
 #
 ## Shared HPO helpers
