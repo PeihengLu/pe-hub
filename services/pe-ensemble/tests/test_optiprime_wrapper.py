@@ -24,9 +24,11 @@ def test_optiprime_eval_skips_vendor_filename_parser():
     assert "_PREDICT_CSV_NAME" in predict_src
     assert "_patch_optiprime_scalar_features" in predict_src
     # Fallbacks must use trained group_factor keys, not a synthetic name.
-    assert '("group", "Liu_HEK293T")' in predict_src
+    assert '("group", "Liu_HeLa")' in predict_src
     assert "OptiPrime_HEK293T" not in predict_src
-    assert '("cas9_type", "PE2-Cas9")' in predict_src
+    assert '("cas9_type", "PEmax-Cas9")' in predict_src
+    assert '("scaffold_name", "OG_F+E")' in predict_src
+    assert '("motif", "tevoPreQ1")' in predict_src
 
 
 def test_as_float_scalar_accepts_rs3_ndarray():

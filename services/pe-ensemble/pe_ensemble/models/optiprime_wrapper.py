@@ -251,15 +251,15 @@ class OptiPrimeModelWrapper(BasePEModel):
             if "weight" not in prep_df.columns:
                 prep_df["weight"] = 1.0
             # Fallbacks only when the pe-db converter did not fill assay fields.
-            # Group must match vendor training keys (Liu_*/Kim_*/Schwank_*).
+            # Match Hsu DESIGN_PE defaults (calendar 5.0 → ODE 4.0 after −1).
             for col, default in [
-                ("group", "Liu_HEK293T"),
-                ("scaffold_name", "SpCas9_OG"),
-                ("motif", "none"),
-                ("cas9_type", "PE2-Cas9"),
+                ("group", "Liu_HeLa"),
+                ("scaffold_name", "OG_F+E"),
+                ("motif", "tevoPreQ1"),
+                ("cas9_type", "PEmax-Cas9"),
                 ("cas9_pam", "SpNGG"),
                 ("pe_type", "PE2"),
-                ("time", 3.0),
+                ("time", 5.0),
             ]:
                 if col not in prep_df.columns:
                     prep_df[col] = default

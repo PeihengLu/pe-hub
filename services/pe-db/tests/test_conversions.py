@@ -432,7 +432,13 @@ def test_optiprime_native_matches_libmmr_export_from_standardized_parquet():
     export = pd.read_csv(OPTIPRIME_EXPORT)
     assert len(parquet) == len(export)
     idx = _stratified_positional_sample(parquet, n_per_type=8, seed=0)
-    out = standardized_to_optiprime_dataframe(parquet.iloc[idx].reset_index(drop=True))
+    out = standardized_to_optiprime_dataframe(
+        parquet.iloc[idx].reset_index(drop=True),
+        study="optiprime",
+        dataset="lib_mmr",
+        cell_line="hek293t",
+        pe_system="pe2",
+    )
     author = export.iloc[idx].reset_index(drop=True)
     for i in range(len(idx)):
         native = out.iloc[i]
@@ -780,8 +786,12 @@ def test_optiprime_conversion_drops_pads_from_pbs_rtt():
     assert out["full_unedited"].startswith("AAAA")
     assert out["full_unedited"][4:24] == spacer
     assert "N" not in out["full_unedited"][4:]
-    assert out["scaffold_name"] == "SpCas9_OG"
-    assert out["group"] == "Liu_HEK293T"
+    assert out["scaffold_name"] == "OG_F+E"
+    assert out["motif"] == "tevoPreQ1"
+    assert out["cas9_type"] == "PEmax-Cas9"
+    assert out["pe_type"] == "PE2"
+    assert out["time"] == 5.0
+    assert out["group"] == "Liu_HeLa"
 
 
 def test_optiprime_assay_defaults_follow_study_context():
@@ -829,6 +839,29 @@ def test_optiprime_assay_defaults_follow_study_context():
     ).iloc[0]
     assert mda["group"] == "Kim_MDA-MB-231"
 
+    kim = standardized_to_optiprime_dataframe(
+        df, study="deepprime", dataset="deepprime_ht", cell_line="hek293t", pe_system="pe2"
+    ).iloc[0]
+    assert kim["group"] == "Kim_HEK293T"
+    assert kim["time"] == 7.0
+    assert kim["scaffold_name"] == "SpCas9_OG"
+
+    schwank = standardized_to_optiprime_dataframe(
+        df, study="pridict1", dataset="library-1", cell_line="hek293t", pe_system="pe2"
+    ).iloc[0]
+    assert schwank["group"] == "Schwank_HEK293T"
+    assert schwank["scaffold_name"] == "SpCas9_OG"
+    assert schwank["motif"] == "tevoPreQ1"
+    assert schwank["pe_type"] == "PE2"
+    assert schwank["time"] == 7.0
+
+    mlh1 = standardized_to_optiprime_dataframe(
+        df, study="pridict1", dataset="library-2", cell_line="k562mlh1dn", pe_system="pe2"
+    ).iloc[0]
+    assert mlh1["group"] == "Schwank_K562"
+    assert mlh1["pe_type"] == "PE4"
+    assert mlh1["cas9_type"] == "PE2-Cas9"
+
 
 def test_optiprime_synthetic_g21_is_lowercase():
     genomic = "ATCCCTTCTGCAGCACCAGG"  # starts with A, not G
@@ -854,6 +887,34 @@ def test_optiprime_synthetic_g21_is_lowercase():
     out = standardized_to_optiprime_dataframe(df, study="deeppe").iloc[0]
     assert out["spacer"].startswith("g")
     assert len(out["spacer"]) == 21
+
+
+def test_optiprime_design_path_uses_gn19_spacer():
+    genomic = "ATCCCTTCTGCAGCACCAGG"  # starts with A, not G
+    wt = "TTTT" + genomic + "ATCG"
+    mut = wt
+    df = pd.DataFrame(
+        {
+            "wt_sequence": [wt],
+            "mut_sequence": [mut],
+            "edit_len": [1],
+            "type_sub": [True],
+            "type_ins": [False],
+            "type_del": [False],
+            "protospacer_location_l": [4],
+            "protospacer_location_r": [24],
+            "pbs_location_l": [10],
+            "pbs_location_r": [21],
+            "rtt_location_l": [21],
+            "rtt_location_r": [28],
+            "editing_efficiency": [0.1],
+        }
+    )
+    out = standardized_to_optiprime_dataframe(df).iloc[0]
+    assert out["spacer"] == "g" + genomic[1:].replace("T", "U")
+    assert len(out["spacer"]) == 20
+    assert out["group"] == "Liu_HeLa"
+    assert out["scaffold_name"] == "OG_F+E"
 
 
 def test_optiprime_5g_spacer_uses_genomic_20mer_with_upstream():

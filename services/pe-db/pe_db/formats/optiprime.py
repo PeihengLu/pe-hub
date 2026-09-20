@@ -21,11 +21,12 @@ PS20_OFFSET = 4
 
 # Vendored OptiPrime scaffold_name keys (scripts/pe/pe_constants.SCAFFOLDS).
 _SCAFFOLD_CONVENTIONAL = "SpCas9_OG"
-_SCAFFOLD_OPTIMIZED = "GC_F+E"
 _SCAFFOLD_OG_FE = "OG_F+E"
 _SCAFFOLD_BLPI_FE = "BlpI_F+E"
 
 # Trained group_factor names in vendor weights/model_*/log_rates/*.pkl.
+# Hsu 1_train.py sets group = f"{lab}_{cell}" from the CSV stem (Liu_/Kim_/
+# Schwank_/YKim_). YKim_* is not in the shipped ensemble.
 _TRAINED_GROUPS = frozenset({
     "Kim_DLD1",
     "Liu_HEK293T",
@@ -41,11 +42,18 @@ _TRAINED_GROUPS = frozenset({
     "Kim_HCT116",
 })
 
-# Lab provenance is a weak prior for group_factors: Kim_HEK293T factors are
-# hostile on DeepPE transfer, while Liu_HEK293T (Hsu's primary training context)
-# ranks much better with the same PE2 assay flags. Prefer Liu → Kim → Schwank
-# for the matched cell type when that group was trained.
-_GROUP_LAB_PRIORITY = ("Liu", "Kim", "Schwank")
+# Fallback only when the Hsu lab×cell key is absent from the checkpoint
+# (missing names load factor 0).
+_GROUP_FALLBACK_LABS = ("Liu", "Kim", "Schwank")
+
+# Hsu pe_datasets.process_fname lab prefix from our study key.
+_STUDY_LAB = {
+    "optiprime": "Liu",
+    "deepprime": "Kim",
+    "pridict1": "Schwank",
+    "pridict2": "Schwank",
+    "deeppe": "YKim",
+}
 
 _CELL_LINE_VENDOR = {
     "hek293t": "HEK293T",
@@ -71,26 +79,42 @@ def _vendor_cell_type(cell_line: Optional[str]) -> str:
     return _CELL_LINE_VENDOR.get(key, "HEK293T")
 
 
+def _lab_for_study(study: Optional[str]) -> str:
+    """Hsu CSV-stem lab (Liu / Kim / Schwank / YKim). DESIGN_PE uses Liu."""
+    return _STUDY_LAB.get(_norm_key(study), "Liu")
+
+
 def _vendor_group(study: Optional[str], cell_line: Optional[str]) -> str:
-    """Pick a trained group_factor key for this cell line.
+    """Pick a trained group_factor key matching Hsu's ``{lab}_{cell}`` stems.
 
     OptiPrime multiplies every ODE rate by ``exp(group_factor)``. Unknown names
-    silently keep factor 0 (the old ``OptiPrime_HEK293T`` bug). Prefer Hsu's
-    Liu_* factors when they exist for the cell type.
+    silently keep factor 0 (the old ``OptiPrime_HEK293T`` bug), so if the Hsu
+    lab×cell key is not in the checkpoint, fall back to a trained key for the
+    same cell rather than inventing a name.
     """
-    del study  # reserved for future lab-specific overrides
     cell = _vendor_cell_type(cell_line)
-    for lab in _GROUP_LAB_PRIORITY:
-        name = f"{lab}_{cell}"
+    lab = _lab_for_study(study)
+    name = f"{lab}_{cell}"
+    if name in _TRAINED_GROUPS:
+        return name
+    for fallback in _GROUP_FALLBACK_LABS:
+        name = f"{fallback}_{cell}"
         if name in _TRAINED_GROUPS:
             return name
     return "Liu_HEK293T"
 
 
-def _pe_type_from_system(pe_system: Optional[str]) -> str:
-    """OptiPrime MMR head is PE2 vs not-PE2; PE4 is the only trained non-PE2."""
-    key = _norm_key(pe_system)
-    if key.startswith("pe4") or "mlh1" in key:
+def _pe_type_from_system(
+    pe_system: Optional[str],
+    cell_line: Optional[str] = None,
+) -> str:
+    """OptiPrime MMR head is PE2 vs not-PE2; PE4 is the only trained non-PE2.
+
+    MLH1-deficient datasheets are catalogued as PE2 in an MLH1-null line
+    (e.g. k562mlh1dn). The MMR switch still needs PE4 so kMMR is suppressed.
+    """
+    blob = f"{_norm_key(pe_system)} {_norm_key(cell_line)}"
+    if "pe4" in blob or "mlh1" in blob:
         return "PE4"
     return "PE2"
 
@@ -105,9 +129,24 @@ def _assay_defaults(
     """Study-conditioned OptiPrime CSV fields (mirrors vendor pe_datasets.process_*)."""
     study_key = _norm_key(study)
     dataset_key = _norm_key(dataset)
-    cell = _vendor_cell_type(cell_line)
-    pe_type = _pe_type_from_system(pe_system)
     pe_key = _norm_key(pe_system)
+
+    # Design / ad-hoc convert has no catalog study: Hsu DESIGN_PE defaults.
+    # Calendar 5.0 becomes ODE 4.0 after the wrapper's PREDICT_PE ``time - 1``.
+    if not study_key:
+        design_cell = cell_line if _norm_key(cell_line) else "hela"
+        return {
+            "scaffold_name": _SCAFFOLD_OG_FE,
+            "motif": "tevoPreQ1",
+            "cas9_type": "PEmax-Cas9",
+            "cas9_pam": "SpNGG",
+            "pe_type": _pe_type_from_system(pe_system, design_cell),
+            "time": 5.0,
+            "group": _vendor_group(None, design_cell),
+        }
+
+    cell = _vendor_cell_type(cell_line)
+    pe_type = _pe_type_from_system(pe_system, cell_line)
 
     # Hsu Lib-MMR / Lib-CV: BlpI_F+E epegRNA + PEmax, HEK 3 d / HeLa 5 d.
     if study_key == "optiprime":
@@ -121,7 +160,8 @@ def _assay_defaults(
             "group": _vendor_group(study, cell_line),
         }
 
-    # DeepPE (Y. Kim / H. Kim): conventional scaffold, PE2-Cas9, no epeg, ~3 d.
+    # DeepPE (process_ykim): conventional scaffold, PE2-Cas9, no epeg, ~3 d.
+    # YKim_* is not in the shipped ensemble; group falls back to a trained key.
     if study_key == "deeppe":
         return {
             "scaffold_name": _SCAFFOLD_CONVENTIONAL,
@@ -133,7 +173,7 @@ def _assay_defaults(
             "group": _vendor_group(study, cell_line),
         }
 
-    # DeepPrime / ClinVar (Kim): PE2 or PEmax, epeg when labelled, ~7–8 d.
+    # DeepPrime / ClinVar (process_hkim): PE2 or PEmax, epeg when labelled, ~7–8 d.
     if study_key == "deepprime":
         is_max = "max" in pe_key
         is_epeg = "epeg" in pe_key or "epegrna" in pe_key
@@ -148,15 +188,16 @@ def _assay_defaults(
             "group": _vendor_group(study, cell_line),
         }
 
-    # PRIDICT / PRIDICT2 (Schwank): optimized/Chen-like scaffold, ~7 d.
+    # PRIDICT / PRIDICT2 (process_schwank): only cas9 / pe_type / time=7.
+    # Missing scaffold/motif then take format_pe_df defaults (SpCas9_OG + tevoPreQ1).
     if study_key in {"pridict1", "pridict2"}:
         is_max = "max" in pe_key
         return {
-            "scaffold_name": _SCAFFOLD_OPTIMIZED,
-            "motif": "none",
+            "scaffold_name": _SCAFFOLD_CONVENTIONAL,
+            "motif": "tevoPreQ1",
             "cas9_type": "PEmax-Cas9" if is_max else "PE2-Cas9",
             "cas9_pam": "SpNGG",
-            "pe_type": "PE2",
+            "pe_type": pe_type,
             "time": 7.0,
             "group": _vendor_group(study, cell_line),
         }
@@ -187,14 +228,14 @@ def _assay_defaults(
             "group": _vendor_group(study, cell_line),
         }
 
-    # Safe transfer default: PE2-Cas9 + conventional + Kim group factors.
+    # Named study without a Hsu process_* mapping: DESIGN_PE editor, Liu_{cell}.
     return {
-        "scaffold_name": _SCAFFOLD_CONVENTIONAL,
-        "motif": "none",
-        "cas9_type": "PE2-Cas9",
+        "scaffold_name": _SCAFFOLD_OG_FE,
+        "motif": "tevoPreQ1",
+        "cas9_type": "PEmax-Cas9",
         "cas9_pam": "SpNGG",
         "pe_type": pe_type,
-        "time": 3.0,
+        "time": 5.0,
         "group": _vendor_group(study, cell_line),
     }
 
@@ -215,15 +256,25 @@ def _ps20_aligned_targets(wt: str, mut: str, protospacer_l: int) -> tuple[str, s
     return remove_padding(wt[start:]), remove_padding(mut[start:])
 
 
-def _make_optiprime_spacer(full_unedited: str, protospacer: str) -> str:
-    """Build spacer DNA using Hsu DESIGN_PE G21 rules (lowercase g = mismatch)."""
+def _make_optiprime_spacer(
+    full_unedited: str,
+    protospacer: str,
+    *,
+    design: bool = False,
+) -> str:
+    """Build spacer DNA using Hsu G21 / GN19 rules (lowercase g = mismatch).
+
+    Library eval keeps deposited 21-nt 5G (``g`` + 20) when the target has no
+    genomic G. DESIGN_PE ``make_spacer`` uses GN19 (``g`` + 19) in that case.
+    """
     if not protospacer:
         return ""
     if protospacer[0] == "G":
         return protospacer
     if len(full_unedited) >= PS20_OFFSET and full_unedited[PS20_OFFSET - 1] == "G":
         return full_unedited[PS20_OFFSET - 1 : PS20_OFFSET + 20]
-    # Synthetic 5′ G not present in the target — mark mismatch for Plus1GMisMatch.
+    if design and len(protospacer) >= 2:
+        return "g" + protospacer[1:]
     return "g" + protospacer
 
 
@@ -276,7 +327,9 @@ def standardized_to_optiprime_dataframe(
 
         protospacer = sanitize_dna_sequence(wt[pl:pr], drop=True)
         full_u, full_e = _ps20_aligned_targets(wt, mut, pl)
-        spacer_dna = _make_optiprime_spacer(full_u, protospacer)
+        spacer_dna = _make_optiprime_spacer(
+            full_u, protospacer, design=not _norm_key(study)
+        )
 
         pbs_dna = str(_Seq(sanitize_dna_sequence(wt[bl:br], drop=True)).reverse_complement())
         rtt_dna = str(_Seq(sanitize_dna_sequence(mut[rl:rr], drop=True)).reverse_complement())
