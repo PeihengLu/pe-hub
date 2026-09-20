@@ -22,9 +22,8 @@ leftover-excluding another paper's holdout.
 
 PRIDICT library1 has **no author test split**, so every library1 locus is
 recorded as training data. Library-diverse and Lib-MMR / Lib-CV are included
-in full. The ClinVar sidecar currently lists train-fold loci only (a PE-hub
-reconstruction); Hsu still trained on the pooled ClinVar sheet, so that
-holdout is not a valid OptiPrime test.
+in full, including ClinVar's original test-fold loci: those folds belong to
+DeepPrime, not Hsu's pooled split.
 """
 from __future__ import annotations
 
@@ -57,7 +56,7 @@ _DATASET_SPECS: tuple[_DatasetSpec, ...] = (
     _DatasetSpec("optiprime", "lib_mmr", "lib-mmr"),
     _DatasetSpec("optiprime", "lib_cv", "lib-cv"),
     _DatasetSpec("pridict1", "library1", "library1"),
-    _DatasetSpec("deepprime", "deepprime_clinvar", "deepprime-clinvar", train_folds_only=True),
+    _DatasetSpec("deepprime", "deepprime_clinvar", "deepprime-clinvar"),
     _DatasetSpec("pridict2", "library_diverse", "library-diverse"),
 )
 
@@ -141,7 +140,7 @@ def sync_optiprime_vendor_provenance() -> dict[str, int]:
                 "PRIDICT2 library-diverse (Mathis et al. 2025, ref. 56; Hsu pooled protospacer CV, not Mathis folds)",
             ],
             "per_dataset_train_folds_only": {
-                "deepprime-clinvar": True,
+                "deepprime-clinvar": False,
             },
         },
     }

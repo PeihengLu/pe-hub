@@ -1,6 +1,7 @@
 """Standardized → OptiPrime converters."""
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 import pandas as pd
@@ -18,6 +19,8 @@ from .common import (
 # OptiPrime's coordinate frame: full_unedited/edited start 4 bp upstream of the
 # 20 bp protospacer (Hsu DESIGN_PE / README).
 PS20_OFFSET = 4
+POST_HOM_END = 4
+logger = logging.getLogger(__name__)
 
 # Vendored OptiPrime scaffold_name keys (scripts/pe/pe_constants.SCAFFOLDS).
 _SCAFFOLD_CONVENTIONAL = "SpCas9_OG"
@@ -240,13 +243,21 @@ def _assay_defaults(
     }
 
 
-def _ps20_aligned_targets(wt: str, mut: str, protospacer_l: int) -> tuple[str, str]:
+def _ps20_aligned_targets(
+    wt: str, mut: str, protospacer_l: int, rtt_r: int,
+) -> tuple[str, str]:
     """Crop/pad so index 0 is 4 bp upstream of the protospacer.
 
     When the standardized window lacks upstream bases (Lib-MMR ``ps-pam-edit``
     starts at the spacer), left-pad with ``A`` — not ``N``, because
     ``remove_padding`` strips ``N`` and OptiPrime's alphabet is ACGT only.
     """
+    # Standardized WT/mut share aligned coordinates. Slice at the RTT end
+    # before removing indel pads, then retain four real downstream bases.
+    # DESIGN_PE uses edited_seq[:25 + rtt_len] and the corresponding WT
+    # endpoint. Whole standardized windows change HomLen and HomEndOneHot.
+    wt = remove_padding(wt[:rtt_r]) + remove_padding(wt[rtt_r:])[:POST_HOM_END]
+    mut = remove_padding(mut[:rtt_r]) + remove_padding(mut[rtt_r:])[:POST_HOM_END]
     pl = int(protospacer_l)
     missing = PS20_OFFSET - pl
     if missing > 0:
@@ -305,6 +316,11 @@ def standardized_to_optiprime_dataframe(
     rtt_r = _safe_int_series(_col_as_series(df, "rtt_location_r", 0))
 
     efficiency = _label_series(_col_as_series(df, "editing_efficiency", 0.0)).to_numpy()
+    # Hsu's Lib-MMR/Lib-CV labels and ODE outputs are fractions. These source
+    # studies store percentage points in the standardized catalog. Use source
+    # provenance rather than max(label), which fails on low-efficiency subsets.
+    if _norm_key(study) in {"deeppe", "deepprime", "pridict1", "pridict2", "anzalone", "minsepie"}:
+        efficiency = efficiency / 100.0
     assay = _assay_defaults(
         study=study,
         dataset=dataset,
@@ -313,6 +329,7 @@ def standardized_to_optiprime_dataframe(
     )
 
     records: list[dict[str, Any]] = []
+    incomplete_context = 0
     total = len(df)
     last_milestone = [-1]
     for i in range(total):
@@ -326,7 +343,17 @@ def standardized_to_optiprime_dataframe(
         rr = int(rtt_r.iloc[i])
 
         protospacer = sanitize_dna_sequence(wt[pl:pr], drop=True)
-        full_u, full_e = _ps20_aligned_targets(wt, mut, pl)
+        # PRIDICT can report a 19-nt spacer (or a genomic 21-nt G spacer).
+        # The PAM-proximal end, not the reported spacer start, anchors PS20.
+        ps20_l = len(remove_padding(wt[:pr])) - 20
+        if ps20_l < PS20_OFFSET or any(
+            len(remove_padding(seq[rr:])) < POST_HOM_END for seq in (wt, mut)
+        ):
+            incomplete_context += 1
+        full_u, full_e = _ps20_aligned_targets(wt, mut, ps20_l, rr)
+        # Large deletions/short RTTs can make the modeled WT shorter than 30.
+        # Rule Set 3 still needs the original genomic 30-mer around the PAM.
+        context_u, _ = _ps20_aligned_targets(wt, mut, ps20_l, len(wt))
         spacer_dna = _make_optiprime_spacer(
             full_u, protospacer, design=not _norm_key(study)
         )
@@ -349,6 +376,7 @@ def standardized_to_optiprime_dataframe(
             "pbs": pbs_rna,
             "full_unedited": full_u,
             "full_edited": full_e,
+            "proto30": context_u[:30],
             "scaffold_name": assay["scaffold_name"],
             "motif": assay["motif"],
             "cas9_type": assay["cas9_type"],
@@ -369,4 +397,11 @@ def standardized_to_optiprime_dataframe(
             last_milestone=last_milestone,
         )
 
+    if incomplete_context:
+        logger.warning(
+            "OptiPrime: %d/%d rows lack the full four-base upstream/downstream "
+            "context. Missing upstream bases use A-padding; downstream context "
+            "uses available bases only. These inputs are approximations.",
+            incomplete_context, total,
+        )
     return pd.DataFrame(records, index=df.index)

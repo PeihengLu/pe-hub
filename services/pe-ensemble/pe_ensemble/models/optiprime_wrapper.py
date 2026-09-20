@@ -41,6 +41,12 @@ def _preprocess_optiprime_eval_df(p: Path, df: pd.DataFrame) -> pd.DataFrame:
     from scripts.pe.pe_utils import format_pe_df
     from scripts.utils import deterministic_hash
 
+    # Inference must keep every row, including unlabeled or zero-weight rows.
+    # format_pe_df otherwise filters on observations that prediction never uses.
+    df = df.copy()
+    df["edited_frac"] = 0.0
+    df["indel_frac"] = 0.0
+    df["weight"] = 1.0
     df = format_pe_df(p, df)
     df["time"] = df["time"] - 1
     df["spacer_hash"] = df["spacer"].apply(deterministic_hash)
@@ -173,7 +179,7 @@ class OptiPrimeModelWrapper(BasePEModel):
             pass
         self._init_vendor()
         vendor_weights = self._vendor_root / "weights"
-        if vendor_weights.is_dir():
+        if name == self.DEFAULT_WEIGHT_ID and vendor_weights.is_dir():
             self.load_model(str(vendor_weights))
             return
         raise ValueError(
@@ -197,6 +203,10 @@ class OptiPrimeModelWrapper(BasePEModel):
         """
         if not self.is_trained or not self._weight_dirs:
             raise ValueError("Model not loaded. Call load_model() first.")
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
+        if data.empty:
+            return []
 
         self._init_vendor()
         import tempfile
@@ -244,12 +254,6 @@ class OptiPrimeModelWrapper(BasePEModel):
             csv_path = tmp_path / _PREDICT_CSV_NAME
 
             prep_df = data.copy()
-            if "edited_frac" not in prep_df.columns:
-                prep_df["edited_frac"] = prep_df.get("Efficiency", 0.0)
-            if "indel_frac" not in prep_df.columns:
-                prep_df["indel_frac"] = 0.0
-            if "weight" not in prep_df.columns:
-                prep_df["weight"] = 1.0
             # Fallbacks only when the pe-db converter did not fill assay fields.
             # Match Hsu DESIGN_PE defaults (calendar 5.0 → ODE 4.0 after −1).
             for col, default in [

@@ -21,11 +21,11 @@
       ],
       "has_original_test_split": false,
       "loci_recorded": true,
-      "n_target_loci": 84050,
+      "n_target_loci": 88047,
       "per_dataset_train_folds_only": {
-        "deepprime-clinvar": true
+        "deepprime-clinvar": false
       },
-      "target_uid_fingerprint": "sha1:8d930869963fbbbbb99d54928d98cf664cfbd623",
+      "target_uid_fingerprint": "sha1:b4d3a245cbb4aa3a8d3f7f7bb5fa658fca476c16",
       "vendor_training_lineage": [
         {
           "dataset": "lib-mmr",
