@@ -15,6 +15,7 @@ from pe_common.sequence_utils import (
     align_wt_mut_sequences,
     reverse_complement,
     shift_coords_after_indel_pad,
+    substitution_span_bp,
 )
 
 from ..catalog.records import DatasheetScaffoldAssignment
@@ -88,10 +89,11 @@ def _optiprime_build_export_frame(
 
     sub_mask = exported["type_sub"]
     if sub_mask.any():
-        def _count_diffs(row: pd.Series) -> int:
-            return sum(1 for a, b in zip(row["wt_sequence"], row["mut_sequence"]) if a != b)
+        def _sub_span(row: pd.Series) -> int:
+            # PE-core edit_len for substitutions is genomic span, not mismatch count.
+            return max(1, substitution_span_bp(row["wt_sequence"], row["mut_sequence"]))
 
-        exported.loc[sub_mask, "edit_len"] = exported.loc[sub_mask].apply(_count_diffs, axis=1)
+        exported.loc[sub_mask, "edit_len"] = exported.loc[sub_mask].apply(_sub_span, axis=1)
     return exported
 
 
@@ -212,6 +214,91 @@ def _locate_optiprime_protospacer(wt_sequence: str, spacer: str) -> tuple[int, i
     return 0, min(20, len(wt))
 
 
+def _optiprime_clean_homology_arm(homology_arm: object) -> str:
+    if homology_arm is None or (isinstance(homology_arm, float) and pd.isna(homology_arm)):
+        return ""
+    ha = str(homology_arm).upper().replace("U", "T").strip()
+    if ha in {"", "NAN", "NONE", "<NA>"}:
+        return ""
+    return ha
+
+
+def _optiprime_last_substitution_mismatch(wt_sequence: str, mut_sequence: str) -> int:
+    """Inclusive index of the last WT/Mut mismatch (equal-length substitutions)."""
+    wt = str(wt_sequence).upper().replace("U", "T")
+    mut = str(mut_sequence).upper().replace("U", "T")
+    last = -1
+    for i, (a, b) in enumerate(zip(wt, mut)):
+        if a != b:
+            last = i
+    if last >= 0:
+        return last
+    return min(len(wt), len(mut)) - 1 if min(len(wt), len(mut)) else 0
+
+
+def _optiprime_default_rha_start(
+    *,
+    nick: int,
+    edit_pos: int,
+    edit_len: int,
+    type_del: bool,
+    type_sub: bool = False,
+    wt_sequence: str = "",
+    mut_sequence: str = "",
+) -> int:
+    """Unaligned Mut index where 3′ homology starts after the edited region.
+
+    PE-core ``edit_len`` for substitutions is genomic span, so
+    ``edit_pos + edit_len`` equals one past the last mismatch. We still locate
+    the last mismatch when WT/Mut are available so a stale count-valued
+    ``edit_len`` cannot pull RHA into the middle of a silent-edit cluster.
+    """
+    if type_del:
+        ha_start = int(edit_pos)
+    elif type_sub and wt_sequence and mut_sequence:
+        ha_start = _optiprime_last_substitution_mismatch(wt_sequence, mut_sequence) + 1
+    else:
+        ha_start = int(edit_pos) + int(edit_len)
+    return max(int(nick), ha_start)
+
+
+def _optiprime_rha_bounds(
+    mut_sequence: str,
+    *,
+    nick: int,
+    edit_pos: int,
+    edit_len: int,
+    type_del: bool,
+    homology_arm: str,
+    wt_sequence: str = "",
+    type_sub: bool = False,
+) -> tuple[int, int]:
+    """Return ``(rha_l, rha_r)`` on the unaligned Mut sequence.
+
+    When the author homology-arm string is present and found, both bounds come
+    from that match so standardized RHA length matches the deposited column.
+    """
+    mut = str(mut_sequence).upper().replace("U", "T")
+    ha = _optiprime_clean_homology_arm(homology_arm)
+    ha_start = _optiprime_default_rha_start(
+        nick=nick,
+        edit_pos=edit_pos,
+        edit_len=edit_len,
+        type_del=type_del,
+        type_sub=type_sub,
+        wt_sequence=wt_sequence,
+        mut_sequence=mut,
+    )
+    if ha:
+        idx = mut.find(ha, ha_start)
+        if idx < 0:
+            idx = mut.find(ha, int(nick))
+        if idx >= 0:
+            return idx, idx + len(ha)
+        return ha_start, min(len(mut), ha_start + len(ha))
+    return ha_start, len(mut)
+
+
 def _optiprime_homology_end(
     mut_sequence: str,
     *,
@@ -220,25 +307,20 @@ def _optiprime_homology_end(
     edit_len: int,
     type_del: bool,
     homology_arm: str,
+    wt_sequence: str = "",
+    type_sub: bool = False,
 ) -> int:
     """Right bound of the pegRNA RTT / 3′ homology on the unaligned Mut sequence."""
-    mut = str(mut_sequence).upper().replace("U", "T")
-    if homology_arm is None or (isinstance(homology_arm, float) and pd.isna(homology_arm)):
-        ha = ""
-    else:
-        ha = str(homology_arm).upper().replace("U", "T").strip()
-    if ha in {"", "NAN", "NONE", "<NA>"}:
-        ha = ""
-    ha_start = int(edit_pos) if type_del else int(edit_pos) + int(edit_len)
-    ha_start = max(int(nick), ha_start)
-    if ha:
-        idx = mut.find(ha, ha_start)
-        if idx < 0:
-            idx = mut.find(ha, int(nick))
-        if idx >= 0:
-            return idx + len(ha)
-        return min(len(mut), ha_start + len(ha))
-    return len(mut)
+    return _optiprime_rha_bounds(
+        mut_sequence,
+        nick=nick,
+        edit_pos=edit_pos,
+        edit_len=edit_len,
+        type_del=type_del,
+        homology_arm=homology_arm,
+        wt_sequence=wt_sequence,
+        type_sub=type_sub,
+    )[1]
 
 
 def _standardize_optiprime(
@@ -308,32 +390,43 @@ def _standardize_optiprime(
     df["lha_l"] = nick_pos
     df["lha_r"] = edit_positions
 
+    # PE-core: substitution edit_len is genomic span (last−first+1), not mismatch count.
+    sub_mask = df["type_sub"].astype(bool)
+    if sub_mask.any():
+        df.loc[sub_mask, "edit_len"] = [
+            max(1, substitution_span_bp(wt, mut))
+            for wt, mut in zip(wt_sequence.loc[sub_mask], mut_sequence.loc[sub_mask])
+        ]
     edit_len = df["edit_len"].astype(int)
     if "homology_arm" in df.columns:
         homology_arm = df["homology_arm"].where(df["homology_arm"].notna(), "").astype(str)
     else:
         homology_arm = pd.Series("", index=df.index)
-    rtt_r = [
-        _optiprime_homology_end(
+    rha_bounds = [
+        _optiprime_rha_bounds(
             mut,
             nick=int(nick),
             edit_pos=int(edit_pos),
             edit_len=int(length),
             type_del=bool(is_del),
             homology_arm=ha,
+            wt_sequence=wt,
+            type_sub=bool(is_sub),
         )
-        for mut, nick, edit_pos, length, is_del, ha in zip(
+        for mut, wt, nick, edit_pos, length, is_del, is_sub, ha in zip(
             mut_sequence,
+            wt_sequence,
             nick_pos,
             edit_positions,
             edit_len,
             df["type_del"],
+            df["type_sub"],
             homology_arm,
         )
     ]
-    df["rtt_r"] = pd.Series(rtt_r, index=df.index, dtype=int)
-    df["rha_l"] = edit_positions + np.where(df["type_del"], 0, edit_len)
-    df["rha_r"] = df["rtt_r"]
+    df["rha_l"] = pd.Series([left for left, _ in rha_bounds], index=df.index, dtype=int)
+    df["rha_r"] = pd.Series([right for _, right in rha_bounds], index=df.index, dtype=int)
+    df["rtt_r"] = df["rha_r"]
 
     def _align_row(row):
         return align_wt_mut_sequences(

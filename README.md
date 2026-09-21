@@ -471,7 +471,7 @@ Contributed edit-level tables should use the shared standardized columns (parque
 | ------------------------------------------ | ----- | -------------------------------------------------------- |
 | `group_id`                               | int   | Identifier for a unique protospacer within the datasheet |
 | `type_sub` / `type_ins` / `type_del` | bool  | Intended edit class (mutually exclusive)                 |
-| `edit_len`                               | int   | Edit length (bp)                                         |
+| `edit_len`                               | int   | Edit length (bp): indel size, or substitution **span** (`last−first+1` over WT≠Mut bases; not mismatch count) |
 | `wt_sequence`                            | str   | Wild-type target-strand sequence                         |
 | `mut_sequence`                           | str   | Edited target-strand sequence                            |
 | `protospacer_location_l` / `_r`        | int   | Protospacer interval in the sequences                    |

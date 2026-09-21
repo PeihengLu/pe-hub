@@ -6,6 +6,7 @@ from pe_common.sequence_utils import (
     remove_padding,
     shift_coords_after_indel_pad,
     shift_index_after_indel_pad,
+    substitution_span_bp,
     unpadded_coordinate,
 )
 
@@ -69,3 +70,14 @@ def test_unpadded_coordinate_skips_n_pads():
 
 def test_normalize_target_dna_keeps_n():
     assert normalize_target_dna("atnug") == "ATNTG"
+
+
+def test_substitution_span_bp_is_last_minus_first_plus_one():
+    # Contiguous 3-bp block.
+    assert substitution_span_bp("AAAAAA", "AAGGGA") == 3
+    # Scattered silents: mismatches at 1 and 4 → span 4, not count 2.
+    assert substitution_span_bp("AAAAAA", "ACABCA") == 4
+    assert substitution_span_bp("AAAA", "AAAA") == 0
+    # N on either strand skips that column.
+    assert substitution_span_bp("AANA", "ACTA") == 1  # only col 1 (T vs C); col 2 has N
+

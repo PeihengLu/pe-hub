@@ -428,13 +428,27 @@ def _deeppe_infer_rt_edit(
     if deletions and not insertions and not substitutions:
         return "del", deletions, edit_start or 0
     if substitutions and not insertions and not deletions:
-        return "sub", substitutions, edit_start or 0
+        first = last = None
+        for i, (a, b) in enumerate(zip(wt_rt, mut_rt)):
+            if a != b:
+                if first is None:
+                    first = i
+                last = i
+        span = (last - first + 1) if first is not None else int(substitutions)
+        return "sub", int(span), edit_start or 0
     dominant = max(insertions, deletions, substitutions)
     if dominant == insertions:
         return "ins", insertions, edit_start or 0
     if dominant == deletions:
         return "del", deletions, edit_start or 0
-    return "sub", substitutions, edit_start or 0
+    first = last = None
+    for i, (a, b) in enumerate(zip(wt_rt, mut_rt)):
+        if a != b:
+            if first is None:
+                first = i
+            last = i
+    span = (last - first + 1) if first is not None else int(substitutions)
+    return "sub", int(span), edit_start or 0
 
 
 def _prepare_deeppe_export_df(df: pd.DataFrame) -> pd.DataFrame:

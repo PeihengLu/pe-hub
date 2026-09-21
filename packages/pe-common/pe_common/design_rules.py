@@ -13,8 +13,9 @@ Presets
     PBS length 13; first nucleotide of the pegRNA RTT (3′ extension) is not C.
     The Methods also cite 3′ homology ``9+L`` / ``19+L`` with a C-avoiding
     length nudge; that clause is available as the atomic rule
-    ``homology_hsu`` but is not part of this preset (deposited Lib-MMR / Lib-CV
-    arms systematically deviate for multi-base edits and indels).
+    ``homology_hsu`` but is not part of this preset (Lib-MMR multi-base edits
+    and indels use ~15/~20 nt arms rather than ``19+L``; Lib-CV silent-edit
+    combinations keep ~10 nt arms rather than ``9+`` substitution span).
 
 ``anzalone``
     Anzalone et al. 2019 starting recommendations: PBS 10–16 nt, PBS GC 40–60%,

@@ -57,7 +57,32 @@ def test_optiprime_homology_end_uses_author_arm_not_full_mut():
     ) - 30
 
 
+def test_optiprime_rha_bounds_use_last_mismatch_for_scattered_subs():
+    """Silent / multi-base: RHA starts after last mismatch (PE-core edit_len is span)."""
+    from pe_db.studies.optiprime import _optiprime_rha_bounds
 
+    nick = 17
+    # Mismatches at 20 and 25 → span edit_len=6; homology starts at 26.
+    wt = ("A" * 40)
+    mut_list = list(wt)
+    mut_list[20] = "C"
+    mut_list[25] = "G"
+    ha = "TTTTAAAA"
+    mut_list[26 : 26 + len(ha)] = list(ha)
+    mut = "".join(mut_list)
+
+    left, right = _optiprime_rha_bounds(
+        mut,
+        nick=nick,
+        edit_pos=20,
+        edit_len=6,  # span last−first+1
+        type_del=False,
+        homology_arm=ha,
+        wt_sequence=wt,
+        type_sub=True,
+    )
+    assert (left, right) == (26, 26 + len(ha))
+    assert right - left == len(ha)
 def test_minsepie_protospacer_interval_is_20bp():
     spacer = "ATCGATCGATCGATCGATCG"
     _wt, _mut, _edit_len, edit_position = _build_minsepie_core_target_sequences(

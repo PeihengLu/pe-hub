@@ -21,6 +21,7 @@ from .sequence_utils import (
     normalize_target_dna,
     remove_padding,
     shift_coords_after_indel_pad,
+    substitution_span_bp,
     unpadded_coordinate,
 )
 from .data_utils import (
@@ -93,6 +94,7 @@ __all__ = [
     "normalize_target_dna",
     "remove_padding",
     "shift_coords_after_indel_pad",
+    "substitution_span_bp",
     "unpadded_coordinate",
     "build_test_mask_from_group_id",
     "allocate_mixed_author_test_loci_to_train",

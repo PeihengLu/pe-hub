@@ -74,7 +74,7 @@ Key columns (hyphenated in parquet):
 | `edit-efficiency` | Editing efficiency (fraction or percent per source) |
 | `group-id` | Stable group key for train/test splits (same locus) |
 | `edit-type` | `sub`, `ins`, or `del` |
-| `edit-length` | Edit size |
+| `edit-length` | Edit size (indel length, or substitution genomic span) |
 | `original-fold` | Author train/test assignment when available |
 
 Geometry columns (`pbs-location-l`, `rtt-location-r`, …) are **0-based half-open

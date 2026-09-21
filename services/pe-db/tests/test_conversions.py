@@ -938,6 +938,33 @@ def test_optiprime_homology_arm_bounds_rtt():
     assert end < len(mut)
 
 
+def test_optiprime_rha_bounds_match_author_arm_for_silent_subs():
+    from pe_db.studies.optiprime import _optiprime_rha_bounds
+
+    # Pathogenic + silent SNP: mismatches at 17 and 20 → PE-core span edit_len=4.
+    # Layout: nick@17, mismatches@17 and@20, author HA starts@25.
+    wt = "G" * 17 + "AAAA" + "ACGT" + "TTTTAAAA" + "CCCC"
+    mut_list = list(wt)
+    mut_list[17] = "T"
+    mut_list[20] = "G"
+    ha = "TTTTAAAA"
+    mut = "".join(mut_list)
+    assert mut[25:33] == ha
+
+    left, right = _optiprime_rha_bounds(
+        mut,
+        nick=17,
+        edit_pos=17,
+        edit_len=4,
+        type_del=False,
+        homology_arm=ha,
+        wt_sequence=wt,
+        type_sub=True,
+    )
+    assert (left, right) == (25, 33)
+    assert right - left == len(ha)
+
+
 def test_deepprime_left_pads_when_spacer_starts_at_zero():
     spacer = "GTCATCTTAGTCATTACCTG"
     wt = spacer + "AGG" + ("T" * 40)

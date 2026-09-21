@@ -1,11 +1,35 @@
 """Sequence manipulation utilities"""
-from typing import Literal, Tuple, Union
+from __future__ import annotations
+
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
 _PAD_BASES = frozenset("NX-")
 _DNA_WITH_PAD = frozenset("ACGTN")
+
+
+def substitution_span_bp(wt_sequence: str, mut_sequence: str) -> int:
+    """Genomic span of substitution mismatches: ``last - first + 1``.
+
+    PE-core ``edit_len`` for substitutions is this span (not the mismatch
+    count). ``N`` pads are ignored. Returns ``0`` when there is no mismatch.
+    """
+    wt = str(wt_sequence).upper().replace("U", "T")
+    mut = str(mut_sequence).upper().replace("U", "T")
+    first: Optional[int] = None
+    last = -1
+    for i, (a, b) in enumerate(zip(wt, mut)):
+        if a in _PAD_BASES or b in _PAD_BASES:
+            continue
+        if a != b:
+            if first is None:
+                first = i
+            last = i
+    if first is None:
+        return 0
+    return int(last - first + 1)
 
 
 def align_wt_mut_sequences(

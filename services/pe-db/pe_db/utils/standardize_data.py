@@ -24,6 +24,7 @@ from ..studies.minsepie import (
 from ..studies.optiprime import (
     _locate_optiprime_protospacer,
     _optiprime_homology_end,
+    _optiprime_rha_bounds,
 )
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
     "_drop_unmeasured_efficiency_rows",
     "_locate_optiprime_protospacer",
     "_optiprime_homology_end",
+    "_optiprime_rha_bounds",
     "endo_standard_columns",
     "standard_pe_data_columns",
 ]

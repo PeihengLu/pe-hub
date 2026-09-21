@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 FORMATTED_CACHE_REVISIONS: dict[str, int] = {
     # All formats bumped together: unmeasured efficiency labels are no longer
     # coerced to 0.0, so caches built before that change hold fabricated zeros.
-    "deepprime": 5,  # deletion RT/RHA; GN19 MFE4; vendor U→U Tm; fold T as U
+    "deepprime": 6,  # deletion RT/RHA; GN19 MFE4; vendor U→U Tm; fold T as U; edit_len=span
     "pridict": 8,  # overhang left: insert-start vs already-after-insert rha_l
     "pridict2": 8,
     "oped": 8,  # full unpadded WT target; no fixed 47/350 crop or A-pad flanks
-    "optiprime": 7,  # RTT endpoint, PAM-anchored PS20, proto30, fractional labels
+    "optiprime": 8,  # RHA after last mismatch for silent/multi-base substitutions
 }
 
 
