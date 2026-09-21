@@ -106,7 +106,9 @@ SEARCH_SPACES: Dict[str, SearchSpaceSpec] = {
     "oped": SearchSpaceSpec(
         metric="cv.mean_val_spearman",
         direction="maximize",
-        fixed={},
+        # Also changes the study fingerprint: do not resume encoder-only trials
+        # after correcting scratch training to the vendor's decoder architecture.
+        fixed={"model_variant": "encoder_decoder"},
         params={
             "lr": FloatParam(1e-5, 1e-3, log=True),
             "weight_decay": FloatParam(1e-6, 1e-2, log=True),

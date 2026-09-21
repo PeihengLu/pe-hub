@@ -15,6 +15,7 @@ from .config import local_presets_root, shipped_presets_root
 from .dataset_key import candidate_preset_keys, filters_from_request
 from .model_baselines import model_baseline_hyperparameters
 from .model_architecture import apply_fine_tune_defaults
+from ..models.hparams import normalize_oped_hyperparameters
 
 # Scheduler keys are user-controlled during training and excluded from Optuna presets.
 SCHEDULER_KEYS = frozenset({"scheduler", "scheduler_kwargs"})
@@ -144,8 +145,13 @@ def resolve_hyperparameters(
     name = model_name.strip().lower()
     baseline = model_baseline_hyperparameters(name)
 
+    def merge_layers(*layers: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        if name == "oped":
+            layers = tuple(normalize_oped_hyperparameters(layer) for layer in layers)
+        return merge_hyperparameter_layers(*layers)
+
     if mode == "replace":
-        merged = merge_hyperparameter_layers(baseline, user_overrides)
+        merged = merge_layers(baseline, user_overrides)
         return ResolvedHyperparameters(
             hyperparameters=apply_fine_tune_defaults(merged),
             preset_key=None,
@@ -178,7 +184,7 @@ def resolve_hyperparameters(
             source = f"{source}+user"
         return ResolvedHyperparameters(
             hyperparameters=apply_fine_tune_defaults(
-                merge_hyperparameter_layers(*layers)
+                merge_layers(*layers)
             ),
             preset_key=preset_key,
             preset_source=source,
@@ -203,7 +209,7 @@ def resolve_hyperparameters(
         _strip_scheduler_keys(local_dataset),
         user_overrides,
     ]
-    merged = merge_hyperparameter_layers(*layers)
+    merged = merge_layers(*layers)
 
     preset_key = local_key or shipped_key
     source = "baseline"
