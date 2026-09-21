@@ -198,3 +198,42 @@ def test_first_hyperparam_prefers_the_first_present_key():
 
 def test_first_hyperparam_returns_explicit_none():
     assert first_hyperparam({"drop_out": None, "dropout": 0.2}, "drop_out", "dropout", default=0.1) is None
+
+def test_best_checkpoint_uses_sample_weighted_validation_loss():
+    """A short final batch must not change which epoch is restored."""
+    torch.set_num_threads(1)
+    x = torch.tensor([[0., 5.**0.5], [0., 5.**0.5], [3., 0.]])
+    y = torch.zeros(3, 1)
+    loader = DataLoader(TensorDataset(x, y), batch_size=2)
+
+    class ControlledModule(pl.LightningModule):
+        def __init__(self):
+            super().__init__()
+            self.model = torch.nn.Linear(2, 1, bias=False)
+
+        def training_step(self, batch, _idx):
+            loss = self.model(batch[0]).sum() * 0
+            self.log('train_loss', loss)
+            return loss
+
+        def on_validation_epoch_start(self):
+            with torch.no_grad():
+                self.model.weight.copy_(torch.tensor([[1., 0.]]) if self.current_epoch == 0
+                                        else torch.tensor([[0., 1.]]))
+
+        def validation_step(self, batch, _idx):
+            loss = ((self.model(batch[0])-batch[1])**2).mean()
+            self.log('val_loss', loss, on_epoch=True, batch_size=len(batch[1]))
+            return loss
+
+        def configure_optimizers(self):
+            return torch.optim.SGD(self.parameters(), lr=0.)
+
+    module = ControlledModule()
+    report = fit_lightning_module(module, train_loader=loader, val_loader=loader,
+                                  device=torch.device('cpu'),
+                                  config=LightningTrainerConfig(max_epochs=2, patience=None))
+    assert report['best_epoch'] == 0
+    assert abs(report['best_val_loss'] - 3.) < 1e-6
+    assert [row['train_loss'] for row in report['history']] == [0., 0.]
+    torch.testing.assert_close(module.model.weight, torch.tensor([[1., 0.]]))

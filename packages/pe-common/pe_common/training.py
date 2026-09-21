@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 
 import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 from lightning.pytorch.callbacks import Callback, EarlyStopping as LightningEarlyStopping  # type: ignore[reportMissingImports]
+from lightning.pytorch.utilities.data import extract_batch_size
 
 
 @dataclass
@@ -203,7 +204,23 @@ def fit_lightning_module(
             self.best_val_loss: float = float("inf")
             self.best_epoch: int = -1
             self.best_state_dict: Optional[Dict[str, torch.Tensor]] = None
-            self._val_batch_losses: List[torch.Tensor] = []
+            self._val_batch_losses: List[Tuple[torch.Tensor, int]] = []
+            self._train_batch_losses: List[Tuple[torch.Tensor, int]] = []
+
+        @staticmethod
+        def _mean_loss(losses: List[Tuple[torch.Tensor, int]]) -> float:
+            total = sum(size for _, size in losses)
+            return float((torch.stack([loss * size for loss, size in losses]).sum() / total).item())
+
+        def on_train_epoch_start(self, trainer: Any, pl_module: Any) -> None:
+            self._train_batch_losses = []
+
+        def on_train_batch_end(
+            self, trainer: Any, pl_module: Any, outputs: Any, batch: Any, batch_idx: int,
+        ) -> None:
+            loss = outputs.get("loss") if isinstance(outputs, Mapping) else outputs
+            if torch.is_tensor(loss):
+                self._train_batch_losses.append((loss.detach().float(), extract_batch_size(batch)))
 
         @staticmethod
         def _as_float(metrics: Dict[str, Any], key: str) -> float:
@@ -241,23 +258,29 @@ def fit_lightning_module(
             batch_idx: int,
             dataloader_idx: int = 0,
         ) -> None:
-            del trainer, pl_module, batch, batch_idx, dataloader_idx
+            del trainer, pl_module, batch_idx, dataloader_idx
             if outputs is None:
                 return
             if torch.is_tensor(outputs):
-                self._val_batch_losses.append(outputs.detach().float())
+                self._val_batch_losses.append((outputs.detach().float(), extract_batch_size(batch)))
                 return
             if isinstance(outputs, Mapping):
                 loss = outputs.get("loss")
                 if torch.is_tensor(loss):
-                    self._val_batch_losses.append(loss.detach().float())
+                    self._val_batch_losses.append((loss.detach().float(), extract_batch_size(batch)))
 
         def on_validation_epoch_end(self, trainer: Any, pl_module: Any) -> None:
             metrics = dict(trainer.callback_metrics)
             epoch = int(trainer.current_epoch)
-            train_loss = self._metric_from_trainer(trainer, "train_loss")
+            # Validation finishes before Lightning finalizes the train epoch
+            # logs; reading train_loss here otherwise lags by one epoch.
+            train_loss = (self._mean_loss(self._train_batch_losses) if self._train_batch_losses
+                          else self._metric_from_trainer(trainer, "train_loss"))
             if self._val_batch_losses:
-                val_loss = float(torch.stack(self._val_batch_losses).mean().item())
+                # Batch losses are means. An unweighted mean overweights the
+                # final partial batch and can restore a different checkpoint
+                # from the sample-weighted metric monitored by early stopping.
+                val_loss = self._mean_loss(self._val_batch_losses)
             else:
                 val_loss = self._metric_from_trainer(trainer, "val_loss")
             self._val_batch_losses = []

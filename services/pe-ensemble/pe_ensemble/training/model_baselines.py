@@ -24,6 +24,7 @@ def model_baseline_hyperparameters(model_name: str) -> Dict[str, Any]:
         }
     if name == "oped":
         return {
+            "model_variant": "encoder_decoder",
             "epoch_num": 100,
             "batch_size": 128,
             "lr": 3e-4,

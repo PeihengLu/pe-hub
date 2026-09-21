@@ -13,6 +13,20 @@ import pandas as pd
 from pe_common.splits import has_assigned_cv_folds, iter_assigned_cv_folds
 
 
+def normalize_oped_hyperparameters(values: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """Resolve aliases within a layer, before higher-precedence layers merge."""
+    params = dict(values or {})
+    for canonical, alias in (("epoch_num", "epochs"), ("drop_out", "dropout"),
+                             ("ntokens", "ntoken")):
+        if params.get(canonical) is None and params.get(alias) is not None:
+            params[canonical] = params[alias]
+    for canonical, alias in (("hidden_size", "ffn_dim"),
+                             ("num_encoder_layers", "encoder_layers")):
+        if params.get(canonical) is None and params.get(alias) is not None:
+            params[canonical] = [int(params[alias])] * 3
+    return params
+
+
 def resolve_pretrained_weight_id(
     hyperparameters: Optional[Mapping[str, Any]],
     *,

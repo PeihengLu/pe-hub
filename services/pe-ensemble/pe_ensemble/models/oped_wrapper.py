@@ -1,6 +1,7 @@
 import sys
 import os
 import hashlib
+import json
 from pathlib import Path
 from typing import Callable, List, Dict, Any, Optional, Tuple, cast
 import pandas as pd
@@ -35,6 +36,7 @@ from pe_common.splits import resolve_train_val_from_splits
 from ..training.progress_log import log_training_best, make_epoch_logger, take_job_training_callbacks
 from .hparams import (
     iter_cv_training_folds,
+    normalize_oped_hyperparameters,
     require_evaluate_weights,
     resolve_pretrained_weight_id,
 )
@@ -89,7 +91,8 @@ class _OPEDLightningRegressor(pl.LightningModule):
         inputs, target = batch
         pred = self.forward(inputs)
         loss = self.criterion(pred, target)
-        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False,
+                 batch_size=target.shape[0])
         return loss
 
     def validation_step(
@@ -98,7 +101,8 @@ class _OPEDLightningRegressor(pl.LightningModule):
         inputs, target = batch
         pred = self.forward(inputs)
         loss = self.criterion(pred, target)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True,
+                 batch_size=target.shape[0])
         return loss
 
     def configure_optimizers(self) -> Any:
@@ -189,6 +193,8 @@ class OPEDModelWrapper(BasePEModel):
 
         candidate = Path(model_path).expanduser()
         if candidate.is_dir():
+            if (candidate / "weights.pt").is_file():
+                return str(candidate / "weights.pt")
             # Prefer the canonical state_dict file name if present, else the
             # first *_weights.pt in the directory.
             preferred = candidate / self.DEFAULT_WEIGHTS_RELPATH[-1]
@@ -435,7 +441,7 @@ class OPEDModelWrapper(BasePEModel):
         "hidden_size": [2048, 2048, 2048],
         "hidden_size_fully": [1024, 2048, 2048, 1024, 1024, 256],
         "output_size": 1,
-        "nhead": 8,
+        "nhead": 64,
         "num_encoder_layers": [1, 1, 1],
         "dropout": 0.1,
         "other_size": 0,
@@ -484,7 +490,10 @@ class OPEDModelWrapper(BasePEModel):
         while f"fully_connected_layers.{idx}.weight" in state_dict:
             fc_out_sizes.append(int(state_dict[f"fully_connected_layers.{idx}.weight"].shape[0]))
             idx += 3
-        if len(fc_out_sizes) <= 1:
+        if "fully_connected_layers.weight" in state_dict:
+            hidden_size_fully = None
+            output_size = int(state_dict["fully_connected_layers.weight"].shape[0])
+        elif len(fc_out_sizes) <= 1:
             hidden_size_fully = None
             output_size = int(fc_out_sizes[0]) if fc_out_sizes else 1
         else:
@@ -551,6 +560,11 @@ class OPEDModelWrapper(BasePEModel):
 
         state_dict = self._load_state_dict(weights_path)
         arch = self._infer_architecture_from_state_dict(state_dict)
+        metadata_path = Path(str(weights_path) + ".architecture.json")
+        if metadata_path.is_file():
+            # Head count/dropout cannot be recovered from tensor shapes. Keep
+            # legacy vendor inference only for checkpoints without metadata.
+            arch = json.loads(metadata_path.read_text())
         model_cls = (
             TransformerEncoderDecoderModelOrder3
             if arch["kind"] == "encoder_decoder"
@@ -562,6 +576,15 @@ class OPEDModelWrapper(BasePEModel):
         self.model.eval()
 
         self.is_trained = True
+
+    @classmethod
+    def _architecture_for_model(cls, model: torch.nn.Module) -> Dict[str, Any]:
+        arch = cls._infer_architecture_from_state_dict(model.state_dict())
+        arch["kwargs"].update(
+            nhead=int(model.nhead), dropout=float(model.dropout),
+            other_size=int(model.other_size), softmax_bool=bool(model.softmax_bool),
+        )
+        return arch
     
     # OPED native sequence columns (output of PE-DB's oped converter).
     OPED_REQUIRED_COLUMNS = {"Target(47bp)", "PBS", "RT"}
@@ -687,7 +710,15 @@ class OPEDModelWrapper(BasePEModel):
 
     @staticmethod
     def _build_model_from_hparams(hparams: Dict[str, Any]) -> torch.nn.Module:
-        from oped.pegRNA_PredictingCodes.train_model import TransformerEncoderModelOrder3
+        from oped.pegRNA_PredictingCodes.train_model import (
+            TransformerEncoderModelOrder3, TransformerEncoderDecoderModelOrder3,
+        )
+
+        variant = hparams.get("model_variant", "encoder_decoder")
+        model_classes = {"encoder": TransformerEncoderModelOrder3,
+                         "encoder_decoder": TransformerEncoderDecoderModelOrder3}
+        if variant not in model_classes:
+            raise ValueError(f"Unknown OPED model_variant: {variant!r}")
 
         ntokens_value = hparams.get("ntokens", hparams.get("ntoken", [4, 16, 64]))
         if isinstance(ntokens_value, int):
@@ -717,7 +748,7 @@ class OPEDModelWrapper(BasePEModel):
                 f"(got embedding_size={embedding_size}, nhead={nhead})"
             )
 
-        model = TransformerEncoderModelOrder3(
+        model = model_classes[variant](
             ntokens=ntokens_value,
             embedding_size=embedding_size,
             hidden_size=hidden_size,
@@ -863,6 +894,7 @@ class OPEDModelWrapper(BasePEModel):
             raise ValueError("val_data must include 'Efficiency' column.")
 
         default_params: Dict[str, Any] = {
+            "model_variant": "encoder_decoder",
             "ntokens": [4, 16, 64],
             "embedding_size": 64,
             "hidden_size": [2048, 2048, 2048],
@@ -883,11 +915,13 @@ class OPEDModelWrapper(BasePEModel):
             "early_stopping_min_delta": 0.0,
             "scheduler": "step",
             "scheduler_kwargs": {"step_size": 10, "gamma": 0.95},
-            "freezing": False,
+            "freezing": freezing,
         }
         hyperparameters, progress_log, cancel_check = take_job_training_callbacks(hyperparameters)
         if hyperparameters:
-            default_params.update(hyperparameters)
+            # Resolve aliases before merging defaults; otherwise default
+            # canonical keys silently shadow explicitly supplied aliases.
+            default_params.update(normalize_oped_hyperparameters(hyperparameters))
         seed_training_run(default_params)
 
         freezing = bool(default_params.get("freezing", freezing))
@@ -977,9 +1011,17 @@ class OPEDModelWrapper(BasePEModel):
         self.model = model
         self.is_trained = True
 
+        architecture = self._architecture_for_model(model)
+        # Fine-tuning uses the loaded architecture, not scratch defaults such
+        # as nhead=8/depth=6. Report the architecture actually optimized.
+        effective_params = dict(default_params)
+        effective_params.update(architecture["kwargs"])
+        effective_params["drop_out"] = effective_params.pop("dropout")
+        effective_params["model_variant"] = architecture["kind"]
         result: Dict[str, Any] = {
             "status": "success",
-            "hyperparameters": default_params,
+            "hyperparameters": effective_params,
+            "architecture": architecture,
             "best_epoch": int(train_metrics["best_epoch"]),
             "best_val_loss": float(train_metrics["best_val_loss"]),
             "val_pearson": float(val_corr["pearson"]),
@@ -1039,10 +1081,12 @@ class OPEDModelWrapper(BasePEModel):
             raise ValueError("No trained model to save.")
         
         # Create directory if needed
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        Path(model_path).parent.mkdir(parents=True, exist_ok=True)
         
         # Save model state dict
         torch.save(self.model.state_dict(), model_path)
+        arch = self._architecture_for_model(self.model)
+        Path(str(model_path) + ".architecture.json").write_text(json.dumps(arch, indent=2) + "\n")
         
         print(f"Model saved to {model_path}")
 
