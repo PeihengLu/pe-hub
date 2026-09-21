@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Generate from-scratch base-weight heatmaps for the term paper (Results).
 
-Layout matches the vendor base-model eval: two panels, columns grouped by
-study with coloured headers. Metrics are mean ± s.d. over holdout_3 seeds.
+Layout matches the vendor design-rule stack in ``plot_base_model_eval.py``:
+Pearson and Spearman are two complete heatmaps stacked top-down with ``(a)`` /
+``(b)`` titles, a shared colour scale, and one colourbar. Inside each heatmap,
+columns are grouped by study (external sheets on top, Hsu libraries below).
+Metrics are mean ± s.d. over holdout_3 seeds.
 
 Data sources (post-fix OPED; split Library-Diverse / Hsu):
   - OPED:            results/20260917T222613Z only (do not fall back to pooled)
@@ -365,72 +368,92 @@ def _draw_panel(
     return im
 
 
-def plot_split_heatmap(
-    means: np.ndarray,
-    stds: np.ndarray,
-    counts: np.ndarray,
+def plot_stacked_metric_heatmaps(
+    groups: list[tuple[str, np.ndarray, np.ndarray, np.ndarray]],
     *,
-    metric_label: str,
     out_stem: str,
+    cbar_label: str,
     vmin: float = 0.0,
     vmax: float = 1.0,
 ) -> None:
+    """Stack complete heatmaps top-down, sharing one colour scale and colourbar.
+
+    Matches ``plot_base_model_eval.plot_stacked_heatmaps`` (the vendor two-ruleset
+    figure): each group is a full study-grouped heatmap with an ``(a)`` / ``(b)``
+    title on its first inner row.
+    """
+    if len(groups) < 2:
+        raise ValueError("plot_stacked_metric_heatmaps expects at least two groups")
     norm = Normalize(vmin=vmin, vmax=vmax)
     cmap = _correlation_cmap(vmin, vmax)
     panels = HEATMAP_PANELS
-    max_cols = max(len(p) for p in panels)
+    n_inner = len(panels)
+    max_cols = max(len(panel) for panel in panels)
+    n_groups = len(groups)
+    offsets = [0]
+    for panel in panels[:-1]:
+        offsets.append(offsets[-1] + len(panel))
 
-    fig = plt.figure(figsize=(12.8, 5.8))
-    grid = fig.add_gridspec(
-        2,
+    row_h = 3.6 if n_inner == 1 else 6.6
+    fig_w = 12.2 if n_inner == 1 else 14.4
+    fig = plt.figure(figsize=(fig_w, row_h * n_groups + 0.8))
+    outer = fig.add_gridspec(
+        n_groups,
         1,
-        height_ratios=[1.0, 1.0],
-        hspace=0.32,
-        left=0.10,
-        right=0.84,
+        hspace=0.28 if n_inner == 1 else 0.22,
+        left=0.12 if n_inner == 1 else 0.10,
+        right=0.82,
         top=0.94,
-        bottom=0.12,
+        bottom=0.16 if n_inner == 1 else 0.10,
     )
-    axes = [fig.add_subplot(grid[0]), fig.add_subplot(grid[1])]
+    axes: list[Any] = []
     images = []
-    offsets = [0, len(panels[0])]
-    for ax, panel, offset in zip(axes, panels, offsets):
-        images.append(
-            _draw_panel(
-                ax,
-                means,
-                stds,
-                counts,
-                panel,
-                offset,
-                cmap=cmap,
-                norm=norm,
-                max_cols=max_cols,
-                show_ylabel=True,
+    letters = "abcdefghijklmnopqrstuvwxyz"
+    for g, (title, means, stds, counts) in enumerate(groups):
+        inner = outer[g].subgridspec(n_inner, 1, hspace=0.28)
+        for local_i, (panel, offset) in enumerate(zip(panels, offsets)):
+            ax = fig.add_subplot(inner[local_i])
+            axes.append(ax)
+            images.append(
+                _draw_panel(
+                    ax,
+                    means,
+                    stds,
+                    counts,
+                    panel,
+                    offset,
+                    cmap=cmap,
+                    norm=norm,
+                    max_cols=max_cols,
+                    show_ylabel=True,
+                )
             )
-        )
+            if local_i == 0:
+                ax.set_title(
+                    f"({letters[g]})  {title}",
+                    loc="left",
+                    fontsize=FONT_TITLE,
+                    fontweight="600",
+                    color="#222222",
+                    pad=10,
+                )
 
     fig.canvas.draw()
     top_pos = axes[0].get_position()
     bot_pos = axes[-1].get_position()
-    cax = fig.add_axes([top_pos.x1 + 0.01, bot_pos.y0, 0.018, top_pos.y1 - bot_pos.y0])
+    cax = fig.add_axes(
+        [top_pos.x1 + 0.005, bot_pos.y0, 0.016, top_pos.y1 - bot_pos.y0]
+    )
     cbar = fig.colorbar(images[0], cax=cax)
-    cbar.set_label(metric_label, fontsize=FONT_LEGEND_LABEL, color="#444444")
+    cbar.set_label(cbar_label, fontsize=FONT_LEGEND_LABEL, color="#444444")
     cbar.set_ticks(np.arange(vmin, vmax + 1e-9, 0.2))
     cbar.ax.tick_params(labelsize=FONT_LEGEND_TICK, colors="#555555")
     cbar.outline.set_visible(False)
 
-    fig.suptitle(
-        "From-scratch holdout$_3$ (mean ± s.d. over seeds)",
-        fontsize=FONT_TITLE,
-        color="#333333",
-        y=0.98,
-    )
-
     pdf = OUT_DIR / f"{out_stem}.pdf"
     png = OUT_DIR / f"{out_stem}.png"
     # Do not use bbox_inches='tight' — it crops the top panel's pad column and
-    # makes the two rows look different widths.
+    # makes stacked rows look different widths.
     fig.savefig(pdf, facecolor="white", pad_inches=0.18)
     fig.savefig(png, dpi=300, facecolor="white", pad_inches=0.18)
     plt.close(fig)
@@ -453,19 +476,13 @@ def main(_argv: list[str] | None = None) -> None:
             if n < 3:
                 print(f"note: {model} @ {bench}: n={n}/3 seeds")
 
-    plot_split_heatmap(
-        pearson,
-        pearson_std,
-        pearson_n,
-        metric_label="Pearson $r$",
-        out_stem="scratch_pearson_heatmap",
-    )
-    plot_split_heatmap(
-        spearman,
-        spearman_std,
-        spearman_n,
-        metric_label=r"Spearman $\rho$",
-        out_stem="scratch_spearman_heatmap",
+    plot_stacked_metric_heatmaps(
+        [
+            ("Pearson r", pearson, pearson_std, pearson_n),
+            ("Spearman ρ", spearman, spearman_std, spearman_n),
+        ],
+        out_stem="scratch_correlation_heatmap",
+        cbar_label="Correlation",
     )
 
 
