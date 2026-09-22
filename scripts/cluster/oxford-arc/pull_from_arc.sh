@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull DVC-tracked folders and gitignored env.sh from ARC onto this laptop.
+# Pull DVC-tracked folders, gitignored env.sh, and vendor-eval results from ARC.
 # Run locally (VPN → htc-login, or ProxyJump via gateway off-net).
 #
 # Usage:
@@ -9,6 +9,7 @@
 #   SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh
 #   ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh
 #   ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+#   ONLY=vendor-eval ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 #   EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 
 set -euo pipefail

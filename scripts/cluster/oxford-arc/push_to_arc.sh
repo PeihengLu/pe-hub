@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Push DVC-tracked folders and gitignored env.sh from this laptop to ARC.
+# Push DVC-tracked folders, gitignored env.sh, and vendor-eval results to ARC.
 # Run locally (VPN → htc-login, or ProxyJump via gateway off-net).
 #
 # Usage:

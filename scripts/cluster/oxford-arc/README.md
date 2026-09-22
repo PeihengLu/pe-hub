@@ -69,8 +69,14 @@ Co-investment GPU nodes are often limited to **short** (12h). Prefer ARC-owned L
 ## Sync artifacts (laptop to ARC)
 
 Run these **on the laptop** (ARC cannot SSH back into WSL). They rsync every
-DVC-tracked folder (paths from repo `*.dvc` files) plus gitignored `env.sh`
-in **one** rsync, so you type the SSH password once. No git commits.
+DVC-tracked folder (paths from repo `*.dvc` files), gitignored `env.sh`, and
+vendor-weight evaluation results
+(`scripts/experiments/base-model-eval/results/`) in **one** rsync, so you type
+the SSH password once. No git commits.
+
+`ARC_PROJECT` is the share name under `/data/`. It is taken from the
+environment or from `env.sh`. If it is still unset, the script prompts, the
+same way it prompts for the ARC username. `LIST=1` skips both prompts.
 
 ```bash
 # VPN, or ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config
@@ -84,6 +90,7 @@ SKIP=datasets/reference ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_U
 ONLY=env ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 ONLY=results,slurm_output ./scripts/cluster/oxford-arc/push_to_arc.sh YOUR_ARC_USER
 ONLY=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
+ONLY=vendor-eval ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 EXTRA=pridict2-repro ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER
 DELETE=1 ./scripts/cluster/oxford-arc/pull_from_arc.sh YOUR_ARC_USER   # dest extras removed
 ```
@@ -96,6 +103,9 @@ supplementary files with
 
 `ONLY=scratch-weights` pulls the preferred scratch-benchmark weight dirs (see
 [`scripts/experiments/scratch-benchmark/README.md`](../../experiments/scratch-benchmark/README.md#preferred-trained-weights-pe-ensemble)).
+
+`ONLY=vendor-eval` syncs only `scripts/experiments/base-model-eval/results/`.
+That directory is also in the default push and pull set.
 
 `pull_env_from_arc.sh` still exists as `ONLY=env` (env.sh only).
 
@@ -119,6 +129,7 @@ need `dvc add` / `dvc push` / pointer commits to copy those folders — use
 | `datasets/reference/` | yes (`datasets/reference.dvc`) | — |
 | `/results`, `/slurm_output` | yes (root `*.dvc`) | — |
 | `scripts/experiments/scratch-benchmark/results/` | yes | — |
+| `scripts/experiments/base-model-eval/results/` | yes (vendor weight eval) | — |
 | Trained weights `*__*__*__*/` | add a `.dvc` (or rsync that path yourself) | smoke, failed trials |
 | `training_presets_local/*.yaml` | same | will re-tune anyway |
 | `tuning_studies/*.db` | same | presets + weights are enough |
@@ -197,6 +208,7 @@ laptop ↔ ARC sync.
 | HPO presets | `services/pe-ensemble/config/training_presets_local/` |
 | Trained weights | `services/pe-ensemble/weights/*__*__*__*/` |
 | Benchmark results | `scripts/experiments/scratch-benchmark/results/<RUN_ID>/` |
+| Vendor weight eval | `scripts/experiments/base-model-eval/results/<RUN_ID>/` |
 | Slurm logs / eval dumps | `slurm_output/`, `results/` |
 | Shipped defaults | `services/pe-ensemble/config/training_presets/` (git) |
 
@@ -213,7 +225,9 @@ On the laptop:
 ```
 
 That covers current DVC-tracked trees (`datasets/reference/`, `results/`,
-`slurm_output/`, scratch-benchmark `results/`) and cluster `env.sh`. For the
+`slurm_output/`, scratch-benchmark `results/`), vendor-weight evaluation
+results (`scripts/experiments/base-model-eval/results/`), and cluster `env.sh`.
+For the
 PRIDICT2 reproduction trained weights:
 
 ```bash

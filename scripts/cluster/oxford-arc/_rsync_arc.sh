@@ -2,14 +2,16 @@
 # Shared rsync helpers for laptop ↔ Oxford ARC.
 # Sourced by pull_from_arc.sh / push_to_arc.sh. Do not run directly.
 #
-# Syncs every DVC-tracked path (from repo *.dvc outs) plus gitignored
-# scripts/cluster/oxford-arc/env.sh. Run on the laptop (VPN or ProxyJump).
+# Syncs every DVC-tracked path (from repo *.dvc outs), gitignored
+# scripts/cluster/oxford-arc/env.sh, and vendor-weight evaluation results
+# (scripts/experiments/base-model-eval/results). Run on the laptop (VPN or ProxyJump).
 #
 # Transfers every selected path in one rsync (one SSH password prompt).
 #
 # Optional env:
 #   ARC_HOST     default htc-login.arc.ox.ac.uk
-#   ARC_PROJECT  ARC share name (required; set in env.sh)
+#   ARC_PROJECT  ARC share name under /data/. Taken from the environment or
+#                env.sh; if still unset, prompted (same as ARC_USER).
 #   ARC_REMOTE   if set, used as-is (user@host:/abs/path/to/pe-hub)
 #   ARC_USER     else first arg, else prompt
 #   DRY_RUN=1    rsync --dry-run
@@ -17,7 +19,8 @@
 #   LIST=1       print paths and exit
 #   ONLY=a,b     only these relative paths (alias: env → env.sh;
 #                bundles: pridict2-repro → reproduction weights + state;
-#                scratch-weights → preferred scratch-benchmark weight dirs)
+#                scratch-weights → preferred scratch-benchmark weight dirs;
+#                vendor-eval → base-model-eval results)
 #   EXTRA=a,b    append these paths (or bundles) to the DVC set
 #   SKIP=a,b     skip these relative paths
 
@@ -33,6 +36,7 @@ REPO_ROOT="$(cd "${_RSYNC_ARC_DIR}/../../.." && pwd)"
 ENV_REL="scripts/cluster/oxford-arc/env.sh"
 _PRIDICT2_REPRO_MANIFEST="scripts/experiments/pridict2-reproduction/supplementary_artifacts.txt"
 _SCRATCH_WEIGHTS_MANIFEST="scripts/experiments/scratch-benchmark/weight_artifacts.txt"
+_VENDOR_EVAL_REL="scripts/experiments/base-model-eval/results"
 
 _arc_rsync_usage() {
     local cmd="$1"
@@ -45,11 +49,11 @@ Run on the laptop. One rsync (one SSH password) of DVC-tracked folders plus ${EN
   LIST=1        print relative paths and exit
   DELETE=1      remove dest files that are not on the source
   ONLY=path,..  only these repo-relative paths (ONLY=env for env.sh;
-                ONLY=pridict2-repro / ONLY=scratch-weights for weight bundles)
+                ONLY=pridict2-repro / ONLY=scratch-weights / ONLY=vendor-eval)
   EXTRA=path,.. append paths/bundles to the default DVC set
   SKIP=path,..  skip these repo-relative paths
   ARC_HOST      default htc-login.arc.ox.ac.uk
-  ARC_PROJECT   ARC share name (required; set in env.sh)
+  ARC_PROJECT   share name under /data/ (env, env.sh, or prompt)
   ARC_REMOTE    override user@host:/data/<project>/<user>/pe-hub
 
 Off-campus: ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config.
@@ -99,6 +103,9 @@ _arc_expand_csv_paths() {
                     echo "${line%%[[:space:]]*}"
                 done < "${REPO_ROOT}/${_SCRATCH_WEIGHTS_MANIFEST}"
                 ;;
+            vendor-eval|vendor_eval|base-model-eval)
+                echo "${_VENDOR_EVAL_REL}"
+                ;;
             *)
                 echo "${item}"
                 ;;
@@ -122,6 +129,7 @@ _arc_csv_has_bundle_only() {
         case "${item}" in
             pridict2-repro|pridict2_repro|pridict2-reproduction) ;;
             scratch-weights|scratch_weights|scratch-benchmark-weights) ;;
+            vendor-eval|vendor_eval|base-model-eval) ;;
             *) return 1 ;;
         esac
     done
@@ -253,6 +261,7 @@ for dvc in sorted(dvc_files):
         print(f"{kind}\t{rel}")
 PY
     printf 'file\t%s\n' "${ENV_REL}"
+    printf 'dir\t%s\n' "${_VENDOR_EVAL_REL}"
 
     if [[ -n "${EXTRA:-}" ]]; then
         local rel
@@ -275,7 +284,16 @@ arc_rsync_main() {
     fi
 
     ARC_HOST="${ARC_HOST:-htc-login.arc.ox.ac.uk}"
-    : "${ARC_PROJECT:?Set ARC_PROJECT in env.sh to your ARC share name under /data/}"
+    # env.sh may export ARC_PROJECT. Do not override a value already in the environment.
+    if [[ -z "${ARC_PROJECT:-}" && -f "${REPO_ROOT}/${ENV_REL}" ]]; then
+        set +u
+        # shellcheck disable=SC1090
+        source "${REPO_ROOT}/${ENV_REL}"
+        set -u
+    fi
+    if [[ -z "${ARC_PROJECT:-}" && "${LIST:-0}" != "1" ]]; then
+        read -r -p "ARC project (share name under /data/): " ARC_PROJECT
+    fi
 
     if [[ -n "${1:-}" ]]; then
         ARC_USER="$1"
@@ -283,6 +301,7 @@ arc_rsync_main() {
         read -r -p "ARC username: " ARC_USER
     fi
     if [[ "${LIST:-0}" != "1" ]]; then
+        : "${ARC_PROJECT:?ARC project required}"
         : "${ARC_USER:?ARC username required}"
     fi
 
