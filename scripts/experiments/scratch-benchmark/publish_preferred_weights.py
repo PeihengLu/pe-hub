@@ -3,7 +3,7 @@
 
 Filters the later correct runs (same selection as the Results heatmaps):
 
-  - OPED:            results/20260917T222613Z
+  - OPED:            results/20260921T071524Z
   - DeepPrime/PRIDICT2 unpooled cells: 20260917T153347Z
   - Single-condition sheets (Library 1 / ClinVar / DeepPE / MinSePIE):
                      20260911T065340Z
@@ -37,7 +37,7 @@ OUT_DIR = Path(__file__).resolve().parent
 WEIGHTS_ROOT = REPO / "services/pe-ensemble/weights"
 LOCAL_REGISTRY = WEIGHTS_ROOT / "local_registry.json"
 
-OPED_RUN = "20260917T222613Z"
+OPED_RUN = "20260921T071524Z"
 SPLIT_RUN = "20260917T153347Z"
 POOLED_RUN = "20260911T065340Z"
 
@@ -181,9 +181,9 @@ def write_weight_artifacts(rows: list[dict[str, Any]], path: Path) -> None:
         f"# {len(rows)} seed checkpoints across {len(cell_dirs)} cells "
         f"({len(weight_dirs)} weight dirs).",
         "#",
-        "# Selection: OPED→20260917T222613Z; DeepPrime/PRIDICT2 unpooled→"
-        "20260917T153347Z;",
-        "# single-condition (Library1/ClinVar/DeepPE/MinSePIE)→20260911T065340Z.",
+        f"# Selection: OPED→{OPED_RUN}; DeepPrime/PRIDICT2 unpooled→"
+        f"{SPLIT_RUN};",
+        f"# single-condition (Library1/ClinVar/DeepPE/MinSePIE)→{POOLED_RUN}.",
         "",
         "scripts/experiments/scratch-benchmark/weights_id_map.tsv",
         "scripts/experiments/scratch-benchmark/weight_artifacts.txt",

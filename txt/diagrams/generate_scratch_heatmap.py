@@ -7,8 +7,8 @@ Pearson and Spearman are two complete heatmaps stacked top-down with ``(a)`` /
 columns are grouped by study (external sheets on top, Hsu libraries below).
 Metrics are mean ± s.d. over holdout_3 seeds.
 
-Data sources (post-fix OPED; split Library-Diverse / Hsu):
-  - OPED:            results/20260917T222613Z only (do not fall back to pooled)
+Data sources (encoder-decoder OPED retrain; split Library-Diverse / Hsu):
+  - OPED:            results/20260921T071524Z
   - DeepPrime/PRIDICT2 split cells: 20260917T153347Z
   - Single-condition Library 1 / ClinVar / DeepPE / MinSePIE: 20260911T065340Z
 """
@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[2]
 OUT_DIR = Path(__file__).resolve().parent
 RESULTS = REPO / "scripts/experiments/scratch-benchmark/results"
 
-OPED_RUN = "20260917T222613Z"
+OPED_RUN = "20260921T071524Z"
 SPLIT_RUN = "20260917T153347Z"
 POOLED_RUN = "20260911T065340Z"
 

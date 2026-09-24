@@ -173,7 +173,7 @@ index (same selection as the Results heatmaps):
 
 | Model | Run |
 |-------|-----|
-| OPED (all 15 cells) | `20260917T222613Z` |
+| OPED (all 15 cells) | `20260921T071524Z` |
 | DeepPrime / PRIDICT2 unpooled Lib-Diverse + Lib-MMR/CV | `20260917T153347Z` |
 | DeepPrime / PRIDICT2 single-condition (Library1, ClinVar, DeepPE, MinSePIE) | `20260911T065340Z` |
 

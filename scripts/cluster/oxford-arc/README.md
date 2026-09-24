@@ -76,7 +76,8 @@ the SSH password once. No git commits.
 
 `ARC_PROJECT` is the share name under `/data/`. It is taken from the
 environment or from `env.sh`. If it is still unset, the script prompts, the
-same way it prompts for the ARC username. `LIST=1` skips both prompts.
+same way it prompts for the ARC username. If `ARC_REMOTE` is already set
+(recommended in `env.sh`), both prompts are skipped. `LIST=1` also skips them.
 
 ```bash
 # VPN, or ProxyJump gateway.arc.ox.ac.uk for htc-login in ~/.ssh/config

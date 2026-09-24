@@ -344,6 +344,44 @@ def layout_without_minsepie(layout: PlotLayout) -> PlotLayout:
     )
 
 
+def _is_optiprime_self_library_bench(benchmark_name: Any) -> bool:
+    key = str(benchmark_name or "")
+    return key.startswith("optiprime-lib-mmr") or key.startswith("optiprime-lib-cv")
+
+
+def omit_optiprime_self_library_author_fills(
+    rows: list[dict[str, Any]],
+    *,
+    value_columns: tuple[str, ...] = ("pearson_plot", "spearman_plot"),
+) -> list[dict[str, Any]]:
+    """Drop OptiPrime author fills on Lib-MMR / Lib-CV for design-rule panels.
+
+    Author-reported OptiPrime figures are for the unfiltered libraries; they are
+    not comparable to design-rule-filtered evaluation cells.
+    """
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        model = str(row.get("model") or "").strip().lower()
+        is_author = (
+            row.get("plot_marker") == "author_fill"
+            or row.get("value_source") == "author_fill"
+        )
+        if (
+            model == "optiprime"
+            and is_author
+            and _is_optiprime_self_library_bench(row.get("benchmark_name"))
+        ):
+            cleared = dict(row)
+            for col in value_columns:
+                cleared[col] = ""
+            cleared["plot_marker"] = ""
+            cleared["value_source"] = "omitted_design_filter"
+            out.append(cleared)
+        else:
+            out.append(row)
+    return out
+
+
 def cell_fill_kind(
     row: Optional[dict[str, Any]],
     value_column: str = "pearson_plot",
@@ -973,9 +1011,14 @@ def _render_heatmap(
             groups.append((title, blank_small_n(load_comparison(extra_path), min_n)))
         group_layouts = None
         if layout.name == "base":
-            # Keep OptiPrime in the design-rule panels (same model rows as the
-            # unfiltered matrix). Anzalone's RTT window still empties MinSePIE,
-            # so drop those columns on stacked panels after the first.
+            # Design-rule stack: Anzalone's RTT window empties MinSePIE, so drop
+            # those columns after the first panel. Author-reported OptiPrime
+            # Lib-MMR / Lib-CV fills are for the unfiltered libraries — omit
+            # them from every design-rule heatmap.
+            groups = [
+                (title, omit_optiprime_self_library_author_fills(group_rows))
+                for title, group_rows in groups
+            ]
             group_layouts = [layout] + [
                 layout_without_minsepie(layout)
             ] * (len(groups) - 1)

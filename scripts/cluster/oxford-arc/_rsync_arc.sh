@@ -284,29 +284,42 @@ arc_rsync_main() {
     fi
 
     ARC_HOST="${ARC_HOST:-htc-login.arc.ox.ac.uk}"
-    # env.sh may export ARC_PROJECT. Do not override a value already in the environment.
-    if [[ -z "${ARC_PROJECT:-}" && -f "${REPO_ROOT}/${ENV_REL}" ]]; then
+    # env.sh may export ARC_PROJECT / ARC_REMOTE. Source defaults without clobbering
+    # variables already present in the environment (sourced file uses ${VAR:-default}).
+    if [[ -f "${REPO_ROOT}/${ENV_REL}" ]]; then
         set +u
         # shellcheck disable=SC1090
         source "${REPO_ROOT}/${ENV_REL}"
         set -u
     fi
-    if [[ -z "${ARC_PROJECT:-}" && "${LIST:-0}" != "1" ]]; then
-        read -r -p "ARC project (share name under /data/): " ARC_PROJECT
-    fi
-
-    if [[ -n "${1:-}" ]]; then
-        ARC_USER="$1"
-    elif [[ -z "${ARC_USER:-}" && "${LIST:-0}" != "1" ]]; then
-        read -r -p "ARC username: " ARC_USER
-    fi
-    if [[ "${LIST:-0}" != "1" ]]; then
-        : "${ARC_PROJECT:?ARC project required}"
-        : "${ARC_USER:?ARC username required}"
-    fi
-
-    if [[ -z "${ARC_REMOTE:-}" && -n "${ARC_USER:-}" ]]; then
-        ARC_REMOTE="${ARC_USER}@${ARC_HOST}:/data/${ARC_PROJECT}/${ARC_USER}/pe-hub"
+    # When ARC_REMOTE is already set (env.sh), skip interactive project/user prompts.
+    if [[ -z "${ARC_REMOTE:-}" ]]; then
+        if [[ -z "${ARC_PROJECT:-}" && "${LIST:-0}" != "1" ]]; then
+            read -r -p "ARC project (share name under /data/): " ARC_PROJECT
+        fi
+        if [[ -n "${1:-}" ]]; then
+            ARC_USER="$1"
+        elif [[ -z "${ARC_USER:-}" && "${LIST:-0}" != "1" ]]; then
+            read -r -p "ARC username: " ARC_USER
+        fi
+        if [[ "${LIST:-0}" != "1" ]]; then
+            : "${ARC_PROJECT:?ARC project required (or set ARC_REMOTE)}"
+            : "${ARC_USER:?ARC username required (or set ARC_REMOTE)}"
+        fi
+        if [[ -n "${ARC_USER:-}" ]]; then
+            ARC_REMOTE="${ARC_USER}@${ARC_HOST}:/data/${ARC_PROJECT}/${ARC_USER}/pe-hub"
+        fi
+    else
+        # Optional positional override of username in ARC_REMOTE.
+        if [[ -n "${1:-}" ]]; then
+            ARC_USER="$1"
+            local remote_path="${ARC_REMOTE#*:}"
+            local remote_host_user="${ARC_REMOTE%%:*}"
+            local remote_host="${remote_host_user#*@}"
+            ARC_REMOTE="${ARC_USER}@${remote_host}:${remote_path}"
+        elif [[ -z "${ARC_USER:-}" ]]; then
+            ARC_USER="${ARC_REMOTE%%@*}"
+        fi
     fi
 
     local rsync_bin

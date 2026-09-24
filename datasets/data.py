@@ -15,8 +15,6 @@ from tqdm import tqdm
 from pe_common.constants import DATA_ROOT
 from pe_common.sequence_utils import align_wt_mut_sequences, remove_padding
 
-# TODO: include this in the pe_common package
-
 # ==============================================================================
 # dataset to datasheet conversion functions
 # ==============================================================================
@@ -372,11 +370,7 @@ def load_data(
             return None
     # load the data after conversion
     df = pd.read_csv(filepath, dtype=str)
-
     
-
-    # TODO: convert the columns to the correct types
-
     return df
 
 # =============================================================================
