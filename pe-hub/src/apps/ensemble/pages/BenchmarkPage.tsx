@@ -16,6 +16,7 @@ import {
   buildBenchmarkSplitParams,
 } from '@apps/ensemble/utils/benchmarkRequest'
 import { resolveBatchGroups } from '@apps/ensemble/utils/batchGroups'
+import { weightMenuEntries } from '@apps/ensemble/utils/weightSelectOptions'
 import type { AttributeFilterRow, SplitStrategy } from '@apps/database/config/exportAttributes'
 import type { ExportResponse } from '@apps/database/services/peDbApi'
 import {
@@ -461,12 +462,10 @@ export default function BenchmarkPage() {
                       ? 'Select a weight set…'
                       : 'No weights registered'
                 }
-                options={
-                  weightSets?.map((weight) => ({
-                    value: weight.id,
-                    label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
-                  })) ?? []
-                }
+                options={weightMenuEntries(weightSets, (weight) => ({
+                  value: weight.id,
+                  label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
+                }))}
               />
               {!weightsFetching && !hasRegisteredWeights && (
                 <p className="mt-1 text-xs text-amber-700">

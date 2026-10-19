@@ -15,6 +15,8 @@ import {
   type CombineMethod,
 } from '@apps/ensemble/config/combineMethods'
 import { DESIGN_RULESET_CHOICES } from '@apps/database/config/exportAttributes'
+import { weightMenuEntries } from '@apps/ensemble/utils/weightSelectOptions'
+import { useMemberWeightSets } from '@apps/ensemble/hooks/useMemberWeightSets'
 
 type DesignMode = 'single' | 'ensemble'
 type DesignPolicy = 'optiprime' | 'anzalone'
@@ -83,21 +85,9 @@ export default function DesignPage() {
     [members]
   )
 
-  const weightQueries = useQuery(
-    ['design-member-weights', uniqueMemberModels.join(',')],
-    async () => {
-      const entries = await Promise.all(
-        uniqueMemberModels.map(async (name) => {
-          const response = await api.listModelWeights(name)
-          return [name, response.data.weights] as const
-        })
-      )
-      return Object.fromEntries(entries)
-    },
-    {
-      enabled: mode === 'ensemble' && uniqueMemberModels.length > 0,
-      staleTime: 60_000,
-    }
+  const { weightSetsByModel, loadingModelNames, failedModelNames } = useMemberWeightSets(
+    uniqueMemberModels,
+    mode === 'ensemble'
   )
 
   useEffect(() => {
@@ -290,7 +280,7 @@ export default function DesignPage() {
                     onChange={setWeightId}
                     aria-label="Weights"
                     disabled={weightsFetching || !weightSets?.length}
-                    options={(weightSets ?? []).map((weight) => ({
+                    options={weightMenuEntries(weightSets, (weight) => ({
                       value: weight.id,
                       label: weight.label || weight.id,
                     }))}
@@ -346,9 +336,9 @@ export default function DesignPage() {
           {mode === 'ensemble' && (
             <EnsembleMembersPanel
               models={models}
-              weightSetsByModel={weightQueries.data ?? {}}
-              weightsLoadingModel={weightQueries.isFetching ? uniqueMemberModels[0] ?? null : null}
-              onLoadWeights={() => undefined}
+              weightSetsByModel={weightSetsByModel}
+              loadingModelNames={loadingModelNames}
+              failedModelNames={failedModelNames}
               members={members}
               onMembersChange={setMembers}
               combine={combine}

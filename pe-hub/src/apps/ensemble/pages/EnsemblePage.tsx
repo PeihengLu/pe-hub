@@ -28,6 +28,7 @@ import {
   jobStatusRefetchInterval,
   TERMINAL_JOB_STATUSES,
 } from '@apps/ensemble/utils/jobStatus'
+import { useMemberWeightSets } from '@apps/ensemble/hooks/useMemberWeightSets'
 
 function membersToPayload(members: EnsembleMemberRow[], combine: CombineMethod): EnsembleMemberInput[] {
   return members.map((member) => ({
@@ -79,7 +80,6 @@ export default function EnsemblePage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [logText, setLogText] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [weightsLoadingModel, setWeightsLoadingModel] = useState<string | null>(null)
   const [queueProgress, setQueueProgress] = useState<{
     phase: 'discovering' | 'queueing'
     current: number
@@ -131,24 +131,9 @@ export default function EnsemblePage() {
   )
   const jobStatus = jobStatusResponse?.data as EnsembleJobStatusResponse | undefined
 
-  const weightQueries = useQuery(
-    ['ensemble-member-weights', uniqueMemberModels.join(',')],
-    async () => {
-      const entries = await Promise.all(
-        uniqueMemberModels.map(async (modelName) => {
-          const response = await api.listModelWeights(modelName)
-          return [modelName, response.data.weights] as const
-        })
-      )
-      return Object.fromEntries(entries)
-    },
-    {
-      enabled: uniqueMemberModels.length > 0,
-      staleTime: 60_000,
-    }
+  const { weightSetsByModel, loadingModelNames, failedModelNames } = useMemberWeightSets(
+    uniqueMemberModels
   )
-
-  const weightSetsByModel = weightQueries.data ?? {}
 
   useEffect(() => {
     if (!jobStatus?.status || !TERMINAL_JOB_STATUSES.has(jobStatus.status)) return
@@ -195,13 +180,6 @@ export default function EnsemblePage() {
       logRef.current.scrollTop = logRef.current.scrollHeight
     }
   }, [logText])
-
-  const loadWeightsForModel = (modelName: string) => {
-    setWeightsLoadingModel(modelName)
-    void queryClient
-      .fetchQuery(['ensemble-member-weights', uniqueMemberModels.join(',')])
-      .finally(() => setWeightsLoadingModel(null))
-  }
 
   const incompleteRows = filterRows.filter(
     (row) => row.attribute !== '' && row.values.length === 0
@@ -361,8 +339,8 @@ export default function EnsemblePage() {
           <EnsembleMembersPanel
             models={models}
             weightSetsByModel={weightSetsByModel}
-            weightsLoadingModel={weightsLoadingModel}
-            onLoadWeights={loadWeightsForModel}
+            loadingModelNames={loadingModelNames}
+            failedModelNames={failedModelNames}
             members={members}
             onMembersChange={setMembers}
             combine={combine}

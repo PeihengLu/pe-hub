@@ -276,13 +276,27 @@ def _merged_registry_entries(*, force_rebuild: bool = False) -> List[Dict[str, A
     return tracked + local
 
 
+def _entry_is_present(model: str, weight_id: str) -> bool:
+    """True when the indexed weight set has a directory and manifest on disk.
+
+    The index can list ids whose checkpoint folders were never copied (a
+    registry pulled from ARC without the weight directories). Those ids are
+    not selectable.
+    """
+    if not weight_id:
+        return False
+    entry_dir = _entry_dir(model, weight_id)
+    return entry_dir.is_dir() and (entry_dir / MANIFEST_FILENAME).is_file()
+
+
 def list_entries(model: str) -> List[Dict[str, Any]]:
-    """List manifest summaries for a model (rebuilds index if missing)."""
+    """List on-disk weight sets for a model (rebuilds the index if missing)."""
     _assert_known_model(model)
     entries = [
         entry
         for entry in _merged_registry_entries()
         if entry.get("model") == model
+        and _entry_is_present(model, str(entry.get("id") or ""))
     ]
     return sorted(entries, key=lambda entry: str(entry.get("id") or ""))
 

@@ -9,10 +9,20 @@ export interface SelectMenuOption {
   disabled?: boolean
 }
 
+export interface SelectMenuDivider {
+  type: 'divider'
+}
+
+export type SelectMenuEntry = SelectMenuOption | SelectMenuDivider
+
+export function isSelectMenuDivider(entry: SelectMenuEntry): entry is SelectMenuDivider {
+  return 'type' in entry && entry.type === 'divider'
+}
+
 interface SelectMenuProps {
   value: string
   onChange: (value: string) => void
-  options: SelectMenuOption[]
+  options: SelectMenuEntry[]
   disabled?: boolean
   placeholder?: string
   className?: string
@@ -38,7 +48,10 @@ export default function SelectMenu({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLUListElement>(null)
   const listId = useId()
-  const selected = options.find((option) => option.value === value)
+  const selectable = options.filter(
+    (option): option is SelectMenuOption => !isSelectMenuDivider(option)
+  )
+  const selected = selectable.find((option) => option.value === value)
 
   const updateMenuPosition = () => {
     const button = buttonRef.current
@@ -107,28 +120,34 @@ export default function SelectMenu({
         style={menuStyle}
         className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
       >
-        {options.length === 0 ? (
+        {selectable.length === 0 ? (
           <li className="px-3 py-2 text-sm text-slate-500">No options available</li>
         ) : (
-          options.map((option) => (
-            <li key={option.value} role="option" aria-selected={option.value === value}>
-              <button
-                type="button"
-                disabled={option.disabled}
-                onClick={() => choose(option.value)}
-                className={clsx(
-                  'w-full px-3 py-2 text-left text-sm',
-                  option.disabled
-                    ? 'cursor-not-allowed text-slate-400'
-                    : option.value === value
-                      ? 'bg-primary-50 text-primary-800'
-                      : 'text-slate-900 hover:bg-slate-50'
-                )}
-              >
-                {option.label}
-              </button>
-            </li>
-          ))
+          options.map((option, index) =>
+            isSelectMenuDivider(option) ? (
+              <li key={`divider-${index}`} role="separator" className="px-3 py-1">
+                <div className="border-t border-slate-200" />
+              </li>
+            ) : (
+              <li key={option.value} role="option" aria-selected={option.value === value}>
+                <button
+                  type="button"
+                  disabled={option.disabled}
+                  onClick={() => choose(option.value)}
+                  className={clsx(
+                    'w-full px-3 py-2 text-left text-sm',
+                    option.disabled
+                      ? 'cursor-not-allowed text-slate-400'
+                      : option.value === value
+                        ? 'bg-primary-50 text-primary-800'
+                        : 'text-slate-900 hover:bg-slate-50'
+                  )}
+                >
+                  {option.label}
+                </button>
+              </li>
+            )
+          )
         )}
       </ul>,
       document.body

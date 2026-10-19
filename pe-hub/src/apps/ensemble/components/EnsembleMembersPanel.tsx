@@ -4,6 +4,7 @@ import SelectMenu from '@components/SelectMenu'
 import type { Model, WeightSet } from '@apps/ensemble/services/api'
 import type { CombineMethod } from '@apps/ensemble/config/combineMethods'
 import { combineMethodOption } from '@apps/ensemble/config/combineMethods'
+import { weightMenuEntries } from '@apps/ensemble/utils/weightSelectOptions'
 
 export interface EnsembleMemberRow {
   id: string
@@ -15,8 +16,8 @@ export interface EnsembleMemberRow {
 interface EnsembleMembersPanelProps {
   models: Model[] | undefined
   weightSetsByModel: Record<string, WeightSet[] | undefined>
-  weightsLoadingModel: string | null
-  onLoadWeights: (modelName: string) => void
+  loadingModelNames: readonly string[]
+  failedModelNames: readonly string[]
   members: EnsembleMemberRow[]
   onMembersChange: (members: EnsembleMemberRow[]) => void
   combine: CombineMethod
@@ -42,8 +43,8 @@ export function createDefaultMember(modelName = 'deepprime'): EnsembleMemberRow 
 export default function EnsembleMembersPanel({
   models,
   weightSetsByModel,
-  weightsLoadingModel,
-  onLoadWeights,
+  loadingModelNames,
+  failedModelNames,
   members,
   onMembersChange,
   combine,
@@ -126,7 +127,8 @@ export default function EnsembleMembersPanel({
           {members.map((member, index) => {
             const weightSets = weightSetsByModel[member.modelName]
             const hasWeights = (weightSets?.length ?? 0) > 0
-            const isLoadingWeights = weightsLoadingModel === member.modelName
+            const isLoadingWeights = loadingModelNames.includes(member.modelName)
+            const weightsFailed = failedModelNames.includes(member.modelName)
 
             return (
               <div
@@ -152,7 +154,6 @@ export default function EnsembleMembersPanel({
                     value={member.modelName}
                     onChange={(value) => {
                       updateMember(member.id, { modelName: value, weightId: '' })
-                      onLoadWeights(value)
                     }}
                     aria-label={`Member ${index + 1} model`}
                     options={
@@ -171,21 +172,21 @@ export default function EnsembleMembersPanel({
                   <SelectMenu
                     value={member.weightId}
                     onChange={(value) => updateMember(member.id, { weightId: value })}
-                    disabled={isLoadingWeights || !hasWeights}
+                    disabled={isLoadingWeights || weightsFailed || !hasWeights}
                     aria-label={`Member ${index + 1} weight set`}
                     placeholder={
                       isLoadingWeights
                         ? 'Loading weight sets…'
-                        : hasWeights
-                          ? 'Select a weight set…'
-                          : 'No weights registered'
+                        : weightsFailed
+                          ? 'Could not load weight sets'
+                          : hasWeights
+                            ? 'Select a weight set…'
+                            : 'No weights registered'
                     }
-                    options={
-                      weightSets?.map((weight) => ({
-                        value: weight.id,
-                        label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
-                      })) ?? []
-                    }
+                    options={weightMenuEntries(weightSets, (weight) => ({
+                      value: weight.id,
+                      label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
+                    }))}
                   />
                 </div>
 

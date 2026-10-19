@@ -895,8 +895,10 @@ class PRIDICT2ModelWrapper(BasePEModel):
         }
         entries: List[Dict[str, Any]] = []
         for base_id in PRIDICT2ModelWrapper._registered_base_weight_ids():
-            run_dir = weights_registry.resolve_dir("pridict2", base_id)
+            # A present directory can still be an incomplete run. Skip it
+            # instead of failing the listing for every other weight set.
             try:
+                run_dir = weights_registry.resolve_dir("pridict2", base_id)
                 PRIDICT2ModelWrapper._validate_run_dir(str(run_dir))
             except ValueError:
                 continue

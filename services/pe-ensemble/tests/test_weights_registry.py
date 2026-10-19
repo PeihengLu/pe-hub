@@ -312,6 +312,54 @@ def test_rebuild_index_splits_vendor_and_trained(weights_root: Path):
     ]
 
 
+def test_list_entries_omits_indexed_weights_missing_on_disk(weights_root: Path):
+    """Every model hides index rows whose checkpoint folder is not on disk."""
+    present_dir = weights_root / "oped" / "on-disk"
+    present_dir.mkdir(parents=True)
+    present = {
+        "id": "on-disk",
+        "model": "oped",
+        "label": "on disk",
+        "source": "trained",
+        "format": "oped_state_dict",
+    }
+    (present_dir / "manifest.json").write_text(json.dumps(present), encoding="utf-8")
+    bare_dir = weights_root / "oped" / "no-manifest"
+    bare_dir.mkdir()
+    # Both index files must exist so listing does not rebuild and drop the stale row.
+    (weights_root / "registry.json").write_text(
+        json.dumps({"version": 1, "entries": []}),
+        encoding="utf-8",
+    )
+    (weights_root / "local_registry.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entries": [
+                    present,
+                    {
+                        "id": "not-pulled",
+                        "model": "oped",
+                        "label": "not pulled",
+                        "source": "trained",
+                        "format": "oped_state_dict",
+                    },
+                    {
+                        "id": "no-manifest",
+                        "model": "oped",
+                        "label": "empty dir",
+                        "source": "trained",
+                        "format": "oped_state_dict",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert weights_registry.list_weight_ids("oped") == ["on-disk"]
+
+
 def test_is_git_tracked_source():
     assert weights_registry.is_git_tracked_source("vendor")
     assert weights_registry.is_git_tracked_source("plugin")

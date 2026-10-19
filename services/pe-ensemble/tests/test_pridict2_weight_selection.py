@@ -124,3 +124,44 @@ def test_load_weights_by_name_restores_cell_type_after_load_model(
     assert wrapper.selected_cell_type == "HEK"
     assert wrapper.loaded_model_dir == str(run_dir)
 
+
+def test_list_available_weight_entries_skips_missing_directories(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A registry id with no on-disk run must not fail the whole listing."""
+    present = tmp_path / "present-run"
+    present.mkdir()
+
+    monkeypatch.setattr(
+        PRIDICT2ModelWrapper,
+        "_registered_base_weight_ids",
+        staticmethod(lambda: ["missing-run", "present-run"]),
+    )
+    monkeypatch.setattr(
+        "pe_ensemble.models.pridict2_wrapper.weights_registry.list_entries",
+        lambda model: [{"id": "present-run", "label": "Present"}],
+    )
+
+    def resolve(model: str, weight_id: str) -> Path:
+        if weight_id == "missing-run":
+            raise ValueError(f"Unknown {model} weights '{weight_id}'")
+        return present
+
+    monkeypatch.setattr(
+        "pe_ensemble.models.pridict2_wrapper.weights_registry.resolve_dir",
+        resolve,
+    )
+    monkeypatch.setattr(
+        PRIDICT2ModelWrapper,
+        "_validate_run_dir",
+        staticmethod(lambda path: None),
+    )
+    monkeypatch.setattr(
+        PRIDICT2ModelWrapper,
+        "_cell_types_from_run_dir",
+        staticmethod(lambda path: ["HEK"]),
+    )
+
+    entries = PRIDICT2ModelWrapper.list_available_weight_entries()
+    assert [entry["id"] for entry in entries] == ["present-run"]
+

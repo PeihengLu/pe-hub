@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
+import SelectMenu from '@components/SelectMenu'
 import type { WeightSet } from '@apps/ensemble/services/api'
+import { weightMenuEntries } from '@apps/ensemble/utils/weightSelectOptions'
 import {
   defaultSchedulerForModel,
   epochBudgetForModel,
@@ -421,26 +423,31 @@ export default function TrainingHyperparametersPanel({
 
         {values.loadPretrained && (
           <Field label="Pretrained checkpoint">
-            <select
+            <SelectMenu
               value={values.pretrainedWeightId}
-              onChange={(e) => patch({ pretrainedWeightId: e.target.value })}
+              onChange={(pretrainedWeightId) => patch({ pretrainedWeightId })}
               disabled={weightsLoading || !hasRegisteredWeights}
-              className={inputClass}
-            >
-              <option value="">
-                {weightsLoading
+              aria-label="Pretrained checkpoint"
+              placeholder={
+                weightsLoading
                   ? 'Loading checkpoints…'
                   : hasRegisteredWeights
                     ? 'Default checkpoint for this model'
-                    : 'No registered checkpoints'}
-              </option>
-              {availableWeights.map((weight) => (
-                <option key={weight.id} value={weight.id}>
-                  {weight.label}
-                  {weight.source === 'vendor' ? ' [vendor]' : ''}
-                </option>
-              ))}
-            </select>
+                    : 'No registered checkpoints'
+              }
+              options={[
+                {
+                  value: '',
+                  label: hasRegisteredWeights
+                    ? 'Default checkpoint for this model'
+                    : 'No registered checkpoints',
+                },
+                ...weightMenuEntries(availableWeights, (weight) => ({
+                  value: weight.id,
+                  label: `${weight.label}${weight.source === 'vendor' ? ' [vendor]' : ''}`,
+                })),
+              ]}
+            />
             <p className="mt-1 text-xs text-slate-500">{defaultWeightHint(modelName)}</p>
             {modelName === 'deepprime' && (
               <p className="mt-1 text-xs text-slate-500">
