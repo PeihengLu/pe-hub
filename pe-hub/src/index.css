@@ -13,5 +13,13 @@ html {
 }
 
 body {
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-canvas text-ink antialiased;
+}
+
+@layer base {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    @apply bg-surface-raised border-line text-ink placeholder:text-ink-faint;
+  }
 }

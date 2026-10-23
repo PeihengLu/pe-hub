@@ -55,19 +55,19 @@ export default function KillJobConfirmDialog({
       <button
         type="button"
         aria-label="Close dialog"
-        className="absolute inset-0 bg-slate-900/50"
+        className="absolute inset-0 bg-canvas/70"
         onClick={onCancel}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="kill-job-dialog-title"
-        className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+        className="relative w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-xl"
       >
-        <h3 id="kill-job-dialog-title" className="text-lg font-semibold text-slate-900">
+        <h3 id="kill-job-dialog-title" className="text-lg font-semibold text-ink">
           {isBulk ? `Kill and delete ${jobCount} jobs?` : 'Kill and delete job?'}
         </h3>
-        <p className="mt-3 text-sm text-slate-600">
+        <p className="mt-3 text-sm text-ink-muted">
           {isBulk ? (
             <>
               This will stop the selected jobs if any are still queued or running, then permanently
@@ -75,20 +75,20 @@ export default function KillJobConfirmDialog({
             </>
           ) : (
             <>
-              This will stop <span className="font-medium text-slate-900">{jobLabel}</span> if it is
+              This will stop <span className="font-medium text-ink">{jobLabel}</span> if it is
               still queued or running, then permanently delete its log files and other artifacts from
               this run.
             </>
           )}
         </p>
         {isBulk && (
-          <p className="mt-2 text-sm font-medium text-slate-900 whitespace-pre-wrap">{jobLabel}</p>
+          <p className="mt-2 text-sm font-medium text-ink whitespace-pre-wrap">{jobLabel}</p>
         )}
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm text-ink-muted">
           Registered model weights from a completed training job are kept in the weights registry
           and are not removed.
         </p>
-        <label className="mt-4 inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <label className="mt-4 inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
           <input
             type="checkbox"
             checked={neverShowAgain}
@@ -100,14 +100,14 @@ export default function KillJobConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-canvas"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={() => onConfirm(neverShowAgain)}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-ink hover:bg-red-700"
           >
             {isBulk ? `Kill & delete ${jobCount}` : 'Kill & delete'}
           </button>

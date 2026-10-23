@@ -62,20 +62,20 @@ export default function CatalogPage() {
   return (
     <div className="space-y-6">
       <Card title="PE Database Catalog">
-        <p className="text-slate-600 text-sm">
+        <p className="text-ink-muted text-sm">
           Browse catalog metadata served by the PE Database API. Use the filter
           for datasets and datasheets when exploring a specific study.
         </p>
         {(tab === 'datasets' || tab === 'datasheets') && (
           <div className="mt-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-ink-muted mb-1">
               Study filter (optional)
             </label>
             <select
               value={studyFilter}
               onChange={(e) => setStudyFilter(e.target.value)}
               disabled={catalogOptionsLoading}
-              className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white disabled:bg-slate-100"
+              className="w-full max-w-xs px-3 py-2 border border-line-strong rounded-lg text-sm bg-surface disabled:bg-surface-raised"
             >
               <option value="">All studies</option>
               {studyOptions.map((study) => (
@@ -96,8 +96,8 @@ export default function CatalogPage() {
             onClick={() => setTab(t.id)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               tab === t.id
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                ? 'bg-primary-600 text-canvas'
+                : 'bg-surface text-ink-muted border border-line hover:bg-canvas'
             }`}
           >
             {t.label}
@@ -169,9 +169,9 @@ export default function CatalogPage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="text-3xl font-bold text-slate-900 mt-1">{value.toLocaleString()}</p>
+    <div className="bg-surface rounded-xl border border-line p-6 shadow-sm">
+      <p className="text-sm text-ink-faint">{label}</p>
+      <p className="text-3xl font-bold text-ink mt-1">{value.toLocaleString()}</p>
     </div>
   )
 }
@@ -185,21 +185,21 @@ function DataTable({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-slate-500 text-sm py-8 text-center bg-white rounded-xl border border-slate-200">
+      <p className="text-ink-faint text-sm py-8 text-center bg-surface rounded-xl border border-line">
         No records found.
       </p>
     )
   }
 
   return (
-    <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
+    <div className="overflow-x-auto bg-surface rounded-xl border border-line shadow-sm">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50">
+          <tr className="border-b border-line bg-canvas">
             {headers.map((h) => (
               <th
                 key={h}
-                className="text-left px-4 py-3 font-semibold text-slate-700"
+                className="text-left px-4 py-3 font-semibold text-ink-muted"
               >
                 {h}
               </th>
@@ -208,9 +208,9 @@ function DataTable({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} className="border-b border-slate-100 last:border-0">
+            <tr key={i} className="border-b border-line last:border-0">
               {row.map((cell, j) => (
-                <td key={j} className="px-4 py-2.5 text-slate-800">
+                <td key={j} className="px-4 py-2.5 text-ink">
                   {cell}
                 </td>
               ))}

@@ -395,7 +395,7 @@ export default function BenchmarkPage() {
   return (
     <div className="space-y-6">
       <Card title="Model Benchmark">
-        <p className="text-slate-600">
+        <p className="text-ink-muted">
           Evaluate a model on held-out PE Database test splits. Select catalog filters, pick a weight
           set, and queue benchmark jobs on the shared device queue.
         </p>
@@ -432,7 +432,7 @@ export default function BenchmarkPage() {
         <Card title="Benchmark configuration">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
+              <label className="block text-sm font-medium text-ink-muted mb-2">Model</label>
               <SelectMenu
                 value={modelName}
                 onChange={setModelName}
@@ -447,8 +447,8 @@ export default function BenchmarkPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Weight set <span className="text-red-600">*</span>
+              <label className="block text-sm font-medium text-ink-muted mb-2">
+                Weight set <span className="text-red-400">*</span>
               </label>
               <SelectMenu
                 value={weightId}
@@ -468,13 +468,13 @@ export default function BenchmarkPage() {
                 }))}
               />
               {!weightsFetching && !hasRegisteredWeights && (
-                <p className="mt-1 text-xs text-amber-700">
+                <p className="mt-1 text-xs text-amber-200/90">
                   No checkpoints found for {modelName}. Weights must be registered under{' '}
                   <code className="text-xs">services/pe-ensemble/weights/{modelName}/</code>.
                 </p>
               )}
               {isTrainedWeight && !hasActiveFilters && !batchBenchmark && (
-                <p className="mt-1 text-xs text-slate-600">
+                <p className="mt-1 text-xs text-ink-muted">
                   This weight was trained in PE-Ensemble. The held-out test set from that
                   training run will be selected automatically — no dataset filters required.
                 </p>
@@ -482,7 +482,7 @@ export default function BenchmarkPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Device</label>
+              <label className="block text-sm font-medium text-ink-muted mb-2">Device</label>
               <SelectMenu
                 value={device}
                 onChange={setDevice}
@@ -503,7 +503,7 @@ export default function BenchmarkPage() {
             <button
               onClick={handleBenchmark}
               disabled={benchmarkMutation.isLoading || !canSubmit}
-              className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-slate-400 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+              className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-surface-raised disabled:text-ink-faint text-canvas font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />
               {benchmarkMutation.isLoading
@@ -518,7 +518,7 @@ export default function BenchmarkPage() {
             </button>
 
             {benchmarkMutation.isSuccess && benchmarkMutation.data.batch_count > 1 && (
-              <p className="text-sm text-green-700">
+              <p className="text-sm text-emerald-300">
                 Queued {benchmarkMutation.data.batch_count} benchmark jobs.
               </p>
             )}
@@ -550,16 +550,16 @@ export default function BenchmarkPage() {
 
         <Card title="Device occupancy">
           {!deviceStatus?.devices.length ? (
-            <p className="text-slate-500 py-4 text-center text-sm">No devices reported.</p>
+            <p className="text-ink-faint py-4 text-center text-sm">No devices reported.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {deviceStatus.devices.map((item) => (
                 <li
                   key={item.device_id}
-                  className="flex justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2"
+                  className="flex justify-between gap-2 border border-line rounded-lg px-3 py-2"
                 >
                   <span className="font-mono">{item.device_id}</span>
-                  <span className="text-slate-600 text-right">
+                  <span className="text-ink-muted text-right">
                     {item.running_job_id
                       ? `${item.running_job_kind ?? 'job'} ${item.running_job_id.slice(0, 8)}…`
                       : 'idle'}
@@ -573,7 +573,7 @@ export default function BenchmarkPage() {
       </div>
 
       <Card title="Results matrix">
-        <p className="text-sm text-slate-600 mb-3">
+        <p className="text-sm text-ink-muted mb-3">
           Rows are datasheets (with any per-row filters attached, e.g.{' '}
           <code className="text-xs">edit_type=sub</code>). Columns are models. Values persist
           across runs; repeating the same model and datasheet appends as{' '}
@@ -589,10 +589,10 @@ export default function BenchmarkPage() {
 
       <Card title="Benchmark results">
         {!selectedJobId ? (
-          <p className="text-slate-500 py-8 text-center">Select a job to view metrics and logs.</p>
+          <p className="text-ink-faint py-8 text-center">Select a job to view metrics and logs.</p>
         ) : (
           <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm space-y-1">
+            <div className="bg-canvas border border-line rounded-lg p-4 text-sm space-y-1">
               <p><span className="font-medium">Job ID:</span> {selectedJobId}</p>
               <p>
                 <span className="font-medium">Status:</span>{' '}
@@ -609,7 +609,7 @@ export default function BenchmarkPage() {
                 </p>
               )}
               {jobStatus?.status === 'skipped' && (
-                <p className="text-amber-700">
+                <p className="text-amber-200/90">
                   <span className="font-medium">Skipped:</span>{' '}
                   {jobStatus.result?.skip_reason ?? jobStatus.error ?? 'No evaluable test data.'}
                 </p>
@@ -617,9 +617,9 @@ export default function BenchmarkPage() {
               {metrics && (
                 <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {Object.entries(metrics).map(([key, value]) => (
-                    <div key={key} className="rounded border border-slate-200 bg-white px-3 py-2">
-                      <p className="text-xs text-slate-500">{key}</p>
-                      <p className="font-semibold text-slate-900">
+                    <div key={key} className="rounded border border-line bg-surface px-3 py-2">
+                      <p className="text-xs text-ink-faint">{key}</p>
+                      <p className="font-semibold text-ink">
                         {typeof value === 'number' ? value.toFixed(4) : String(value)}
                       </p>
                     </div>
@@ -627,17 +627,17 @@ export default function BenchmarkPage() {
                 </div>
               )}
               {jobStatus?.error && jobStatus.status !== 'skipped' && (
-                <p className="text-red-600">
+                <p className="text-red-400">
                   <span className="font-medium">Error:</span> {jobStatus.error}
                 </p>
               )}
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900 mb-2">Execution log</h3>
+              <h3 className="font-semibold text-ink mb-2">Execution log</h3>
               <pre
                 ref={logRef}
-                className="bg-slate-900 text-slate-100 p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"
+                className="bg-canvas text-ink p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"
               >
                 {logText ||
                   (jobStatus?.status === 'queued' ||

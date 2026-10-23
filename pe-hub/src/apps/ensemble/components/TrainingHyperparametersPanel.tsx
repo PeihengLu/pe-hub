@@ -76,7 +76,7 @@ function Field({
   children: ReactNode
 }) {
   return (
-    <label className="block text-sm text-slate-700">
+    <label className="block text-sm text-ink-muted">
       {label}
       <div className="mt-1">{children}</div>
     </label>
@@ -84,7 +84,7 @@ function Field({
 }
 
 const inputClass =
-  'w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed'
+  'w-full rounded-md border border-line-strong px-3 py-2 text-sm disabled:bg-surface-raised disabled:text-ink-faint disabled:cursor-not-allowed'
 
 interface TrainingHyperparametersPanelProps {
   modelName: string
@@ -401,8 +401,8 @@ export default function TrainingHyperparametersPanel({
         </Field>
       </div>
 
-      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+      <div className="space-y-3 rounded-lg border border-line bg-canvas p-3">
+        <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
           <input
             type="checkbox"
             checked={values.loadPretrained}
@@ -416,7 +416,7 @@ export default function TrainingHyperparametersPanel({
           Fine-tune from pretrained weights
         </label>
         {values.loadPretrained && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-faint">
             Representation layers stay frozen; only the output head is trained.
           </p>
         )}
@@ -448,9 +448,9 @@ export default function TrainingHyperparametersPanel({
                 })),
               ]}
             />
-            <p className="mt-1 text-xs text-slate-500">{defaultWeightHint(modelName)}</p>
+            <p className="mt-1 text-xs text-ink-faint">{defaultWeightHint(modelName)}</p>
             {modelName === 'deepprime' && (
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-ink-faint">
                 All ensemble members in the selected checkpoint are fine-tuned together.
               </p>
             )}
@@ -459,14 +459,14 @@ export default function TrainingHyperparametersPanel({
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-slate-900 mb-1">Model architecture</h4>
+        <h4 className="text-sm font-semibold text-ink mb-1">Model architecture</h4>
         {architectureDisabled && (
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-ink-faint mb-3">
             Architecture is fixed by the selected checkpoint during fine-tuning.
           </p>
         )}
         {!architectureDisabled && modelName === 'deepprime' && (
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-ink-faint mb-3">
             GRU size applies when training from scratch without pretrained weights.
           </p>
         )}
@@ -592,7 +592,7 @@ export default function TrainingHyperparametersPanel({
       </div>
 
       {modelName === 'deepprime' && (
-        <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
           <input
             type="checkbox"
             checked={values.reshuffleEachEpoch}

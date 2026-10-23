@@ -98,13 +98,13 @@ function StudyLegend({
 }) {
   if (studies.length === 0) return null
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+    <div className="bg-surface rounded-xl border border-line shadow-sm px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint mb-2">
         Study
       </p>
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         {studies.map((study) => (
-          <div key={study} className="flex items-center gap-2 text-sm text-slate-700">
+          <div key={study} className="flex items-center gap-2 text-sm text-ink-muted">
             <span
               className="inline-block h-3 w-3 rounded-sm shrink-0"
               style={{ backgroundColor: colors[study] }}
@@ -119,7 +119,7 @@ function StudyLegend({
 
 function EmptyChart() {
   return (
-    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+    <div className="h-64 flex items-center justify-center text-sm text-ink-faint">
       No data
     </div>
   )
@@ -142,22 +142,22 @@ function StudyCompositionTooltip({
   const composition = compositionByCategory[category] ?? []
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg text-sm max-w-xs">
-      <p className="font-semibold text-slate-900 mb-1">{category}</p>
-      <p className="text-slate-500 mb-2">Total: {formatCount(total)}</p>
+    <div className="rounded-lg border border-line bg-surface px-3 py-2 shadow-lg text-sm max-w-xs">
+      <p className="font-semibold text-ink mb-1">{category}</p>
+      <p className="text-ink-faint mb-2">Total: {formatCount(total)}</p>
       <ul className="space-y-1">
         {composition.map(({ study, count }) => {
           const share = total > 0 ? (count / total) * 100 : 0
           return (
             <li key={study} className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 text-slate-700">
+              <span className="flex items-center gap-2 text-ink-muted">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-sm shrink-0"
                   style={{ backgroundColor: studyColors[study] }}
                 />
                 {study}
               </span>
-              <span className="tabular-nums text-slate-600 whitespace-nowrap">
+              <span className="tabular-nums text-ink-muted whitespace-nowrap">
                 {formatCount(count)} ({share.toFixed(1)}%)
               </span>
             </li>
@@ -188,7 +188,7 @@ function renderActivePieShape(props: PieSectorDataItem) {
         startAngle={startAngle}
         endAngle={endAngle}
         fill={fill}
-        stroke="#ffffff"
+        stroke="#271416"
         strokeWidth={2}
         style={{ filter: 'brightness(1.08)', cursor: 'pointer' }}
       />
@@ -276,7 +276,7 @@ function CategoryPieChart({
                     <Cell
                       key={entry.name}
                       fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
-                      stroke="#ffffff"
+                      stroke="#271416"
                       strokeWidth={1}
                       fillOpacity={isDimmed ? 0.45 : 1}
                       style={{ cursor: 'pointer', outline: 'none' }}
@@ -332,26 +332,26 @@ function EditLengthBarChart({
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 8, right: 12, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#4d3338" vertical={false} />
               <XAxis
                 dataKey="edit_length"
-                tick={{ fill: '#64748B', fontSize: 12 }}
+                tick={{ fill: '#8f8175', fontSize: 12 }}
                 label={{
                   value: 'Edit length',
                   position: 'insideBottom',
                   offset: -2,
-                  fill: '#64748B',
+                  fill: '#8f8175',
                   fontSize: 12,
                 }}
               />
               <YAxis
-                tick={{ fill: '#64748B', fontSize: 12 }}
+                tick={{ fill: '#8f8175', fontSize: 12 }}
                 tickFormatter={(value: number) => formatCount(value)}
                 label={{
                   value: 'Count',
                   angle: -90,
                   position: 'insideLeft',
-                  fill: '#64748B',
+                  fill: '#8f8175',
                   fontSize: 12,
                 }}
               />
@@ -360,7 +360,9 @@ function EditLengthBarChart({
                 labelFormatter={(label) => `Edit length ${label}`}
                 contentStyle={{
                   borderRadius: 8,
-                  borderColor: '#E2E8F0',
+                  borderColor: '#4d3338',
+                  backgroundColor: '#271416',
+                  color: '#f3ebe0',
                   fontSize: 13,
                 }}
               />

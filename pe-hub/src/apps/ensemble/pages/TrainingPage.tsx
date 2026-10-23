@@ -262,7 +262,7 @@ export default function TrainingPage() {
   return (
     <div className="space-y-6">
       <Card title="Model Training">
-        <p className="text-slate-600">
+        <p className="text-ink-muted">
           Choose training data from the PE Database catalog, configure hyperparameters, and queue
           jobs. Batch mode trains each matching datasheet separately; otherwise datasheets are
           merged into one training run.
@@ -300,7 +300,7 @@ export default function TrainingPage() {
         <Card title="Training configuration">
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Model</label>
+              <label className="block text-sm font-medium text-ink-muted mb-2">Model</label>
               <SelectMenu
                 value={modelName}
                 onChange={setModelName}
@@ -315,7 +315,7 @@ export default function TrainingPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Device</label>
+              <label className="block text-sm font-medium text-ink-muted mb-2">Device</label>
               <SelectMenu
                 value={device}
                 onChange={setDevice}
@@ -334,7 +334,7 @@ export default function TrainingPage() {
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Hyperparameters</h3>
+              <h3 className="text-sm font-semibold text-ink mb-3">Hyperparameters</h3>
               <TrainingHyperparametersPanel
                 modelName={modelName}
                 values={hyperparameters}
@@ -347,7 +347,7 @@ export default function TrainingPage() {
             <button
               onClick={handleTrain}
               disabled={trainMutation.isLoading || !canSubmit}
-              className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-slate-400 text-white font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+              className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-surface-raised disabled:text-ink-faint text-canvas font-semibold py-2 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <Play className="w-4 h-4" />
               {trainMutation.isLoading
@@ -362,7 +362,7 @@ export default function TrainingPage() {
             </button>
 
             {trainMutation.isSuccess && trainMutation.data.batch_count > 1 && (
-              <p className="text-sm text-green-700">
+              <p className="text-sm text-emerald-300">
                 Queued {trainMutation.data.batch_count} training jobs. Select any job below to
                 monitor progress.
               </p>
@@ -393,16 +393,16 @@ export default function TrainingPage() {
 
         <Card title="Device occupancy">
           {!deviceStatus?.devices.length ? (
-            <p className="text-slate-500 py-4 text-center text-sm">No devices reported.</p>
+            <p className="text-ink-faint py-4 text-center text-sm">No devices reported.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {deviceStatus.devices.map((item) => (
                 <li
                   key={item.device_id}
-                  className="flex justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2"
+                  className="flex justify-between gap-2 border border-line rounded-lg px-3 py-2"
                 >
                   <span className="font-mono">{item.device_id}</span>
-                  <span className="text-slate-600 text-right">
+                  <span className="text-ink-muted text-right">
                     {item.running_job_id
                     ? `${item.running_job_kind ?? 'job'} ${item.running_job_id.slice(0, 8)}…`
                     : 'idle'}
@@ -417,10 +417,10 @@ export default function TrainingPage() {
 
       <Card title="Job Status">
         {!selectedJobId ? (
-          <p className="text-slate-500 py-8 text-center">Select a job to view status and logs.</p>
+          <p className="text-ink-faint py-8 text-center">Select a job to view status and logs.</p>
         ) : (
           <div className="space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm space-y-1">
+            <div className="bg-canvas border border-line rounded-lg p-4 text-sm space-y-1">
               <p><span className="font-medium">Job ID:</span> {selectedJobId}</p>
               <p>
                 <span className="font-medium">Status:</span>{' '}
@@ -440,15 +440,15 @@ export default function TrainingPage() {
                 <p><span className="font-medium">Weights:</span> {jobStatus.weights_label ?? jobStatus.weights_id}</p>
               )}
               {jobStatus?.error && (
-                <p className="text-red-600"><span className="font-medium">Error:</span> {jobStatus.error}</p>
+                <p className="text-red-400"><span className="font-medium">Error:</span> {jobStatus.error}</p>
               )}
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900 mb-2">Training log</h3>
+              <h3 className="font-semibold text-ink mb-2">Training log</h3>
               <pre
                 ref={logRef}
-                className="bg-slate-900 text-slate-100 p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"
+                className="bg-canvas text-ink p-4 rounded-lg h-64 overflow-y-auto text-xs font-mono whitespace-pre-wrap"
               >
                 {logText ||
                   (jobStatus?.status === 'queued' ||

@@ -164,15 +164,15 @@ export default function ModelDataPanel({
 
   return (
     <Card title={copy.title}>
-      <p className="text-sm text-slate-600 mb-4">{copy.intro}</p>
+      <p className="text-sm text-ink-muted mb-4">{copy.intro}</p>
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Model format</p>
-        <p className="mt-1 font-medium text-slate-900">{formatMeta?.label ?? exportFormat}</p>
-        <p className="mt-1 text-sm text-slate-600">{formatMeta?.description}</p>
+      <div className="mb-6 rounded-lg border border-line bg-canvas p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">Model format</p>
+        <p className="mt-1 font-medium text-ink">{formatMeta?.label ?? exportFormat}</p>
+        <p className="mt-1 text-sm text-ink-muted">{formatMeta?.description}</p>
       </div>
 
-      <h3 className="text-sm font-semibold text-slate-900 mb-3">Filter attributes</h3>
+      <h3 className="text-sm font-semibold text-ink mb-3">Filter attributes</h3>
       {isLoading && <LoadingSpinner message="Loading filter options…" />}
       {error ? (
         <ErrorAlert message="Failed to load filter attribute options from the catalog." />
@@ -186,11 +186,11 @@ export default function ModelDataPanel({
         />
       )}
       {incompleteRows.length > 0 && (
-        <p className="mt-3 text-sm text-amber-700">{copy.incompleteHint}</p>
+        <p className="mt-3 text-sm text-amber-200/90">{copy.incompleteHint}</p>
       )}
 
       <div className="mt-8">
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">Design ruleset</h3>
+        <h3 className="text-sm font-semibold text-ink mb-3">Design ruleset</h3>
         <DesignRulesetPanel
           rows={filterRows}
           onChange={onFilterRowsChange}
@@ -199,7 +199,7 @@ export default function ModelDataPanel({
       </div>
 
       <div className="mt-8">
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">Split assignment</h3>
+        <h3 className="text-sm font-semibold text-ink mb-3">Split assignment</h3>
         <SplitAssignmentPanel
           splitStrategy={splitStrategy}
           onSplitStrategyChange={onSplitStrategyChange}
@@ -223,9 +223,9 @@ export default function ModelDataPanel({
       </div>
 
       <div className="mt-8">
-        <h3 className="text-sm font-semibold text-slate-900 mb-3">Datasheet handling</h3>
+        <h3 className="text-sm font-semibold text-ink mb-3">Datasheet handling</h3>
         <div className="flex flex-wrap gap-4">
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
             <input
               type="radio"
               name={`${mode}-batch-mode`}
@@ -234,7 +234,7 @@ export default function ModelDataPanel({
             />
             {copy.singleLabel}
           </label>
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
             <input
               type="radio"
               name={`${mode}-batch-mode`}
@@ -244,7 +244,7 @@ export default function ModelDataPanel({
             {copy.batchLabel}
           </label>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-faint">
           {batchMode ? copy.batchHelp : copy.singleHelp}
         </p>
       </div>
@@ -254,7 +254,7 @@ export default function ModelDataPanel({
           type="button"
           onClick={() => previewMutation.mutate()}
           disabled={!canPreview || previewMutation.isLoading}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+          className="rounded-lg border border-line-strong bg-surface px-4 py-2 text-sm font-medium text-ink-muted hover:bg-canvas disabled:cursor-not-allowed disabled:bg-surface-raised"
         >
           {previewMutation.isLoading ? 'Loading preview…' : 'Preview data'}
         </button>
@@ -289,13 +289,13 @@ export default function ModelDataPanel({
           </div>
 
           {(previewData ?? previewMutation.data)!.skipped.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-medium text-amber-900">
+            <div className="mt-4 rounded-lg border border-amber-700/50 bg-amber-950/40 p-4">
+              <p className="text-sm font-medium text-amber-100">
                 {((previewData ?? previewMutation.data)?.total_records ?? 0) === 0
                   ? 'No records loaded — all matching datasheets were skipped'
                   : `${(previewData ?? previewMutation.data)!.skipped.length} datasheet(s) skipped`}
               </p>
-              <p className="mt-1 text-xs text-amber-800">
+              <p className="mt-1 text-xs text-amber-200">
                 {(previewData ?? previewMutation.data)!.skipped.some((row) =>
                   row.reason.includes('original_fold')
                 )
@@ -313,9 +313,9 @@ export default function ModelDataPanel({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
+    <div className="rounded-lg border border-line bg-surface p-4">
+      <p className="text-xs text-ink-faint">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
     </div>
   )
 }
@@ -329,9 +329,9 @@ function SkippedDatasheetsTable({
     <div className="mt-3 overflow-x-auto">
       <table className="min-w-full text-xs">
         <thead>
-          <tr className="border-b border-amber-200">
+          <tr className="border-b border-amber-700/50">
             {['Study', 'Dataset', 'Cell line', 'PE system', 'Reason'].map((header) => (
-              <th key={header} className="px-2 py-1 text-left font-semibold text-amber-900">
+              <th key={header} className="px-2 py-1 text-left font-semibold text-amber-100">
                 {header}
               </th>
             ))}

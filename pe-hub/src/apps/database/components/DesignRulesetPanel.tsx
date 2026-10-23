@@ -20,7 +20,7 @@ export default function DesignRulesetPanel({
 
   return (
     <div>
-      <p className="mb-3 text-sm text-slate-600">
+      <p className="mb-3 text-sm text-ink-muted">
         Keep only pegRNAs that match practitioner design heuristics (Hsu / OptiPrime
         argued that published libraries include geometries a designer would not order).
       </p>
@@ -31,7 +31,7 @@ export default function DesignRulesetPanel({
             className={`cursor-pointer rounded-lg border p-4 transition-all ${
               selected === item.value
                 ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
-                : 'border-slate-200 hover:border-slate-300'
+                : 'border-line hover:border-line-strong'
             }`}
           >
             <div className="flex items-start gap-3">
@@ -44,8 +44,8 @@ export default function DesignRulesetPanel({
                 className="mt-1"
               />
               <div>
-                <p className="font-medium text-slate-900">{item.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+                <p className="font-medium text-ink">{item.label}</p>
+                <p className="mt-1 text-xs text-ink-faint">{item.description}</p>
               </div>
             </div>
           </label>

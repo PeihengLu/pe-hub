@@ -97,7 +97,7 @@ export default function ExportPage() {
   return (
     <div className="space-y-6">
       <Card title="Export Data">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink-muted">
           Export standardizable PE editing data in a model-ready format. Only
           datasets flagged as fully standardizable are included; partially
           standardizable sets are skipped automatically.
@@ -112,7 +112,7 @@ export default function ExportPage() {
               className={`cursor-pointer rounded-lg border p-4 transition-all ${
                 format === item.value
                   ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
-                  : 'border-slate-200 hover:border-slate-300'
+                  : 'border-line hover:border-line-strong'
               }`}
             >
               <div className="flex items-start gap-3">
@@ -125,8 +125,8 @@ export default function ExportPage() {
                   className="mt-1"
                 />
                 <div>
-                  <p className="font-medium text-slate-900">{item.label}</p>
-                  <p className="text-xs text-slate-500 mt-1">{item.description}</p>
+                  <p className="font-medium text-ink">{item.label}</p>
+                  <p className="text-xs text-ink-faint mt-1">{item.description}</p>
                 </div>
               </div>
             </label>
@@ -148,7 +148,7 @@ export default function ExportPage() {
           />
         )}
         {incompleteRows.length > 0 && (
-          <p className="mt-3 text-sm text-amber-700">
+          <p className="mt-3 text-sm text-amber-200/90">
             Each added attribute needs at least one value before export.
           </p>
         )}
@@ -159,7 +159,7 @@ export default function ExportPage() {
       </Card>
 
       <Card title="Split assignment">
-        <p className="mb-4 text-sm text-slate-600">
+        <p className="mb-4 text-sm text-ink-muted">
           Required for formatted exports. Splits are group-aware on{' '}
           <code className="text-xs">group_id</code>. When downloading a merged CSV,
           datasheets are merged server-side and <code className="text-xs">group_id</code> is
@@ -172,7 +172,7 @@ export default function ExportPage() {
               className={`cursor-pointer rounded-lg border p-4 transition-all ${
                 splitStrategy === item.value
                   ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
-                  : 'border-slate-200 hover:border-slate-300'
+                  : 'border-line hover:border-line-strong'
               }`}
             >
               <div className="flex items-start gap-3">
@@ -185,8 +185,8 @@ export default function ExportPage() {
                   className="mt-1"
                 />
                 <div>
-                  <p className="font-medium text-slate-900">{item.label}</p>
-                  <p className="text-xs text-slate-500 mt-1">{item.description}</p>
+                  <p className="font-medium text-ink">{item.label}</p>
+                  <p className="text-xs text-ink-faint mt-1">{item.description}</p>
                 </div>
               </div>
             </label>
@@ -195,7 +195,7 @@ export default function ExportPage() {
 
         {(splitStrategy === 'holdout_2' || splitStrategy === 'holdout_3') && (
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-ink-muted">
               Train %
               <input
                 type="number"
@@ -204,11 +204,11 @@ export default function ExportPage() {
                 step={0.05}
                 value={trainPct}
                 onChange={(e) => setTrainPct(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
               />
             </label>
             {splitStrategy === 'holdout_3' && (
-              <label className="text-sm text-slate-700">
+              <label className="text-sm text-ink-muted">
                 Val %
                 <input
                   type="number"
@@ -217,11 +217,11 @@ export default function ExportPage() {
                   step={0.05}
                   value={valPct}
                   onChange={(e) => setValPct(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                  className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
                 />
               </label>
             )}
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-ink-muted">
               Test %
               <input
                 type="number"
@@ -230,7 +230,7 @@ export default function ExportPage() {
                 step={0.05}
                 value={testPct}
                 onChange={(e) => setTestPct(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
               />
             </label>
           </div>
@@ -238,7 +238,7 @@ export default function ExportPage() {
 
         {splitStrategy === 'cv' && (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-ink-muted">
               CV folds
               <input
                 type="number"
@@ -246,10 +246,10 @@ export default function ExportPage() {
                 step={1}
                 value={cvFolds}
                 onChange={(e) => setCvFolds(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
               />
             </label>
-            <label className="text-sm text-slate-700">
+            <label className="text-sm text-ink-muted">
               Test % (optional holdout)
               <input
                 type="number"
@@ -258,7 +258,7 @@ export default function ExportPage() {
                 step={0.05}
                 value={testPct}
                 onChange={(e) => setTestPct(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
                 placeholder="Leave empty for no holdout"
               />
             </label>
@@ -267,7 +267,7 @@ export default function ExportPage() {
 
         {splitStrategy !== 'none' && (
           <div className="mt-4 space-y-3">
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={useOriginalFold}
@@ -276,16 +276,16 @@ export default function ExportPage() {
               Use author original_fold when available
             </label>
             {useOriginalFold && (
-              <label className="block text-sm text-slate-700 max-w-xs">
+              <label className="block text-sm text-ink-muted max-w-xs">
                 Designate test fold
                 <input
                   type="number"
                   step={1}
                   value={originalFoldTestValue}
                   onChange={(e) => setOriginalFoldTestValue(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+                  className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
                 />
-                <span className="mt-1 block text-xs text-slate-500">
+                <span className="mt-1 block text-xs text-ink-faint">
                   Rows with this original_fold value become the test partition (-1 for DeepPrime;
                   0–4 for PRIDICT2 CV test folds).
                 </span>
@@ -295,7 +295,7 @@ export default function ExportPage() {
         )}
 
         {splitStrategy !== 'none' && (
-          <label className="mt-4 block text-sm text-slate-700 max-w-xs">
+          <label className="mt-4 block text-sm text-ink-muted max-w-xs">
             Random seed
             <input
               type="number"
@@ -303,7 +303,7 @@ export default function ExportPage() {
               step={1}
               value={splitRandomState}
               onChange={(e) => setSplitRandomState(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-md border border-line-strong px-3 py-2"
             />
           </label>
         )}
@@ -311,7 +311,7 @@ export default function ExportPage() {
 
       <Card title="Download options">
         <div className="flex flex-wrap gap-4">
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
             <input
               type="radio"
               name="download-mode"
@@ -321,7 +321,7 @@ export default function ExportPage() {
             />
             Single merged CSV
           </label>
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
             <input
               type="radio"
               name="download-mode"
@@ -332,7 +332,7 @@ export default function ExportPage() {
             Separate file per datasheet
           </label>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-faint">
           {downloadMode === 'merged'
             ? 'All matching datasheets are merged server-side before split assignment, then downloaded as one CSV.'
             : 'Each datasheet is split independently and downloaded as its own CSV (fold_0 is local to each file).'}
@@ -344,7 +344,7 @@ export default function ExportPage() {
           type="button"
           onClick={handleExport}
           disabled={!canExport || exportMutation.isLoading}
-          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-canvas hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-faint"
         >
           {exportMutation.isLoading ? 'Exporting…' : 'Run export'}
         </button>
@@ -352,7 +352,7 @@ export default function ExportPage() {
           <button
             type="button"
             onClick={handleDownload}
-            className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-line-strong bg-surface px-5 py-2.5 text-sm font-medium text-ink-muted hover:bg-canvas"
           >
             {downloadLabel}
           </button>
@@ -384,7 +384,7 @@ export default function ExportPage() {
 
           {exportMutation.data.skipped.length > 0 && (
             <Card title="Skipped datasheets">
-              <p className="mb-3 text-sm text-slate-600">
+              <p className="mb-3 text-sm text-ink-muted">
                 These datasheets matched your filters but could not be exported in
                 the requested format.
               </p>
@@ -399,7 +399,7 @@ export default function ExportPage() {
           )}
 
           {exportMutation.data.total_records === 0 && (
-            <p className="text-sm text-slate-500 text-center py-6 bg-white rounded-xl border border-slate-200">
+            <p className="text-sm text-ink-faint text-center py-6 bg-surface rounded-xl border border-line">
               No records matched your filters in a standardizable dataset.
             </p>
           )}
@@ -411,9 +411,9 @@ export default function ExportPage() {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
+    <div className="rounded-xl border border-line bg-surface p-5 shadow-sm">
+      <p className="text-sm text-ink-faint">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-ink">{value}</p>
     </div>
   )
 }
@@ -427,9 +427,9 @@ function SkippedTable({
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50">
+          <tr className="border-b border-line bg-canvas">
             {['Study', 'Dataset', 'Cell line', 'PE system', 'Reason'].map((header) => (
-              <th key={header} className="px-4 py-2 text-left font-semibold text-slate-700">
+              <th key={header} className="px-4 py-2 text-left font-semibold text-ink-muted">
                 {header}
               </th>
             ))}
@@ -437,12 +437,12 @@ function SkippedTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={index} className="border-b border-slate-100 last:border-0">
+            <tr key={index} className="border-b border-line last:border-0">
               <td className="px-4 py-2">{row.study}</td>
               <td className="px-4 py-2">{row.dataset}</td>
               <td className="px-4 py-2">{row.cell_line}</td>
               <td className="px-4 py-2">{row.pe_system}</td>
-              <td className="px-4 py-2 text-slate-600">{row.reason}</td>
+              <td className="px-4 py-2 text-ink-muted">{row.reason}</td>
             </tr>
           ))}
         </tbody>
@@ -470,7 +470,7 @@ function PreviewTable({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         Showing up to 5 rows from{' '}
         <span className="font-medium">
           {firstGroup.study}/{firstGroup.dataset}/{firstGroup.cell_line}/
@@ -481,9 +481,9 @@ function PreviewTable({
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50">
+            <tr className="border-b border-line bg-canvas">
               {headers.map((header) => (
-                <th key={header} className="px-4 py-2 text-left font-semibold text-slate-700">
+                <th key={header} className="px-4 py-2 text-left font-semibold text-ink-muted">
                   {header}
                 </th>
               ))}
@@ -491,9 +491,9 @@ function PreviewTable({
           </thead>
           <tbody>
             {previewRows.map((record, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-slate-100 last:border-0">
+              <tr key={rowIndex} className="border-b border-line last:border-0">
                 {headers.map((header) => (
-                  <td key={header} className="px-4 py-2 text-slate-800">
+                  <td key={header} className="px-4 py-2 text-ink">
                     {String(record[header] ?? '')}
                   </td>
                 ))}

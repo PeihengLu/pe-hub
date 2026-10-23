@@ -15,6 +15,7 @@ export interface ComputeJobListItem {
   dataset_name?: string
   benchmark_name?: string
   ensemble_name?: string
+  kind?: string
   combine?: string
   member_count?: number
   queue_position?: number | null
@@ -193,21 +194,21 @@ export default function ComputeJobList({
     <>
       <Card title="Jobs">
         {!sortedJobs.length ? (
-          <p className="text-slate-500 py-4 text-center text-sm">{emptyMessage}</p>
+          <p className="text-ink-faint py-4 text-center text-sm">{emptyMessage}</p>
         ) : (
           <>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+              <label className="inline-flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleSelectAll}
                   disabled={isKilling}
-                  className="rounded border-slate-300"
+                  className="rounded border-line-strong"
                 />
                 <span>{allSelected ? 'Deselect all' : 'Select all'}</span>
                 {selectedCount > 0 && (
-                  <span className="text-slate-500">({selectedCount} selected)</span>
+                  <span className="text-ink-faint">({selectedCount} selected)</span>
                 )}
               </label>
               {selectedCount > 0 && (
@@ -219,7 +220,7 @@ export default function ComputeJobList({
                         void onExportSelected([...selectedJobIds])
                       }}
                       disabled={isKilling || exportSelectedLoading}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink-muted hover:bg-canvas disabled:opacity-50"
                     >
                       <Download className="w-4 h-4" />
                       {exportSelectedLoading ? 'Exporting…' : `Export JSON (${selectedCount})`}
@@ -229,7 +230,7 @@ export default function ComputeJobList({
                     type="button"
                     onClick={requestKillSelected}
                     disabled={isKilling}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-1.5 text-sm font-medium text-red-300 hover:bg-red-950/50 disabled:opacity-50"
                   >
                     <Trash2 className="w-4 h-4" />
                     Delete selected ({selectedCount})
@@ -238,7 +239,7 @@ export default function ComputeJobList({
               )}
             </div>
 
-            <ul className="divide-y divide-slate-200 max-h-96 overflow-y-auto">
+            <ul className="divide-y divide-line max-h-96 overflow-y-auto">
               {sortedJobs.map((job) => {
                 const jobLabel = jobLabelFor(job)
                 const isRowSelected = selectedJobIds.has(job.job_id)
@@ -258,20 +259,20 @@ export default function ComputeJobList({
                         onChange={() => toggleJobSelected(job.job_id)}
                         disabled={isKilling || !isRowSelectable}
                         aria-label={`Select ${jobLabel}`}
-                        className="rounded border-slate-300 disabled:opacity-40"
+                        className="rounded border-line-strong disabled:opacity-40"
                       />
                     </label>
                     <button
                       type="button"
                       onClick={() => onSelectJob(job.job_id)}
-                      className={`flex-1 text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                      className={`flex-1 text-left px-3 py-2 text-sm hover:bg-canvas ${
                         selectedJobId === job.job_id
                           ? 'bg-primary-50 border-l-4 border-primary-500'
                           : ''
                       }`}
                     >
                       <p className="font-medium truncate">{jobLabel}</p>
-                      <p className="text-slate-500 text-xs">
+                      <p className="text-ink-faint text-xs">
                         {statusLabel(job.status, job.queue_position)}
                         {job.device_assigned ? ` on ${job.device_assigned}` : ''}
                       </p>
@@ -285,7 +286,7 @@ export default function ComputeJobList({
                         event.stopPropagation()
                         requestKillJob(job)
                       }}
-                      className="px-3 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      className="px-3 text-ink-faint hover:text-red-400 hover:bg-red-950/40 disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

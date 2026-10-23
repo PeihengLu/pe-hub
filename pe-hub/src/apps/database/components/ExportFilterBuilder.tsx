@@ -56,7 +56,7 @@ export default function ExportFilterBuilder({
   return (
     <div className="space-y-3">
       {catalogRows.length === 0 && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-faint">
           No filters yet. Export includes all standardizable data unless you add
           attributes below.
         </p>
@@ -80,10 +80,10 @@ export default function ExportFilterBuilder({
         return (
           <div
             key={row.id}
-            className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-start"
+            className="flex flex-col gap-3 rounded-lg border border-line bg-canvas p-4 sm:flex-row sm:items-start"
           >
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-slate-600">
+              <label className="mb-1 block text-xs font-medium text-ink-muted">
                 Attribute
               </label>
               <select
@@ -92,7 +92,7 @@ export default function ExportFilterBuilder({
                   const attribute = event.target.value as FilterAttributeKey | ''
                   updateRow(row.id, { attribute, values: [] })
                 }}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm"
               >
                 <option value="">Select attribute…</option>
                 {availableAttributes.map((attribute) => (
@@ -104,7 +104,7 @@ export default function ExportFilterBuilder({
             </div>
 
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-slate-600">
+              <label className="mb-1 block text-xs font-medium text-ink-muted">
                 Values
               </label>
               {row.attribute ? (
@@ -118,8 +118,8 @@ export default function ExportFilterBuilder({
                         title={stale ? 'No longer matches your other filters' : undefined}
                         className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ${
                           stale
-                            ? 'bg-amber-100 text-amber-900 ring-1 ring-amber-300'
-                            : 'bg-primary-100 text-primary-800'
+                            ? 'bg-amber-950/50 text-amber-100 ring-1 ring-amber-300'
+                            : 'bg-primary-100 text-primary-500'
                         }`}
                       >
                         {value}
@@ -134,18 +134,18 @@ export default function ExportFilterBuilder({
                       </span>
                     )})}
                     {row.values.length === 0 && (
-                      <span className="text-sm text-slate-400">No values selected</span>
+                      <span className="text-sm text-ink-faint">No values selected</span>
                     )}
                   </div>
                   {catalogLimited && optionList.length > 0 && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-ink-faint">
                       {optionList.length} value{optionList.length === 1 ? '' : 's'} in this
                       catalog
                       {catalogRows.length > 1 ? ' matching your other filters' : ''}
                     </p>
                   )}
                   {catalogLimited && optionList.length === 0 && (
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-amber-200/90">
                       No catalog values match your other filters. Relax or remove conflicting
                       attributes.
                     </p>
@@ -157,7 +157,7 @@ export default function ExportFilterBuilder({
                       event.target.value = ''
                     }}
                     disabled={remainingOptions.length === 0}
-                    className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                    className="w-full max-w-md rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm disabled:bg-surface-raised"
                   >
                     <option value="">
                       {remainingOptions.length === 0
@@ -174,14 +174,14 @@ export default function ExportFilterBuilder({
                   </select>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400 py-2">Choose an attribute first.</p>
+                <p className="text-sm text-ink-faint py-2">Choose an attribute first.</p>
               )}
             </div>
 
             <button
               type="button"
               onClick={() => removeRow(row.id)}
-              className="self-start rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-white"
+              className="self-start rounded-lg border border-line-strong px-3 py-2 text-sm text-ink-muted hover:bg-surface"
             >
               Remove
             </button>
@@ -193,7 +193,7 @@ export default function ExportFilterBuilder({
         type="button"
         onClick={addRow}
         disabled={usedAttributes.size >= FILTER_ATTRIBUTES.length}
-        className="inline-flex items-center gap-2 rounded-lg border border-dashed border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+        className="inline-flex items-center gap-2 rounded-lg border border-dashed border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:cursor-not-allowed disabled:border-line disabled:text-ink-faint"
       >
         <span className="text-lg leading-none">+</span>
         Add attribute

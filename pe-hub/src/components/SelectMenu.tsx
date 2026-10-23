@@ -118,15 +118,15 @@ export default function SelectMenu({
         role="listbox"
         aria-label={ariaLabel}
         style={menuStyle}
-        className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        className="max-h-60 overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg"
       >
         {selectable.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-slate-500">No options available</li>
+          <li className="px-3 py-2 text-sm text-ink-faint">No options available</li>
         ) : (
           options.map((option, index) =>
             isSelectMenuDivider(option) ? (
               <li key={`divider-${index}`} role="separator" className="px-3 py-1">
-                <div className="border-t border-slate-200" />
+                <div className="border-t border-line" />
               </li>
             ) : (
               <li key={option.value} role="option" aria-selected={option.value === value}>
@@ -137,10 +137,10 @@ export default function SelectMenu({
                   className={clsx(
                     'w-full px-3 py-2 text-left text-sm',
                     option.disabled
-                      ? 'cursor-not-allowed text-slate-400'
+                      ? 'cursor-not-allowed text-ink-faint'
                       : option.value === value
-                        ? 'bg-primary-50 text-primary-800'
-                        : 'text-slate-900 hover:bg-slate-50'
+                        ? 'bg-primary-50 text-primary-500'
+                        : 'text-ink hover:bg-canvas'
                   )}
                 >
                   {option.label}
@@ -170,15 +170,15 @@ export default function SelectMenu({
           }
         }}
         className={clsx(
-          'flex w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm',
-          disabled ? 'cursor-not-allowed bg-slate-100 text-slate-500' : 'hover:border-slate-400'
+          'flex w-full items-center justify-between gap-2 rounded-lg border border-line-strong bg-surface px-3 py-2 text-left text-sm',
+          disabled ? 'cursor-not-allowed bg-surface-raised text-ink-faint' : 'hover:border-line-strong'
         )}
       >
-        <span className={clsx('truncate', !selected && 'text-slate-400')}>
+        <span className={clsx('truncate', !selected && 'text-ink-faint')}>
           {selected?.label ?? placeholder}
         </span>
         <ChevronDown
-          className={clsx('h-4 w-4 shrink-0 text-slate-500 transition-transform', open && 'rotate-180')}
+          className={clsx('h-4 w-4 shrink-0 text-ink-faint transition-transform', open && 'rotate-180')}
         />
       </button>
       {menu}

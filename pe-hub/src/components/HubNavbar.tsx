@@ -73,7 +73,7 @@ export default function HubNavbar({
   ]
 
   return (
-    <nav className="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-200">
+    <nav className="sticky top-0 z-50 bg-surface shadow-sm border-b border-line">
       <div className="container mx-auto px-4 py-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <button
@@ -83,8 +83,8 @@ export default function HubNavbar({
           >
             <Dna className="w-8 h-8 text-primary-600" />
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">PE Hub</h1>
-              <p className="text-xs text-slate-500">
+              <h1 className="text-2xl font-bold text-ink">PE Hub</h1>
+              <p className="text-xs text-ink-faint">
                 Prime editing data &amp; models
               </p>
             </div>
@@ -99,8 +99,8 @@ export default function HubNavbar({
                 className={clsx(
                   'inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
                   section === item.id
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'bg-primary-600 text-canvas'
+                    : 'text-ink-muted hover:bg-surface-raised'
                 )}
               >
                 {item.serviceIds && <StatusDot serviceIds={item.serviceIds} />}
@@ -111,8 +111,8 @@ export default function HubNavbar({
         </div>
 
         {section === 'database' && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-            <span className="text-xs font-medium text-slate-500 self-center mr-2">
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-line">
+            <span className="text-xs font-medium text-ink-faint self-center mr-2">
               {SERVICES['pe-db'].shortName}
             </span>
             {databaseNav.map((item) => (
@@ -123,8 +123,8 @@ export default function HubNavbar({
                 className={clsx(
                   'px-3 py-1.5 rounded-md text-sm font-medium transition-all',
                   databasePage === item.id
-                    ? 'bg-slate-800 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-primary-600 text-canvas'
+                    : 'text-ink-muted hover:bg-surface-raised'
                 )}
               >
                 {item.label}
@@ -134,8 +134,8 @@ export default function HubNavbar({
         )}
 
         {section === 'ensemble' && (
-          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-            <span className="text-xs font-medium text-slate-500 self-center mr-2">
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-line">
+            <span className="text-xs font-medium text-ink-faint self-center mr-2">
               {SERVICES['pe-ensemble'].shortName}
             </span>
             {ensembleNav.map((item) => (
@@ -146,8 +146,8 @@ export default function HubNavbar({
                 className={clsx(
                   'px-3 py-1.5 rounded-md text-sm font-medium transition-all',
                   ensemblePage === item.id
-                    ? 'bg-slate-800 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-primary-600 text-canvas'
+                    : 'text-ink-muted hover:bg-surface-raised'
                 )}
               >
                 {item.label}
